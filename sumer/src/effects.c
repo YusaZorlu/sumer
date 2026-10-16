@@ -12,8 +12,10 @@ static Particle *FreeParticle(void)
     return oldest;
 }
 
+// The host passes what it spawns on to the guests who can see it.
 void SpawnBurst(Vector3 pos, Color c, int count, float speed)
 {
+    if (G.role == NET_HOST) NetEffect(pos, c, count, speed, false);
     for (int i = 0; i < count; i++) {
         Particle *p = FreeParticle();
         float a = RandF(0, 2 * PI), up = RandF(0.4f, 1.0f);
@@ -25,6 +27,7 @@ void SpawnBurst(Vector3 pos, Color c, int count, float speed)
 
 void SpawnRing(Vector3 pos, Color c)
 {
+    if (G.role == NET_HOST) NetEffect(pos, c, 1, 0, true);
     Particle *p = FreeParticle();
     *p = (Particle){ pos, { 0, 0, 0 }, 2.0f, 2.0f, 0.3f, c, true };
 }
@@ -68,13 +71,13 @@ static void Ribbon(Vector3 a, Vector3 b, float wa, float wb, Color ca, Color cb)
 }
 
 // Bright streak behind each arrow, fading toward the tail and after it lands.
-static void DrawTrails(void)
+void DrawArrowTrails(const Arrow *arrows)
 {
     const Color base = { 255, 196, 100, 255 };
 
     rlDisableBackfaceCulling();
     for (int i = 0; i < MAX_ARROWS; i++) {
-        const Arrow *ar = &G.arrows[i];
+        const Arrow *ar = &arrows[i];
         if (!ar->active || ar->trailCount == 0 || (!ar->flying && ar->fade <= 0)) continue;
         float fade = ar->flying ? 1.0f : ar->fade / 0.6f;
         Vector3 head = ar->spent || !ar->flying ? ar->trail[0] : ar->pos;
@@ -100,7 +103,8 @@ static void DrawTrails(void)
 void DrawEffects(void)
 {
     G.drawTorch = G.drawFog = 0;
-    DrawTrails();
+    DrawArrowTrails(G.arrows);
+    if (IsClient()) DrawArrowTrails(NetArrows());
     for (int i = 0; i < MAX_PARTICLES; i++) {
         const Particle *p = &G.particles[i];
         if (p->life <= 0) continue;

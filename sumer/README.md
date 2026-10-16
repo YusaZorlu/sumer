@@ -24,6 +24,48 @@ Old GPU or a VM without OpenGL 3.3 (the game prints a hint if it can't open a wi
 
 Installs raylib with Homebrew if missing (or builds it from source without Homebrew), compiles `src/*.c`, launches.
 
+## Play in a browser, alone or together
+
+The game also runs in a web browser, and there up to five people can share one world. Start the
+server (Python 3.8 or newer, nothing else to install):
+
+    python3 server.py
+
+It prints the addresses to open: `http://localhost:8000/` on this computer, `http://<this computer's
+address>:8000/` for the others on your network (`--port 9000` picks another port). The browser
+version is already built in `web/`; `sh build-web.sh` rebuilds it (needs Emscripten).
+
+The title screen asks for your name, then:
+
+- **Play alone**: the same game as the desktop version. Its three save slots are kept in the browser.
+- **Host a game**: starts the shared world, or carries on the one you hosted before. The host's
+  browser runs the world and keeps its save: the world and every player's things, saved every
+  minute, when a night passes, when someone leaves, and on F5. Keep the host's tab open and in front
+  while others play (browsers slow down hidden tabs). "New world" beside it (click twice) erases the
+  hosted world so the next game starts fresh.
+- **Join a game**: joins the game hosted in the same room. Join again under the same name and your
+  things and your house are waiting.
+
+Everyone who opens the same address plays in the same room; add `?room=any-name` to the address to run
+another game on the same server. To play over the internet, run `server.py` on a machine the others
+can reach (its port open); behind HTTPS the page connects securely by itself.
+
+Playing together:
+
+- Each player has a house of their own and wears its color: blue for the host, then red, green,
+  yellow and purple. The four guest houses stand in a row south of the east-west street, doors to the
+  street, each with its own bed, storeroom, quern, trough, workbench and oven. The farm, the coop, the
+  hens and the eggs are shared.
+- The world never stops: the Esc menu only takes your hands off the keys, and time can't be
+  fast-forwarded (T).
+- The night passes when every player lies in bed (E at your bed; E, Space or a step gets you up).
+  Someone brought down comes to at home at once, with 30% health.
+- Wolves hunt whoever is alone outside the walls; another player close by counts as company. Guards go
+  after whoever attacked someone, raiders after whoever comes near.
+- A carcass, a tree's wood, a plot or the eggs go to whoever gets there first.
+- Names float over the other players' heads, with their health when they are hurt; the map shows them
+  as dots in their colors.
+
 ## Controls
 
 | Key | Action |
@@ -41,7 +83,7 @@ Installs raylib with Homebrew if missing (or builds it from source without Homeb
 | E / F | Use, talk, pick up, climb a ladder, search a body, fill or pour a bucket, open the coop / alternate action (plant a date, pick another ferry fare) |
 | R | Refill quiver from carried arrow baskets |
 | Tab | Baskets (inventory), equipment and armor |
-| T (hold) | Fast-forward time |
+| T (hold) | Fast-forward time (playing alone) |
 | F5 | Save |
 | F11 or Alt+Enter | Borderless fullscreen on/off |
 | M | Map zoom (whole world, x2.5, x6 around you); the map shows the main roads, both villages and the camps |
@@ -65,7 +107,9 @@ The city follows the plan of Ur around 2000 BC: an oval mud-brick wall with towe
 fields outside. Gates: south (main road), east, west, north, plus the harbor water gate. The map is
 1080 m across; the city is about 200 m by 170 m.
 
-- Home (blue lintel): bed, storage jars (a bucket is in there), quern, kneading trough, oven, workbench
+- Home (blue lintel): bed, storage jars (a bucket is in there), quern, kneading trough, oven, workbench.
+  Four more houses like it, with red, green, yellow and purple lintels, stand south of the east-west
+  street for the other players of a shared game
 - Farm east of home: 15 plots, a water ditch along its north edge, a well west of it. Hen coop
   behind the house. Cattle herder at the pen east of the farm
 - Four neighbours inside the walls have small farms; their wheat follows the seasons
@@ -172,6 +216,9 @@ Three save slots: `sumer.sav`, `sumer2.sav`, `sumer3.sav` in the folder you run 
 when you quit, and on F5, and loads the last slot used at start. The pause menu shows each slot's day
 and time: "Switch to this" saves the current game and loads that slot; on an empty slot a new game
 begins there. "New game" (click twice) erases only the slot in play.
+
+In the browser the slots live in the browser's storage for the game's address (a game played alone
+there is also saved every two minutes); the host's shared game is kept the same way, in `sumer-mp.sav`.
 
 Each file is a few KB at most: day and time, your position, health and food, baskets, storage,
 quiver, bow, tools, weapon, war mace, armor, temple access, blessing, farm plots and water, coop and

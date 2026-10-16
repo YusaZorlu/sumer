@@ -25,10 +25,12 @@ void SetPanel(Panel p)
     G.player.draw = 0;
     if (p == PANEL_NONE) {
         DisableCursor();
+        WantPointer(true);
         G.cursorLocked = true;
         G.ignoreClick = true;
     } else {
         EnableCursor();
+        WantPointer(false);
         G.cursorLocked = false;
     }
 }
@@ -295,14 +297,51 @@ static void DrawTradePanel(void)
         static const char *const extraLabels[3] = { "[0] Barter", "[-] Barter", "[=] Barter" };
         int key = i < 9 ? KEY_ONE + i : i < 12 ? extraKeys[i - 9] : 0;
         const char *label = i < 9 ? TextFormat(L("[%d] Barter"), i + 1) : i < 12 ? extraLabels[i - 9] : "Barter";
-        if (Button((Rectangle){ r.x + r.width - 136, y + 4, 112, 30 }, label, ok, key) && OfferApply(o))
-            Say("Bartered for %s.", OfferOutput(o));
+        if (Button((Rectangle){ r.x + r.width - 136, y + 4, 112, 30 }, label, ok, key)) Barter(G.trader, i);
     }
     Text("Click Barter or press the offer's number    Esc: close", r.x + 24, r.y + r.height - 34, 16, C_DIM);
 }
 
+// Playing with others the world goes on while the menu is open, and there are no save slots: the
+// host's browser keeps the game.
+static void DrawNetPausePanel(void)
+{
+    Rectangle r = PanelRect(620, 470);
+    float bx = r.x + 50, bw = 240, gap = r.width - 100 - 2 * bw, y = r.y + 128;
+    bool host = G.role == NET_HOST;
+
+    CenterText("Paused", r.x + r.width / 2, r.y + 20, 30, C_GOLD);
+    CenterText("The world goes on while this menu is open. H: controls.", r.x + r.width / 2, r.y + 64, 16, C_TEXT);
+    CenterText(TextFormat(L("Room \"%s\". The host's browser keeps the game and everyone's things."), NetRoom()), r.x + r.width / 2, r.y + 92, 15, C_DIM);
+    for (int s = 0; s < MAX_PLAYERS; s++) {
+        const Peer *p = &G.peers[s];
+        if (!p->active) continue;
+        DrawRectangle((int)bx, (int)y + 2, 16, 16, PlayerColor(s));
+        DrawRectangleLines((int)bx, (int)y + 2, 16, 16, Fade(BLACK, 0.6f));
+        DrawTextEx(GameFont(), p->name, (Vector2){ bx + 26, y }, 18, 1, s == G.self ? C_GOLD : C_TEXT);
+        const char *tag = s == 0 ? (s == G.self ? "host, you" : "host") : s == G.self ? "you" : "";
+        if (tag[0]) Text(TextFormat("(%s)", L(tag)), bx + 210, y + 2, 15, C_DIM);
+        Text(PlayerColorName(s), bx + 330, y + 2, 15, C_DIM);
+        y += 24;
+    }
+
+    const char *lang = Language() == LANG_TR ? "Dil / Language: Türkçe" : "Language / Dil: English";
+    if (Button((Rectangle){ r.x + r.width / 2 - 150, r.y + 274, 300, 34 }, lang, true, KEY_L)) {
+        SetLanguage(Language() == LANG_TR ? LANG_EN : LANG_TR);
+        SaveLanguage();
+    }
+    y = r.y + r.height - 130;
+    if (Button((Rectangle){ bx, y, bw, 40 }, "Resume (Esc)", true, 0)) SetPanel(PANEL_NONE);
+    if (Button((Rectangle){ bx + bw + gap, y, bw, 40 }, host ? "Save (F5)" : "Hand in my things (F5)", true, 0)) SaveNow();
+    if (Button((Rectangle){ bx, y + 54, r.width - 100, 40 }, host ? "Save and end the game for everyone (Q)" : "Leave the game (Q)", true, 0)) G.quit = true;
+}
+
 static void DrawPausePanel(void)
 {
+    if (Online()) {
+        DrawNetPausePanel();
+        return;
+    }
     Rectangle r = PanelRect(620, 470);
     float bx = r.x + 50, bw = 240, gap = r.width - 100 - 2 * bw;
     int active = SaveSlot();
@@ -437,6 +476,8 @@ static void DrawHelpPanel(void)
         "Herbs grow in green meadows, most of all across the river: chew one from your baskets to heal fast. Snakes hide "
         "in long grass; a hiss means back off (crouch to creep by). A hurt boar charges. Arrows landing close send prey "
         "running and bring wolves down on you.",
+        "Playing together (in the browser): each player has a house in their own color. The world never pauses, and the "
+        "night passes when everyone lies in bed. The farm, the coop and the eggs are shared.",
     };
     const int nk = (int)(sizeof(keys) / sizeof(keys[0])), nt = (int)(sizeof(tips) / sizeof(tips[0]));
     Rectangle r = PanelRect(fminf(1200.0f, (float)GetScreenWidth() - 20.0f), fminf(690.0f, (float)GetScreenHeight() - 16.0f));
@@ -526,8 +567,9 @@ static void DrawStatus(void)
 {
     int hh = (int)G.hour, mm = (int)((G.hour - (float)hh) * 60.0f);
 
+    const Peer *me = &G.peers[G.self];
     bool wolves = AnyWolfHunting(), beast = AnyBeastAttacking();
-    bool alert = G.alone || wolves || beast || G.wanted > 0;
+    bool alert = me->alone || wolves || beast || me->wanted > 0;
 
     DrawRectangle(12, 12, 360, alert ? 208 : 186, Fade(BLACK, 0.4f));
     Text(TextFormat(L("Day %d  %02d:%02d  %s"), G.day, hh, mm, L(PhaseName())), 24, 20, 22, RAYWHITE);
@@ -549,10 +591,10 @@ static void DrawStatus(void)
     Text(TextFormat(L("In hand: %s%s"), EquipName(G.equip), G.player.crouching ? L("  |  crouching") : ""), 24, 146, 18,
          G.player.crouching ? C_GOOD : C_TEXT);
     Text(TextFormat(L("Armor: %s"), ArmorName(G.armor)), 24, 168, 18, C_TEXT);
-    if (G.wanted > 0) Text(TextFormat(L("Wanted by the guards  %d:%02d"), (int)G.wanted / 60, (int)G.wanted % 60), 24, 190, 18, C_BAD);
+    if (me->wanted > 0) Text(TextFormat(L("Wanted by the guards  %d:%02d"), (int)me->wanted / 60, (int)me->wanted % 60), 24, 190, 18, C_BAD);
     else if (wolves) Text("Wolves are hunting you!", 24, 190, 18, C_BAD);
     else if (beast) Text("A wild beast is attacking you!", 24, 190, 18, C_BAD);
-    else if (G.alone) Text("Alone outside the walls", 24, 190, 18, C_GOLD);
+    else if (me->alone) Text("Alone outside the walls", 24, 190, 18, C_GOLD);
 }
 
 static void DrawMinimap(int ox, int oy, int size)
@@ -618,12 +660,42 @@ static void DrawMinimap(int ox, int oy, int size)
     }
     Vector3 fe = G.stations[STN_FERRY_E], fw = G.stations[STN_FERRY_W];
     DrawLineEx((Vector2){ mx + fe.x * s, mz + fe.z * s }, (Vector2){ mx + fw.x * s, mz + fw.z * s }, 2, C_GOLD);
+    for (int k = 0; k < MAX_PLAYERS; k++) {
+        if (k == G.self || !G.peers[k].active) continue;
+        Vector2 q = { mx + G.peers[k].shown.x * s, mz + G.peers[k].shown.z * s };
+        DrawCircleV(q, 4.5f, Fade(BLACK, 0.8f));
+        DrawCircleV(q, 3.5f, PlayerColor(k));
+    }
     Vector2 pp = { mx + G.player.pos.x * s, mz + G.player.pos.z * s };
     DrawLineEx(pp, (Vector2){ pp.x + sinf(G.player.facing) * 8, pp.y + cosf(G.player.facing) * 8 }, 2, BLACK);
     DrawCircleV(pp, 3, RAYWHITE);
     EndScissorMode();
     DrawRectangleLines(ox, oy, size, size, Fade(BLACK, 0.6f));
     Text(TextFormat(L("M  x%.1f"), zoom), (float)ox + 4, (float)(oy + size) - 16, 12, Fade(BLACK, 0.7f));
+}
+
+// The other players' names over their heads, in their colors, with their health when hurt.
+static void DrawPeerTags(void)
+{
+    Vector3 fwd = Vector3Normalize(Vector3Subtract(G.cam.target, G.cam.position));
+
+    for (int s = 0; s < MAX_PLAYERS; s++) {
+        const Peer *p = &G.peers[s];
+        if (!p->active || s == G.self) continue;
+        Vector3 head = { p->shown.x, p->shown.y + ((p->flags & PF_BED) ? 1.0f : 2.4f), p->shown.z };
+        float dist = Vector3Distance(head, G.cam.position);
+        if (dist > 90.0f || Vector3DotProduct(Vector3Subtract(head, G.cam.position), fwd) < 0 || FogAt(head) > 0.7f) continue;
+        Vector2 sp = GetWorldToScreen(head, G.cam);
+        int w = Measure(p->name, 16);
+        DrawRectangle((int)sp.x - w / 2 - 8, (int)sp.y - 3, w + 16, 22, Fade(BLACK, 0.5f));
+        DrawRectangle((int)sp.x - w / 2 - 8, (int)sp.y - 3, 4, 22, PlayerColor(s));
+        DrawTextEx(GameFont(), p->name, (Vector2){ (float)((int)sp.x - w / 2), sp.y }, 16, 1, RAYWHITE);
+        if (p->health < HEALTH_MAX - 1.0f) {
+            float k = Clamp(p->health / HEALTH_MAX, 0.0f, 1.0f);
+            DrawRectangle((int)sp.x - 24, (int)sp.y + 21, 48, 5, Fade(BLACK, 0.6f));
+            DrawRectangle((int)sp.x - 24, (int)sp.y + 21, (int)(48 * k), 5, k > 0.35f ? C_GOOD : C_BAD);
+        }
+    }
 }
 
 static void DrawAlerts(void)
@@ -707,6 +779,7 @@ void DrawUI(void)
     DrawFPS(sw - 202, 208);
     DrawAnimalBars();
     DrawPeopleBars();
+    DrawPeerTags();
     DrawAlerts();
     if (G.impactT > 0) {
         Vector3 fwd = Vector3Normalize(Vector3Subtract(G.cam.target, G.cam.position));
@@ -727,7 +800,17 @@ void DrawUI(void)
         DrawLineEx((Vector2){ cx - k, cy + k }, (Vector2){ cx - k / 2, cy + k / 2 }, 3, c);
         DrawLineEx((Vector2){ cx + k, cy + k }, (Vector2){ cx + k / 2, cy + k / 2 }, 3, c);
     }
-    if (G.panel == PANEL_NONE && !G.sleeping) DrawPrompts();
+    if (G.panel == PANEL_NONE && !G.sleeping && !G.waitBed) DrawPrompts();
+    if (G.waitBed) {
+        DrawRectangle(0, 0, sw, sh, Fade(BLACK, 0.45f));
+        CenterText(TextFormat(L("In bed: %d of %d players. The night passes when everyone lies down."), PlayersInBed(), PlayerCount()),
+                   (float)sw / 2, (float)sh - 140, 22, RAYWHITE);
+        CenterText("E, Space or a step gets you up.", (float)sw / 2, (float)sh - 106, 18, C_DIM);
+    }
+    if (NetSilence() > 3.0f)
+        CenterText("The host's game is not answering. Is its browser tab hidden or closed?", (float)sw / 2, 210, 18, C_BAD);
+    if (OnWeb() && G.panel == PANEL_NONE && !PointerCaptured())
+        CenterText("Click the game to look around with the mouse", (float)sw / 2, (float)sh / 2 + 70, 20, C_GOLD);
 
     if (G.msgT > 0) DrawMessage(sw);
 

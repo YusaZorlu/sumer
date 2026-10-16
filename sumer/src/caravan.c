@@ -138,7 +138,7 @@ void UpdateCaravans(float dt)
                 c->s = c->length;
                 c->state = CV_TRADE;
                 c->timer = TRADE_SECONDS;
-                Say("The %s has set up in the temple courtyard.", L(t->name));
+                Announce("The %s has set up in the temple courtyard.", t->name);
             }
             break;
         case CV_TRADE:

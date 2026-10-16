@@ -4,10 +4,14 @@
 
 #define MAX_KEEP 160
 #define MAX_WATER 64
+#define MAX_PONDS 4
 
 static Rectangle keep[MAX_KEEP];
 static int keepCount;
 static int water[MAX_WATER], waterCount;
+static Vector4 ponds[MAX_PONDS];
+static int pondCount;
+static bool building;
 
 // Long boxes are cut into sections so torchlight can fall on part of a road or wall.
 void AddBox(float x, float y0, float z, float w, float h, float d, Color c, bool solid)
@@ -22,7 +26,7 @@ void AddBox(float x, float y0, float z, float w, float h, float d, Color c, bool
             if (G.boxCount >= MAX_BOXES) return;
             float sw = w / (float)nx, sd = d / (float)nz;
             float cx = x - w / 2 + sw * ((float)i + 0.5f), cz = z - d / 2 + sd * ((float)j + 0.5f);
-            G.boxes[G.boxCount++] = (Box){ { cx, y0 + h / 2, cz }, { sw, h, sd }, c, solid, false, false, 0.0f, SHAPE_BOX };
+            G.boxes[G.boxCount++] = (Box){ { cx, y0 + h / 2, cz }, { sw, h, sd }, c, solid, false, false, 0.0f, SHAPE_BOX, building };
         }
     }
 }
@@ -46,14 +50,14 @@ void AddShape(float x, float y0, float z, float w, float h, float d, Color c, bo
 void AddGlow(float x, float y0, float z, float w, float h, float d, Color c)
 {
     if (G.boxCount >= MAX_BOXES) return;
-    G.boxes[G.boxCount++] = (Box){ { x, y0 + h / 2, z }, { w, h, d }, c, false, false, true, 0.0f, SHAPE_BOX };
+    G.boxes[G.boxCount++] = (Box){ { x, y0 + h / 2, z }, { w, h, d }, c, false, false, true, 0.0f, SHAPE_BOX, false };
 }
 
 static void WaterBox(float cx, float cz, float w, float d, int shape)
 {
     if (G.boxCount >= MAX_BOXES) return;
     if (waterCount < MAX_WATER) water[waterCount++] = G.boxCount;
-    G.boxes[G.boxCount++] = (Box){ { cx, -0.25f, cz }, { w, 0.66f, d }, COL_WATER, true, true, false, 0.0f, (unsigned char)shape };
+    G.boxes[G.boxCount++] = (Box){ { cx, WATER_LEVEL - 0.33f, cz }, { w, 0.66f, d }, COL_WATER, true, true, false, 0.0f, (unsigned char)shape, false };
 }
 
 // Long water is cut into sections so each one is culled by its own distance.
@@ -72,6 +76,7 @@ void AddPond(float cx, float cz, float rx, float rz)
 {
     WaterBox(cx, cz, 2.0f * rx, 2.0f * rz, SHAPE_CYL);
     KeepOut(cx - rx, cz - rz, cx + rx, cz + rz);
+    if (pondCount < MAX_PONDS) ponds[pondCount++] = (Vector4){ cx, cz, rx, rz };
 }
 
 void AddTree(float x, float z, float s, bool poplar)
@@ -108,7 +113,7 @@ bool InKeepOut(float x, float z, float margin)
 int AddResource(float x, float z, ResKind kind)
 {
     if (G.resCount >= MAX_RES) return -1;
-    float y = (kind == RES_FISH) ? 0.0f : TerrainHeight(x, z);
+    float y = (kind == RES_FISH) ? WATER_LEVEL : TerrainHeight(x, z);
 
     G.res[G.resCount] = (Resource){ { x, y, z }, kind, 0.0f, RandF(0, 360), false };
     if (kind == RES_PALM) AddShape(x, y - 0.2f, z, 0.46f, 6.7f, 0.46f, COL_PALM_TRUNK, true, SHAPE_CYL);
@@ -187,7 +192,7 @@ bool InWater(float x, float z)
         if (!Contains(b, x, z, 0)) continue;
         if (b->shape != SHAPE_CYL) return true;
         float dx = (x - b->pos.x) / (b->size.x / 2), dz = (z - b->pos.z) / (b->size.z / 2);
-        if (dx * dx + dz * dz < 1.0f && TerrainHeight(x, z) < 0.1f) return true;
+        if (dx * dx + dz * dz < 1.0f && TerrainHeight(x, z) < WATER_LEVEL + 0.05f) return true;
     }
     return false;
 }
@@ -344,8 +349,10 @@ static void BuildVegetation(void)
     for (int i = 0; i < 92; i++) {
         float x = RandF(-127.5f, -121.0f), z = RandF(-515, 515);
         if (fabsf(z + 10) < 8 || InKeepOut(x, z, 1.0f)) continue;
-        for (int k = 0; k < 3; k++)
-            AddBox(x + RandF(-0.5f, 0.5f), 0, z + RandF(-0.5f, 0.5f), 0.09f, RandF(1.3f, 2.4f), 0.09f, COL_REED, false);
+        for (int k = 0; k < 3; k++) {
+            float rx = x + RandF(-0.5f, 0.5f), rz = z + RandF(-0.5f, 0.5f);
+            AddBox(rx, TerrainHeight(rx, rz) - 0.1f, rz, 0.09f, RandF(1.3f, 2.4f), 0.09f, COL_REED, false);
+        }
     }
 
     Forest(198, 52, 22, 26, 16, false);
@@ -397,12 +404,15 @@ void BuildWorld(void)
 {
     keepCount = 0;
     waterCount = 0;
+    pondCount = 0;
+    building = true;
     BuildCity();
     BuildVillage();
     BuildJobs();
     BuildRaiders();
     BuildVillages();
     BuildCityHouses();
+    building = false;
     BuildVegetation();
     BuildTerrain();
     BuildRoads();
@@ -457,15 +467,100 @@ void DrawSky(void)
         DrawSphereEx(Vector3Add(eye, Vector3Scale(sun, -400)), 9.0f, 8, 12, moon);
 }
 
+// Distance inside a rectangle to its nearest edge; 0 outside.
+static float EdgeDepth(Rectangle r, float x, float z)
+{
+    return fmaxf(0.0f, fminf(fminf(x - r.x, r.x + r.width - x), fminf(z - r.y, r.y + r.height - z)));
+}
+
+// Darker where deep, with a slow shimmer; torchlight and night fog as on the ground.
+static void WaterVertex(float x, float z, float deep, float t)
+{
+    float shade = 0.98f - 0.15f * deep + 0.035f * sinf(t * 1.1f + x * 0.31f) * cosf(t * 0.8f + z * 0.27f);
+    G.drawTorch = GroundTorch(x, z);
+    G.drawFog = FogAt((Vector3){ x, WATER_LEVEL, z }) * (1.0f - 0.6f * G.drawTorch);
+    Color c = Lit(COL_WATER, shade);
+    rlColor4ub(c.r, c.g, c.b, 255);
+    rlVertex3f(x, WATER_LEVEL, z);
+}
+
+// Water lies flat a little below the land. Its surface reaches under the banks, so the cut ground,
+// not the surface's edge, decides where the shore runs.
+void DrawWater(void)
+{
+    const float cell = 8.0f, t = (float)GetTime();
+    Vector3 eye = G.cam.position, fwd = Vector3Normalize(Vector3Subtract(G.cam.target, eye));
+
+    for (int c = 0; c < ChannelCount(); c++) {
+        bool wet;
+        Rectangle r, w = ChannelRect(c, &wet, &r);
+        float x0 = fmaxf(r.x, -WORLD_HALF), z0 = fmaxf(r.y, -WORLD_HALF);
+        float x1 = fminf(r.x + r.width, WORLD_HALF), z1 = fminf(r.y + r.height, WORLD_HALF);
+        int nx = (int)ceilf((x1 - x0) / cell), nz = (int)ceilf((z1 - z0) / cell);
+        float sx = (x1 - x0) / (float)nx, sz = (z1 - z0) / (float)nz, deep = wet ? 1.0f / 7.0f : 0.0f;
+        for (int i = 0; i < nx; i++) {
+            rlCheckRenderBatchLimit(4 * nz);
+            rlBegin(RL_QUADS);
+            for (int j = 0; j < nz; j++) {
+                float xa = x0 + sx * (float)i, za = z0 + sz * (float)j, xb = xa + sx, zb = za + sz;
+                Vector3 mid = { (xa + xb) / 2 - eye.x, WATER_LEVEL - eye.y, (za + zb) / 2 - eye.z };
+                if (mid.x * mid.x + mid.z * mid.z > 420.0f * 420.0f || Vector3DotProduct(mid, fwd) < -12.0f) continue;
+                WaterVertex(xa, za, fminf(1.0f, EdgeDepth(w, xa, za) * deep), t);
+                WaterVertex(xa, zb, fminf(1.0f, EdgeDepth(w, xa, zb) * deep), t);
+                WaterVertex(xb, zb, fminf(1.0f, EdgeDepth(w, xb, zb) * deep), t);
+                WaterVertex(xb, za, fminf(1.0f, EdgeDepth(w, xb, za) * deep), t);
+            }
+            rlEnd();
+        }
+    }
+
+    for (int p = 0; p < pondCount; p++) {
+        const int segs = 40;
+        Vector4 o = ponds[p];
+        if (XZDist((Vector3){ o.x, 0, o.y }, eye) > 420.0f) continue;
+        rlCheckRenderBatchLimit(4 * segs);
+        rlBegin(RL_QUADS);
+        for (int k = 0; k < segs; k++) {
+            float a0 = 2.0f * PI * (float)k / segs, a1 = 2.0f * PI * (float)(k + 1) / segs;
+            float rx = o.z + 2.0f, rz = o.w + 2.0f;
+            WaterVertex(o.x, o.y, 1.0f, t);
+            WaterVertex(o.x + cosf(a1) * rx, o.y + sinf(a1) * rz, 0.0f, t);
+            WaterVertex(o.x + cosf(a0) * rx, o.y + sinf(a0) * rz, 0.0f, t);
+            WaterVertex(o.x + cosf(a0) * rx, o.y + sinf(a0) * rz, 0.0f, t);
+        }
+        rlEnd();
+    }
+
+    // The river runs on past the edge of the world, between low banks.
+    const float F = 1150.0f, A = RIVER_X0 - 3.0f, B = RIVER_X1 + 3.0f, L = WATER_LEVEL;
+    G.drawTorch = 0;
+    G.drawFog = G.night * 0.8f;
+    Color c = Lit(COL_WATER, 0.9f), bank = Lit((Color){ 104, 88, 62, 255 }, 0.8f);
+    rlCheckRenderBatchLimit(24);
+    rlBegin(RL_QUADS);
+    for (int s = -1; s <= 1; s += 2) {
+        float za = s < 0 ? -F : WORLD_HALF, zb = s < 0 ? -WORLD_HALF : F;
+        rlColor4ub(c.r, c.g, c.b, 255);
+        rlVertex3f(A, L, za); rlVertex3f(A, L, zb); rlVertex3f(B, L, zb); rlVertex3f(B, L, za);
+        rlColor4ub(bank.r, bank.g, bank.b, 255);
+        rlVertex3f(A, L, zb); rlVertex3f(A, L, za); rlVertex3f(A, 0.0f, za); rlVertex3f(A, 0.0f, zb);
+        rlVertex3f(B, L, za); rlVertex3f(B, L, zb); rlVertex3f(B, 0.0f, zb); rlVertex3f(B, 0.0f, za);
+    }
+    rlEnd();
+    G.drawTorch = G.drawFog = 0;
+}
+
 void DrawTerrain(void)
 {
     Vector3 eye = G.cam.position;
     Vector3 fwd = Vector3Normalize(Vector3Subtract(G.cam.target, eye));
 
     DrawGround();
+    DrawWater();
     DrawRoads();
     for (int i = 0; i < G.boxCount; i++) {
         const Box *b = &G.boxes[i];
+        if (b->water) continue;
         Vector3 v = Vector3Subtract(b->pos, eye);
         float r = (b->size.x + b->size.y + b->size.z) * 0.5f;
         float d2 = Vector3DotProduct(v, v);
@@ -477,15 +572,22 @@ void DrawTerrain(void)
         G.drawTorch = BoxLight(i);
         G.drawFog = FogAt(b->pos) * (1.0f - 0.6f * G.drawTorch);
         Vector3 base = { b->pos.x, b->pos.y - b->size.y / 2, b->pos.z };
-        int sides = b->water ? 24 : d2 > 60.0f * 60.0f ? 5 : 8;
+        // Buildings up close get twice the facets and softened edges.
+        bool close = b->built && d2 < 45.0f * 45.0f;
+        int sides = close ? 16 : d2 > 60.0f * 60.0f ? 5 : 8;
+        float small = fminf(fminf(b->size.x, b->size.y), b->size.z);
         switch (b->shape) {
         case SHAPE_CYL:  DrawShadedCylinder(base, b->size.x / 2, b->size.z / 2, b->size.y, 1.0f, sides, b->color); break;
         case SHAPE_CONE: DrawShadedCylinder(base, b->size.x / 2, b->size.z / 2, b->size.y, 0.0f, sides, b->color); break;
         case SHAPE_BLOB:
-            if (d2 > 70.0f * 70.0f) DrawShadedBlobFar(b->pos, Vector3Scale(b->size, 0.5f), b->color);
+            if (close) DrawShadedBlobFine(b->pos, Vector3Scale(b->size, 0.5f), b->color);
+            else if (d2 > 70.0f * 70.0f) DrawShadedBlobFar(b->pos, Vector3Scale(b->size, 0.5f), b->color);
             else DrawShadedBlob(b->pos, Vector3Scale(b->size, 0.5f), b->color);
             break;
-        default:         DrawShadedBox(b->pos, b->size, b->color); break;
+        default:
+            if (close && b->solid && small >= 0.4f) DrawBeveledBox(b->pos, b->size, b->color, fminf(0.12f, 0.14f * small));
+            else DrawShadedBox(b->pos, b->size, b->color);
+            break;
         }
     }
     G.drawTorch = G.drawFog = 0;
@@ -577,14 +679,14 @@ static void DrawFish(int i, const Resource *r)
     float s = 0.4f + 1.4f * ph;
 
     rlPushMatrix();
-    rlTranslatef(r->pos.x, 0.1f, r->pos.z);
+    rlTranslatef(r->pos.x, r->pos.y + 0.03f, r->pos.z);
     rlRotatef(45, 0, 1, 0);
     DrawShadedBox((Vector3){ 0, 0, 0 }, (Vector3){ s, 0.01f, s }, Fade((Color){ 170, 205, 215, 255 }, 1.0f - ph));
     DrawShadedBox((Vector3){ 0, 0.005f, 0 }, (Vector3){ s * 0.8f, 0.01f, s * 0.8f }, COL_WATER);
     rlPopMatrix();
     if (ph < 0.25f) {
         float a = ph / 0.25f;
-        Part(r->pos.x + 0.6f * a - 0.3f, 0.1f + 0.5f * sinf(a * PI), r->pos.z, 0.3f, 0.08f, 0.1f, (Color){ 170, 180, 186, 255 });
+        Part(r->pos.x + 0.6f * a - 0.3f, r->pos.y + 0.03f + 0.5f * sinf(a * PI), r->pos.z, 0.3f, 0.08f, 0.1f, (Color){ 170, 180, 186, 255 });
     }
 }
 

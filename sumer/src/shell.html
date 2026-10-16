@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sumer</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #1e1814; }
+  canvas { display: block; outline: none; }
+  #status { position: absolute; top: 45%; width: 100%; text-align: center; color: #f0e6d2; font: 18px sans-serif; }
+</style>
+</head>
+<body>
+<div id="status">Loading Sumer...</div>
+<canvas id="canvas" tabindex="-1"></canvas>
+<script>
+  var canvas = document.getElementById('canvas');
+  var Module = {
+    canvas: canvas,
+    print: function (t) { console.log(t); },
+    printErr: function (t) { console.warn(t); },
+    setStatus: function (t) { document.getElementById('status').textContent = t || ''; },
+    onRuntimeInitialized: function () { document.getElementById('status').style.display = 'none'; canvas.focus(); }
+  };
+  // The game asks for the mouse (Module.sumerWantLock); a browser hands it over only during a click.
+  canvas.addEventListener('mousedown', function () {
+    canvas.focus();
+    if (Module.sumerWantLock && !document.pointerLockElement) {
+      try {
+        var p = canvas.requestPointerLock();
+        if (p && p.catch) p.catch(function () {});
+      } catch (e) {}
+    }
+  });
+  canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  // F5 saves the game here instead of reloading the page.
+  window.addEventListener('keydown', function (e) {
+    if (e.key === 'F5' || e.key === 'F1') e.preventDefault();
+  }, true);
+  window.addEventListener('error', function (e) { Module.setStatus('Something went wrong: ' + e.message); document.getElementById('status').style.display = ''; });
+</script>
+{{{ SCRIPT }}}
+</body>
+</html>

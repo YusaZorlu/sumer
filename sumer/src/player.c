@@ -22,7 +22,7 @@ static float Boost(void)
 
 static void UpdateLook(Player *p, float dt, bool input)
 {
-    if (input && G.cursorLocked) {
+    if (input && G.cursorLocked && PointerCaptured()) {
         Vector2 md = GetMouseDelta();
         float sens = p->aiming ? 0.0018f : 0.003f;
         if (G.followArrow >= 0 && fabsf(md.x) + fabsf(md.y) > 6.0f) G.followArrow = -1;
@@ -108,7 +108,7 @@ static void MoveHorizontal(Player *p, Vector3 move, float speed, float dt)
     for (int pass = 0; pass < 2; pass++)
         for (int i = 0; i < G.boxCount; i++)
             if (IsBlocking(&G.boxes[i], p->pos.y)) next = PushOut(next, PLAYER_RADIUS, &G.boxes[i]);
-    Vector2 shoved = PushOutBodies(next, PLAYER_RADIUS, OWNER_PLAYER);
+    Vector2 shoved = PushOutBodies(next, PLAYER_RADIUS, OWNER_PLAYER + G.self);
     if (shoved.x != next.x || shoved.y != next.y) {
         next = shoved;
         for (int i = 0; i < G.boxCount; i++)
@@ -336,7 +336,7 @@ void FollowCamera(float dt)
     G.cam.target = target;
     G.cam.position = Vector3Add(target, Vector3Scale(dir, G.camDist));
     ArrowCamera(dt);
-    G.cam.position.y = fmaxf(G.cam.position.y, TerrainHeight(G.cam.position.x, G.cam.position.z) + 0.3f);
+    G.cam.position.y = fmaxf(G.cam.position.y, fmaxf(TerrainHeight(G.cam.position.x, G.cam.position.z), WATER_LEVEL) + 0.3f);
     G.cam.fovy = Lerp(55.0f, 42.0f, G.camShoulder);
 }
 
@@ -451,10 +451,16 @@ static void DrawArmor(const Player *p)
 void DrawPlayer(void)
 {
     const Player *p = &G.player;
-    Look look = { COL_SKIN, COL_LINEN, COL_SKIN, COL_HAIR };
+    Color own = PlayerColor(G.self);
+    Look look = { COL_SKIN, own, Mix(own, COL_LINEN, 0.2f), COL_HAIR };
 
     if (G.camDist < 1.3f) return;
     LightFor(p->pos);
+    if (G.waitBed) {
+        DrawInBed(G.self, p->pos, p->facing, look);
+        G.drawTorch = G.drawFog = 0;
+        return;
+    }
     DrawHuman(p->pos, p->facing, p->stride, look, p->crouching, p->aiming, p->draw);
     DrawArmor(p);
     if (G.climb == 0 && G.equip == EQ_MELEE) DrawWeapon(p);

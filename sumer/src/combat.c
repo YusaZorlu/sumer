@@ -39,7 +39,7 @@ typedef struct {
 
 static Fighter fighters[MAX_FIGHTERS];
 static int fighterCount;
-static float darkness;
+static float darkness[MAX_PLAYERS];
 
 static const char *const JOB_NAMES[] = { "Woodcutter", "Miner", "Potter", "Kiln worker", "Smith", "Fisherman", "Fisherman", "Farmer" };
 
@@ -47,7 +47,7 @@ static void Add(Vitals *v, Role role, Vector3 home, float face, int owner, int l
 {
     if (fighterCount >= MAX_FIGHTERS) return;
     if (!v->used) {
-        *v = (Vitals){ .hp = ROLES[role].maxHp, .used = true };
+        *v = (Vitals){ .hp = ROLES[role].maxHp, .target = -1, .used = true };
     }
     fighters[fighterCount++] = (Fighter){ v, role, home, face, owner, loot, arg, name };
 }
@@ -57,8 +57,9 @@ static bool IsRaider(Role r)
     return r == ROLE_RAIDER || r == ROLE_BARBARIAN;
 }
 
-// Rebuilt every frame after the scripted routines have moved everyone.
-static void CollectFighters(void)
+// Rebuilt every frame after the scripted routines have moved everyone; a guest rebuilds it from
+// what the host last said, the same way, so an index means the same person on every machine.
+void CollectFighters(void)
 {
     fighterCount = 0;
     for (int i = 0; i < G.villagerCount; i++) {
@@ -140,41 +141,47 @@ static bool StepToward(Vitals *v, int owner, Vector3 goal, float speed, float dt
     return false;
 }
 
-static float SightOf(Role r)
+// How far a fighter sees player s: less in the dark, unless torches light the player up.
+static float SightOf(Role r, int s)
 {
-    return ROLES[r].sight * (1.0f - 0.55f * darkness);
+    return ROLES[r].sight * (1.0f - 0.55f * darkness[s >= 0 && s < MAX_PLAYERS ? s : 0]);
 }
 
 // A raised melee weapon held toward the attacker turns the blow aside.
-static bool PlayerParries(Vector3 from)
+static bool PlayerParries(int s, Vector3 from)
 {
-    const Player *p = &G.player;
-    if (G.parryT <= 0 || (G.equip != EQ_MELEE && G.equip != EQ_MACE)) return false;
+    const Peer *p = &G.peers[s];
+    if (!(p->flags & PF_PARRY) || (p->equip != EQ_MELEE && p->equip != EQ_MACE)) return false;
     Vector2 to = Vector2Normalize((Vector2){ from.x - p->pos.x, from.z - p->pos.z });
     return to.x * sinf(p->facing) + to.y * cosf(p->facing) > 0.25f;
 }
 
-static void Strike(const Fighter *f, float dist)
+static void Strike(const Fighter *f, int s)
 {
     Vitals *v = f->v;
     const RoleDef *r = &ROLES[f->role];
+    Vector3 pp = PlayerAt(s);
 
     v->cool = r->cooldown;
     v->swing = 0.35f;
-    if (dist > r->range * 1.3f || fabsf(v->at.y - G.player.pos.y) > 1.5f || G.sleeping) {
+    if (!PlayerAwake(s) || XZDist(v->at, pp) > r->range * 1.3f || fabsf(v->at.y - pp.y) > 1.5f) {
         v->mark = MARK_NONE;
         return;
     }
     v->markT = MARK_TIME;
-    if (PlayerParries(v->at)) {
+    if (PlayerParries(s, v->at)) {
         v->mark = MARK_PARRIED;
         v->cool += PARRY_STUN;
-        G.parryT = 0;
-        G.parryCool = 0;
-        SpawnBurst((Vector3){ (v->at.x + G.player.pos.x) / 2, G.player.pos.y + 1.3f, (v->at.z + G.player.pos.z) / 2 }, (Color){ 255, 230, 150, 255 }, 8, 2.5f);
+        if (s == G.self) {
+            G.parryT = 0;
+            G.parryCool = 0;
+        } else {
+            NetParried(s);
+        }
+        SpawnBurst((Vector3){ (v->at.x + pp.x) / 2, pp.y + 1.3f, (v->at.z + pp.z) / 2 }, (Color){ 255, 230, 150, 255 }, 8, 2.5f);
     } else {
         v->mark = MARK_HIT;
-        HurtPlayer(r->damage);
+        HurtSlot(s, r->damage);
     }
 }
 
@@ -201,17 +208,17 @@ static void StrikeFoe(const Fighter *f, const Fighter *t)
         tv->dead = true;
         tv->hostile = 0;
         tv->foeT = 0;
-        if (XZDist(tp, G.player.pos) > 40.0f) return;
-        if (IsRaider(t->role)) Say("A guard cut down a raider.");
-        else Say("Raiders killed a guard.");
+        if (IsRaider(t->role)) SayNear(tp, 40.0f, "A guard cut down a raider.");
+        else SayNear(tp, 40.0f, "Raiders killed a guard.");
     }
 }
 
-static void Engage(const Fighter *f, const Fighter *foe, float dt)
+// Fights a foe, or else player s.
+static void Engage(const Fighter *f, const Fighter *foe, int s, float dt)
 {
     Vitals *v = f->v;
     const RoleDef *r = &ROLES[f->role];
-    Vector3 target = foe ? FPos(foe) : G.player.pos;
+    Vector3 target = foe ? FPos(foe) : PlayerAt(s);
     float dist = XZDist(v->at, target);
 
     if (!Fights(f)) {
@@ -224,12 +231,12 @@ static void Engage(const Fighter *f, const Fighter *foe, float dt)
         v->windup -= dt;
         if (v->windup <= 0) {
             if (foe) StrikeFoe(f, foe);
-            else Strike(f, dist);
+            else Strike(f, s);
         }
         return;
     }
     if (dist > r->range * 0.8f) StepToward(v, f->owner, target, r->speed, dt, r->range * 0.8f);
-    if (dist <= r->range && v->cool <= 0 && fabsf(v->at.y - target.y) < 1.5f && (foe || !G.sleeping)) {
+    if (dist <= r->range && v->cool <= 0 && fabsf(v->at.y - target.y) < 1.5f && (foe || PlayerAwake(s))) {
         v->windup = WINDUP;
         v->mark = foe ? MARK_NONE : MARK_WARN;
         v->markT = foe ? 0.0f : WINDUP;
@@ -249,7 +256,7 @@ static const Fighter *FindFoe(int owner)
 static const Fighter *SpotRaider(const Fighter *g, Vector3 pos)
 {
     const Fighter *best = NULL;
-    float bestD = SightOf(ROLE_GUARD);
+    float bestD = ROLES[ROLE_GUARD].sight * (1.0f - 0.55f * G.night);
 
     for (int k = 0; k < fighterCount; k++) {
         const Fighter *t = &fighters[k];
@@ -280,11 +287,29 @@ static const Fighter *CurrentFoe(const Fighter *f, Vector3 pos, float dt)
     return foe;
 }
 
+// The player this fighter goes for on sight: raiders anyone up and about, guards someone wanted.
+static int SpotPlayer(const Fighter *f, Vector3 pos)
+{
+    int best = -1;
+    float bestD = 1e9f;
+    if (!IsRaider(f->role) && f->role != ROLE_GUARD) return -1;
+    for (int s = 0; s < MAX_PLAYERS; s++) {
+        if (!PlayerAwake(s) || (f->role == ROLE_GUARD && G.peers[s].wanted <= 0)) continue;
+        Vector3 p = G.peers[s].pos;
+        float d = XZDist(pos, p);
+        if (d < SightOf(f->role, s) && fabsf(pos.y - p.y) < 6.0f && d < bestD) {
+            best = s;
+            bestD = d;
+        }
+    }
+    return best;
+}
+
 void UpdateCombat(float dt)
 {
     CollectFighters();
-    if (G.wanted > 0) G.wanted -= dt;
-    darkness = G.night * (1.0f - Clamp(TorchLightAt(G.player.pos) * 1.6f, 0.0f, 1.0f));
+    for (int s = 0; s < MAX_PLAYERS; s++)
+        darkness[s] = PlayerIn(s) ? G.night * (1.0f - Clamp(TorchLightAt(G.peers[s].pos) * 1.6f, 0.0f, 1.0f)) : 0.0f;
 
     for (int i = 0; i < fighterCount; i++) {
         const Fighter *f = &fighters[i];
@@ -299,12 +324,19 @@ void UpdateCombat(float dt)
             continue;
         }
 
+        // Anger is aimed at one player: whoever hurt them or raised the alarm, or the nearest one spotted.
         Vector3 pos = FPos(f);
-        float dist = XZDist(pos, G.player.pos);
-        bool sees = dist < SightOf(f->role) && fabsf(pos.y - G.player.pos.y) < 6.0f && !G.sleeping;
-        if (sees && (IsRaider(f->role) || (f->role == ROLE_GUARD && G.wanted > 0))) v->hostile = fmaxf(v->hostile, 8.0f);
+        int spotted = SpotPlayer(f, pos);
+        if (spotted >= 0) {
+            v->hostile = fmaxf(v->hostile, 8.0f);
+            if (!PlayerAwake(v->target) || XZDist(pos, G.peers[spotted].pos) + 3.0f < XZDist(pos, PlayerAt(v->target))) v->target = spotted;
+        }
+        int t = PlayerAwake(v->target) ? v->target : -1;
+        float dist = t >= 0 ? XZDist(pos, G.peers[t].pos) : 1e9f;
+        bool sees = t >= 0 && dist < SightOf(f->role, t) && fabsf(pos.y - G.peers[t].pos.y) < 6.0f;
         const Fighter *foe = CurrentFoe(f, pos, dt);
-        bool angry = v->hostile > 0;
+        if (v->hostile > 0 && t < 0) v->hostile -= dt;
+        bool angry = v->hostile > 0 && t >= 0;
 
         if (angry || foe) {
             if (!v->override) {
@@ -317,29 +349,32 @@ void UpdateCombat(float dt)
                 if (sees && dist < 10.0f && Fights(f)) v->hostile = fmaxf(v->hostile, 3.0f);
                 if (foe && dist < XZDist(v->at, FPos(foe))) foe = NULL;
             }
-            Engage(f, foe, dt);
+            Engage(f, foe, t, dt);
         } else if (v->override) {
             v->windup = 0;
-            bool unseen = XZDist(v->at, G.cam.position) > 70.0f && XZDist(f->home, G.cam.position) > 70.0f;
+            bool unseen = NearestAnyone(v->at) > 70.0f && NearestAnyone(f->home) > 70.0f;
             if (unseen || StepToward(v, f->owner, f->home, ROLES[f->role].speed * 0.6f, dt, 0.4f)) v->override = false;
         }
     }
 }
 
+// Everyone who saw the acting player strike turns on them, and the guards want them.
 static void RaiseAlarm(const Fighter *victim)
 {
-    int witnesses = 0;
+    int s = G.actor, witnesses = 0;
+    Vector3 pp = PlayerAt(s);
 
     for (int i = 0; i < fighterCount; i++) {
         const Fighter *f = &fighters[i];
         if (f == victim || f->v->dead || IsRaider(f->role)) continue;
         Vector3 p = FPos(f);
-        if (XZDist(p, G.player.pos) > SightOf(f->role) || fabsf(p.y - G.player.pos.y) > 6.0f) continue;
+        if (XZDist(p, pp) > SightOf(f->role, s) || fabsf(p.y - pp.y) > 6.0f) continue;
         f->v->hostile = fmaxf(f->v->hostile, Fights(f) ? 45.0f : 20.0f);
+        f->v->target = s;
         witnesses++;
     }
     if (witnesses) {
-        G.wanted = 120.0f;
+        if (PlayerIn(s)) G.peers[s].wanted = 120.0f;
         Say(witnesses > 1 ? "%d people saw you attack. Guards will hunt you!" : "%d person saw you attack. Guards will hunt you!", witnesses);
     } else {
         Say("No one else saw that.");
@@ -351,10 +386,13 @@ static void RallyRaiders(const Fighter *victim)
     Vector3 at = FPos(victim);
     for (int i = 0; i < fighterCount; i++) {
         const Fighter *f = &fighters[i];
-        if (IsRaider(f->role) && !f->v->dead && XZDist(FPos(f), at) < 35.0f) f->v->hostile = fmaxf(f->v->hostile, 25.0f);
+        if (!IsRaider(f->role) || f->v->dead || XZDist(FPos(f), at) >= 35.0f) continue;
+        if (f->v->hostile <= 0 || !PlayerAwake(f->v->target)) f->v->target = G.actor;
+        f->v->hostile = fmaxf(f->v->hostile, 25.0f);
     }
 }
 
+// The acting player (G.actor) wounds person i.
 void DamagePerson(int i, float dmg)
 {
     if (i < 0 || i >= fighterCount || fighters[i].v->dead) return;
@@ -364,7 +402,7 @@ void DamagePerson(int i, float dmg)
     bool unaware = v->hostile <= 0 && v->foeT <= 0, opened = v->mark == MARK_PARRIED && v->markT > 0;
     Vector3 pos = FPos(f);
     v->hp -= dmg * (unaware ? 1.5f : opened ? RIPOSTE : 1.0f) * (1.0f - ROLES[f->role].armor);
-    G.hitMarkT = 0.3f;
+    HitMark();
     SpawnBurst((Vector3){ pos.x, pos.y + 1.2f, pos.z }, (Color){ 170, 30, 30, 255 }, 10, 2.2f);
     if (!v->override) {
         v->override = true;
@@ -372,6 +410,7 @@ void DamagePerson(int i, float dmg)
         v->face = f->homeFace;
     }
     v->hostile = fmaxf(v->hostile, 40.0f);
+    v->target = G.actor;
     if (IsRaider(f->role)) RallyRaiders(f);
     else if (unaware) RaiseAlarm(f);
     if (v->hp <= 0) {
@@ -471,10 +510,34 @@ bool FighterInfo(int i, Vector3 *pos, float *hp, float *maxHp, const char **name
     return true;
 }
 
+// The warning, parry and hit marks are meant for the player being attacked.
 int FighterMark(int i)
 {
-    if (i < 0 || i >= fighterCount || fighters[i].v->dead) return MARK_NONE;
+    if (i < 0 || i >= fighterCount || fighters[i].v->dead || fighters[i].v->target != G.self) return MARK_NONE;
     return fighters[i].v->mark;
+}
+
+int FighterByOwner(int owner)
+{
+    for (int i = 0; i < fighterCount; i++)
+        if (fighters[i].owner == owner) return i;
+    return -1;
+}
+
+int FighterOwner(int i)
+{
+    return i >= 0 && i < fighterCount ? fighters[i].owner : -1;
+}
+
+// Raiders and guards who were after this player let it go (they were brought down).
+void CalmPeople(int slot)
+{
+    for (int i = 0; i < fighterCount; i++) {
+        Vitals *v = fighters[i].v;
+        if (v->target == slot && (IsRaider(fighters[i].role) || fighters[i].role == ROLE_GUARD)) v->hostile = 0;
+    }
+    for (int i = 0; i < MAX_RAIDERS; i++)
+        if (G.raiders[i].vit.target == slot) G.raiders[i].vit.hostile = 0;
 }
 
 bool BodyLootable(int i)
@@ -488,7 +551,16 @@ static void Take(char *log, int size, int item, int n)
     if (got > 0) snprintf(log + strlen(log), (size_t)size - strlen(log), "%s%d %s", log[0] ? ", " : "", got, ItemName(item));
 }
 
-void LootBody(int i)
+// The world's half of searching a body: the host marks it searched.
+bool ClaimBody(int i)
+{
+    if (!BodyLootable(i)) return false;
+    fighters[i].v->looted = true;
+    return true;
+}
+
+// The looter's half: what the body carried goes into their baskets.
+void GiveLoot(int i)
 {
     static const int traderGoods[][2] = { { IT_ARROWS, 5 }, { IT_SEEDS, 4 }, { IT_REEDS, 4 }, { IT_COWHIDE, 1 }, { IT_BRONZE, 1 },
                                           { IT_ARROWS, 6 }, { IT_SHEEPSKIN, 1 } };
@@ -499,9 +571,8 @@ void LootBody(int i)
                                              { IT_HERB, 3 }, { IT_ROAST, 2 } };
     char log[256] = "";
 
-    if (!BodyLootable(i)) return;
+    if (i < 0 || i >= fighterCount) return;
     const Fighter *f = &fighters[i];
-    f->v->looted = true;
     switch (f->loot) {
     case LOOT_CIVILIAN:
         Take(log, sizeof(log), Hash2(f->owner, G.day) < 0.5f ? IT_DATES : IT_BREAD, Hash2(f->owner, G.day) < 0.5f ? 2 : 1);
@@ -562,6 +633,6 @@ void RespawnPeople(void)
         }
         for (int k = 0; k <= CARAVAN_GUARDS; k++) cv->vit[k] = (Vitals){ .used = false };
     }
-    G.wanted = 0;
+    for (int s = 0; s < MAX_PLAYERS; s++) G.peers[s].wanted = 0;
     G.templeAccess = false;
 }

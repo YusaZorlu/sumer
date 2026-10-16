@@ -27,7 +27,7 @@ static void AddWorker(JobKind job, float hx, float hz, float sx, float sz, float
     Worker *w = &G.workers[G.workerCount++];
     *w = (Worker){ job, { hx, TerrainHeight(hx, hz), hz }, { sx, 0, sz }, { sx, 0, sz }, atan2f(lx - sx, lz - sz),
                    RandF(0, 2 * PI), false, false, { .hp = 0 } };
-    w->spot.y = (job == JOB_BOAT) ? 0.0f : TerrainHeight(sx, sz);
+    w->spot.y = (job == JOB_BOAT) ? WATER_LEVEL : TerrainHeight(sx, sz);
 }
 
 static void Hut(float x, float z, int door)
@@ -84,8 +84,8 @@ static void BuildWaterfront(void)
 
     AddBox(-131.5f, 0, 30, 9, 0.3f, 3, COL_WOOD, true);
     for (int k = 0; k < 3; k++) {
-        AddBox(-135.8f + 2.8f * (float)k, -0.5f, 28.6f, 0.2f, 1.1f, 0.2f, COL_WOOD, false);
-        AddBox(-135.8f + 2.8f * (float)k, -0.5f, 31.4f, 0.2f, 1.1f, 0.2f, COL_WOOD, false);
+        AddBox(-135.8f + 2.8f * (float)k, -1.8f, 28.6f, 0.2f, 2.4f, 0.2f, COL_WOOD, false);
+        AddBox(-135.8f + 2.8f * (float)k, -1.8f, 31.4f, 0.2f, 2.4f, 0.2f, COL_WOOD, false);
     }
     AddBox(-131.8f, 0.3f, 28.55f, 8.4f, 0.6f, 0.1f, COL_WOOD, true);
     AddBox(-131.8f, 0.3f, 31.45f, 8.4f, 0.6f, 0.1f, COL_WOOD, true);
@@ -112,8 +112,8 @@ static void BuildWaterfront(void)
     AddBox(-130.5f, 0, FERRY_Z, 6.0f, 0.3f, 2.4f, COL_WOOD, true);
     AddBox(-147.5f, 0, FERRY_Z, 6.0f, 0.3f, 2.4f, COL_WOOD, true);
     for (int k = 0; k < 3; k++) {
-        AddBox(-132.8f + 2.2f * (float)k, -0.5f, FERRY_Z - 1.1f, 0.2f, 1.1f, 0.2f, COL_WOOD, false);
-        AddBox(-149.8f + 2.2f * (float)k, -0.5f, FERRY_Z - 1.1f, 0.2f, 1.1f, 0.2f, COL_WOOD, false);
+        AddBox(-132.8f + 2.2f * (float)k, -1.8f, FERRY_Z - 1.1f, 0.2f, 2.4f, 0.2f, COL_WOOD, false);
+        AddBox(-149.8f + 2.2f * (float)k, -1.8f, FERRY_Z - 1.1f, 0.2f, 2.4f, 0.2f, COL_WOOD, false);
     }
     AddBox(-125.2f, 0, FERRY_Z + 2.2f, 0.16f, 1.8f, 0.16f, COL_WOOD, false);
     AddBox(-125.2f, 1.7f, FERRY_Z + 2.2f, 0.7f, 0.5f, 0.06f, COL_LINEN, false);
@@ -170,12 +170,15 @@ void TakeFerry(int s)
     p->pos = (Vector3){ x, GroundHeight(x, FERRY_Z, 0.5f), FERRY_Z };
     p->facing = s == STN_FERRY_E ? -PI / 2 : PI / 2;
     p->vy = 0;
-    G.hour += 0.5f;
-    if (G.hour >= 24.0f) {
-        G.hour -= 24.0f;
-        G.day++;
+    // Alone the crossing takes half an hour; in company the world's clock is everyone's and goes on as it is.
+    if (!Online()) {
+        G.hour += 0.5f;
+        if (G.hour >= 24.0f) {
+            G.hour -= 24.0f;
+            G.day++;
+        }
+        AdvanceHours(0.5f);
     }
-    AdvanceHours(0.5f);
     G.sleeping = G.slept = true;
     G.sleepT = 1.1f;
     Say(s == STN_FERRY_E ? "The ferryman poles you across to the wild west bank. Barbarians camp out there."
@@ -184,7 +187,7 @@ void TakeFerry(int s)
 
 static void FerryBoat(float x)
 {
-    float bob = 0.04f * sinf((float)GetTime() * 1.3f + x);
+    float bob = WATER_LEVEL + 0.04f * sinf((float)GetTime() * 1.3f + x);
     DrawShadedBox((Vector3){ x, bob, FERRY_Z + 2.0f }, (Vector3){ 3.6f, 0.3f, 1.0f }, COL_STRAW);
     DrawShadedBox((Vector3){ x - 1.75f, bob + 0.2f, FERRY_Z + 2.0f }, (Vector3){ 0.35f, 0.5f, 0.7f }, COL_STRAW);
     DrawShadedBox((Vector3){ x + 1.75f, bob + 0.2f, FERRY_Z + 2.0f }, (Vector3){ 0.35f, 0.5f, 0.7f }, COL_STRAW);
@@ -326,9 +329,9 @@ static void DrawTool(Vector3 pos, float facing, float shoulder, float angle, int
 
 static void DrawBoat(Vector3 p, float bob)
 {
-    Part(p.x, bob, p.z, 1.0f, 0.3f, 3.6f, COL_STRAW);
-    Part(p.x, bob + 0.2f, p.z - 1.75f, 0.7f, 0.5f, 0.35f, COL_STRAW);
-    Part(p.x, bob + 0.2f, p.z + 1.75f, 0.7f, 0.5f, 0.35f, COL_STRAW);
+    Part(p.x, p.y + bob, p.z, 1.0f, 0.3f, 3.6f, COL_STRAW);
+    Part(p.x, p.y + bob + 0.2f, p.z - 1.75f, 0.7f, 0.5f, 0.35f, COL_STRAW);
+    Part(p.x, p.y + bob + 0.2f, p.z + 1.75f, 0.7f, 0.5f, 0.35f, COL_STRAW);
 }
 
 static Look WorkerLook(JobKind job)
@@ -407,7 +410,7 @@ void DrawWorkers(void)
             DrawHuman(pos, f, 0, look, true, false, 0);
             break;
         case JOB_BOAT:
-            pos.y = bob + 0.15f;
+            pos.y = w->spot.y + bob + 0.15f;
             DrawHuman(pos, f, 0, look, false, false, 0);
             DrawTool(pos, f, 1.42f, -35.0f + 12.0f * s, TOOL_DRAW_POLE);
             break;

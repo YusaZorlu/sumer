@@ -13,11 +13,14 @@ static void Add(Vector3 p, float r, int owner)
     if (bodyCount < MAX_BODIES) bodies[bodyCount++] = (Body){ p, r, owner };
 }
 
-// Rebuilt once per frame; everyone collides against last frame's positions.
+// Rebuilt once per frame; everyone collides against last frame's positions. Players lying in bed
+// are out of everyone's way.
 void CollectBodies(void)
 {
     bodyCount = 0;
-    Add(G.player.pos, PLAYER_RADIUS, OWNER_PLAYER);
+    for (int s = 0; s < MAX_PLAYERS; s++)
+        if (s == G.self || (PlayerIn(s) && !(G.peers[s].flags & PF_BED)))
+            Add(s == G.self ? G.player.pos : G.peers[s].pos, PLAYER_RADIUS, OWNER_PLAYER + s);
     for (int i = 0; i < G.villagerCount; i++)
         if (!G.villagers[i].vit.dead) Add(VillagerPos(&G.villagers[i]), 0.35f, OWNER_VILLAGER + i);
     for (int i = 0; i < G.workerCount; i++) {

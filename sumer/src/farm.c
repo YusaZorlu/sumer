@@ -33,10 +33,11 @@ int SeasonDay(void)
     return (int)fmodf(YearDay(), SEASON_DAYS) + 1;
 }
 
+static const char *const SEASONS[4] = { "Spring", "Summer", "Fall", "Winter" };
+
 const char *SeasonName(int s)
 {
-    static const char *const names[4] = { "Spring", "Summer", "Fall", "Winter" };
-    return L(names[s & 3]);
+    return L(SEASONS[s & 3]);
 }
 
 float DaysToWinter(void)
@@ -174,49 +175,92 @@ void PlotPrompt(int p, char *e, char *f, int size, bool *okE, bool *okF)
     }
 }
 
-void UsePlot(int p, bool alt)
+// What E or F would do on plot p with what this player carries, or -1 (saying why when it helps).
+static int PlotAction(int p, bool alt)
 {
-    Plot *pl = &G.plots[p];
+    const Plot *pl = &G.plots[p];
 
     if (pl->state == PLOT_EMPTY && !alt) {
         if (TooLateToSow()) {
             Say(Season() == WINTER ? "Nothing grows in winter. Sow in spring." : "Too late: the wheat would not ripen before winter.");
-            return;
+            return -1;
         }
-        if (!BagRemove(IT_SEEDS, 1)) return;
-        *pl = (Plot){ pl->pos, PLOT_WHEAT, 0.0f, 0.0f };
+        return BagCount(IT_SEEDS) > 0 ? PLOT_SOW : -1;
+    }
+    if (pl->state == PLOT_EMPTY && alt) return !PalmPlanted() && BagCount(IT_DATES) > 0 ? PLOT_PIT : -1;
+    if (pl->state == PLOT_WHEAT && !alt && pl->growth >= 1.0f) {
+        if (SlotsSpace(G.bag, G.bagSlots, IT_WHEAT) > 0) return PLOT_REAP;
+        Say("No room in your baskets for the harvest.");
+        return -1;
+    }
+    if (pl->state == PLOT_DEAD && !alt) {
+        if (SlotsSpace(G.bag, G.bagSlots, IT_WASTE) > 0) return PLOT_CLEAR;
+        Say("No room in your baskets.");
+    }
+    return -1;
+}
+
+void UsePlot(int p, bool alt)
+{
+    int args[2] = { p, PlotAction(p, alt) };
+    if (args[1] >= 0) Act(RQ_PLOT, args, 2);
+}
+
+// The field's half, done where the world runs: false when someone else changed the plot first.
+bool PlotServe(int p, int action)
+{
+    if (p < 0 || p >= MAX_PLOTS) return false;
+    Plot *pl = &G.plots[p];
+    PlotState now = pl->state;
+    if (action == PLOT_SOW && now == PLOT_EMPTY && !TooLateToSow()) now = PLOT_WHEAT;
+    else if (action == PLOT_PIT && now == PLOT_EMPTY && !PalmPlanted()) now = PLOT_SAPLING;
+    else if (action == PLOT_REAP && now == PLOT_WHEAT && pl->growth >= 1.0f) now = PLOT_EMPTY;
+    else if (action == PLOT_CLEAR && now == PLOT_DEAD) now = PLOT_EMPTY;
+    else return false;
+    *pl = (Plot){ pl->pos, now, 0.0f, 0.0f };
+    return true;
+}
+
+// The farmer's half: seed out of the baskets, the harvest into them.
+void PlotApply(int action, bool ok)
+{
+    if (!ok) {
+        Say("Someone else got to that plot first.");
+        return;
+    }
+    switch (action) {
+    case PLOT_SOW:
+        BagRemove(IT_SEEDS, 1);
         Exert(0.5f);
         Say("Sown. With water the wheat ripens in %d days.", (int)WHEAT_DAYS);
-    } else if (pl->state == PLOT_EMPTY && alt && !PalmPlanted() && BagRemove(IT_DATES, 1)) {
-        *pl = (Plot){ pl->pos, PLOT_SAPLING, 0.0f, 0.0f };
+        break;
+    case PLOT_PIT:
+        BagRemove(IT_DATES, 1);
         Exert(0.5f);
         Say("Planted a date pit. With water it fruits in %d days.", (int)SAPLING_DAYS);
-    } else if (pl->state == PLOT_WHEAT && !alt && pl->growth >= 1.0f) {
-        int wheat = BagAdd(IT_WHEAT, 4);
-        if (wheat == 0) {
-            Say("No room in your baskets for the harvest.");
-            return;
-        }
-        int seeds = BagAdd(IT_SEEDS, 2);
-        *pl = (Plot){ pl->pos, PLOT_EMPTY, 0.0f, 0.0f };
+        break;
+    case PLOT_REAP: {
+        int wheat = BagAdd(IT_WHEAT, 4), seeds = BagAdd(IT_SEEDS, 2);
         Exert(1.5f);
         Say("Harvested %d wheat and %d seeds.", wheat, seeds);
-    } else if (pl->state == PLOT_DEAD && !alt) {
-        if (BagAdd(IT_WASTE, 1) == 0) {
-            Say("No room in your baskets.");
-            return;
-        }
-        *pl = (Plot){ pl->pos, PLOT_EMPTY, 0.0f, 0.0f };
+        break;
+    }
+    case PLOT_CLEAR:
+        BagAdd(IT_WASTE, 1);
         Exert(1.0f);
         Say("Cleared the withered wheat. The cattle herder takes plant waste.");
+        break;
+    default:
+        break;
     }
 }
 
+// The farm and the coop are everyone's: their news goes to every player.
 static void WaterWarning(float before, float after, bool coop, bool matters)
 {
     if (!matters) return;
-    if (before > 2.0f && after <= 2.0f && after > 0) Say(coop ? "The coop has 2 days of water left." : "The farm has 2 days of water left.");
-    else if (before > 0 && after <= 0) Say(coop ? "The coop is out of water." : "The farm is out of water.");
+    if (before > 2.0f && after <= 2.0f && after > 0) Announce(coop ? "The coop has 2 days of water left." : "The farm has 2 days of water left.");
+    else if (before > 0 && after <= 0) Announce(coop ? "The coop is out of water." : "The farm is out of water.");
 }
 
 static void RemoveHen(int i)
@@ -227,7 +271,6 @@ static void RemoveHen(int i)
         G.henMeal[k] = G.henMeal[k + 1];
     }
     G.henCount--;
-    G.slaughterStep = 0;
 }
 
 bool AddHen(void)
@@ -268,7 +311,8 @@ static void CoopHours(float h)
                           : G.coopDry >= STARVE_DAYS ? "thirst" : NULL;
         if (!cause) continue;
         RemoveHen(i);
-        Say("A hen died of %s.", L(cause));
+        G.slaughterStep = 0;
+        Announce("A hen died of %s.", cause);
     }
 }
 
@@ -306,7 +350,7 @@ void FarmHours(float h)
             }
         }
     }
-    if (withered) Say(withered > 1 ? "Six days without water: %d plots of wheat withered." : "Six days without water: %d plot of wheat withered.", withered);
+    if (withered) Announce(withered > 1 ? "Six days without water: %d plots of wheat withered." : "Six days without water: %d plot of wheat withered.", withered);
     CoopHours(h);
 }
 
@@ -327,18 +371,32 @@ static void EmptyBucket(void)
 
 void PourDitch(void)
 {
-    if (BagCount(IT_WATER) == 0 || G.farmWater >= WATER_DAYS - 0.05f) return;
-    EmptyBucket();
-    G.farmWater = fminf(WATER_DAYS, G.farmWater + POUR_DAYS);
-    Say("Watered the farm: %.1f days of water.", G.farmWater);
+    if (BagCount(IT_WATER) > 0 && G.farmWater < WATER_DAYS - 0.05f) Act(RQ_DITCH, NULL, 0);
 }
 
 void PourCoop(void)
 {
-    if (BagCount(IT_WATER) == 0 || G.coopWater >= WATER_DAYS - 0.05f) return;
+    if (BagCount(IT_WATER) > 0 && G.coopWater < WATER_DAYS - 0.05f) Act(RQ_COOPWATER, NULL, 0);
+}
+
+// The water's half: the ditch or the trough fills up. Returns the days of water after, in hundredths.
+int PourServe(bool coop)
+{
+    float *water = coop ? &G.coopWater : &G.farmWater;
+    if (*water >= WATER_DAYS - 0.05f) return -1;
+    *water = fminf(WATER_DAYS, *water + POUR_DAYS);
+    return (int)roundf(*water * 100.0f);
+}
+
+void PourApply(bool coop, bool ok, int after)
+{
+    if (!ok) {
+        Say(coop ? "The hens' trough is already full." : "The farm is already full of water.");
+        return;
+    }
     EmptyBucket();
-    G.coopWater = fminf(WATER_DAYS, G.coopWater + POUR_DAYS);
-    Say("Filled the hens' trough: %.1f days of water.", G.coopWater);
+    if (coop) Say("Filled the hens' trough: %.1f days of water.", (float)after / 100.0f);
+    else Say("Watered the farm: %.1f days of water.", (float)after / 100.0f);
 }
 
 bool NearWater(Vector3 p)
@@ -371,34 +429,67 @@ void CoopPrompt(char *e, char *f, int size, bool *okE, bool *okF)
     else Fmt(e, size, "[E] Tend the hens: %d hens, %d eggs, feed %d, water %.1f days", G.henCount, G.coopEggs, (int)G.coopFeed, G.coopWater);
 }
 
+// Wheat is worth 2 feed, seeds 1; at most 3 wheat or 5 seeds at a time.
+static void Feed(bool wheat)
+{
+    int item = wheat ? IT_WHEAT : IT_SEEDS, most = wheat ? 3 : 5;
+    int args[2] = { wheat, BagCount(item) };
+    if (args[1] > most) args[1] = most;
+    if (args[1] > 0 && G.coopFeed <= FEED_MAX - (wheat ? 2.0f : 1.0f)) Act(RQ_FEED, args, 2);
+}
+
 void FeedWheat(void)
 {
-    int n = (int)((FEED_MAX - G.coopFeed) / 2.0f);
-    if (n > 3) n = 3;
-    n = BagRemove(IT_WHEAT, n);
-    G.coopFeed += 2.0f * (float)n;
-    if (!n) return;
-    Exert(0.3f);
-    Say("Fed %d wheat. Feed %d/%d.", n, (int)G.coopFeed, (int)FEED_MAX);
+    Feed(true);
 }
 
 void FeedSeeds(void)
 {
-    int n = (int)(FEED_MAX - G.coopFeed);
-    if (n > 5) n = 5;
-    n = BagRemove(IT_SEEDS, n);
-    G.coopFeed += (float)n;
+    Feed(false);
+}
+
+// The coop's half: how many of the n offered the trough takes. 'feed' is the feed after.
+int FeedServe(bool wheat, int n, int *feed)
+{
+    float per = wheat ? 2.0f : 1.0f;
+    int room = (int)((FEED_MAX - G.coopFeed) / per);
+    if (n > room) n = room;
+    if (n > (wheat ? 3 : 5)) n = wheat ? 3 : 5;
+    if (n < 0) n = 0;
+    G.coopFeed += per * (float)n;
+    *feed = (int)G.coopFeed;
+    return n;
+}
+
+void FeedApply(bool wheat, int n, int feed)
+{
+    n = BagRemove(wheat ? IT_WHEAT : IT_SEEDS, n);
     if (!n) return;
     Exert(0.3f);
-    Say("Scattered %d seeds. Feed %d/%d.", n, (int)G.coopFeed, (int)FEED_MAX);
+    if (wheat) Say("Fed %d wheat. Feed %d/%d.", n, feed, (int)FEED_MAX);
+    else Say("Scattered %d seeds. Feed %d/%d.", n, feed, (int)FEED_MAX);
 }
 
 void CollectEggs(void)
 {
-    int n = BagAdd(IT_EGG, G.coopEggs);
+    int room = SlotsSpace(G.bag, G.bagSlots, IT_EGG);
+    if (room <= 0) Say("No room in your baskets for eggs.");
+    else if (G.coopEggs > 0) Act(RQ_EGGS, &room, 1);
+}
+
+int EggsServe(int most)
+{
+    int n = most < G.coopEggs ? most : G.coopEggs;
+    if (n < 0) n = 0;
     G.coopEggs -= n;
+    return n;
+}
+
+void EggsApply(int n)
+{
+    n = BagAdd(IT_EGG, n);
     if (n) Say(n > 1 ? "Collected %d eggs." : "Collected %d egg.", n);
-    else Say("No room in your baskets for eggs.");
+    else Say("Someone else took the eggs.");
 }
 
 void UseCoop(bool alt)
@@ -408,17 +499,41 @@ void UseCoop(bool alt)
     else FeedSeeds();
 }
 
+// A hen is known by its hatching time, so the request names the same bird on every machine.
+static int HenKey(int i)
+{
+    return (int)roundf(G.henBorn[i] * 1000.0f);
+}
+
 bool SlaughterHen(int i)
 {
+    G.slaughterStep = 0;
     if (i < 0 || i >= G.henCount || NowDays() - G.henBorn[i] < SEASON_DAYS) return false;
-    if (BagAdd(IT_HEN, 1) == 0) {
+    if (SlotsSpace(G.bag, G.bagSlots, IT_HEN) <= 0) {
         Say("No room in your baskets.");
         return false;
     }
+    int args[2] = { i, HenKey(i) };
+    Act(RQ_SLAUGHTER, args, 2);
+    return true;
+}
+
+bool SlaughterServe(int i, int key)
+{
+    if (i < 0 || i >= G.henCount || HenKey(i) != key || NowDays() - G.henBorn[i] < SEASON_DAYS) return false;
     RemoveHen(i);
+    return true;
+}
+
+void SlaughterApply(bool ok)
+{
+    if (!ok) {
+        Say("That hen is gone.");
+        return;
+    }
+    BagAdd(IT_HEN, 1);
     Exert(0.5f);
     Say("You killed the hen. Roast it in the oven.");
-    return true;
 }
 
 static bool RainWindow(void)
@@ -433,8 +548,8 @@ static void Downpour(bool tell)
     G.coopWater = WATER_DAYS;
     G.coopDry = 0;
     if (!tell) return;
-    if (Season() == WINTER) Say("Winter rain fills the farm and the coop. Nothing grows until spring.");
-    else Say("Rain! The farm and the coop are full of water.");
+    if (Season() == WINTER) Announce("Winter rain fills the farm and the coop. Nothing grows until spring.");
+    else Announce("Rain! The farm and the coop are full of water.");
 }
 
 // A time skip up to 'hour' (24 = midnight) that passed today's rain still waters the farm.
@@ -458,12 +573,12 @@ void NewDay(void)
         G.seasonSeen = index;
         if (s == SPRING) {
             SpringRespawn();
-            Say("Spring. The herds are back and the fields can be sown.");
+            Announce("Spring. The herds are back and the fields can be sown.");
         } else if (s == WINTER) {
-            Say("Winter. Crops rest until spring; sowing waits too.");
+            Announce("Winter. Crops rest until spring; sowing waits too.");
         } else {
-            if (s == FALL) Say("Fall begins. Too late to sow wheat now.");
-            else Say("%s begins.", SeasonName(s));
+            if (s == FALL) Announce("Fall begins. Too late to sow wheat now.");
+            else Announce("%s begins.", SEASONS[s]);
         }
     }
 }

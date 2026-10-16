@@ -3,6 +3,7 @@
 
 #include "raylib.h"
 #include "raymath.h"
+#include <stdarg.h>
 #include <stdbool.h>
 
 #define WORLD_HALF      540.0f
@@ -24,6 +25,7 @@
 #define RIVER_X1        (-128.0f)
 #define FORD_Z0         (-518.0f)
 #define FORD_Z1         (-506.0f)
+#define WATER_LEVEL     (-0.4f)
 #define SEASON_DAYS     9
 #define WATER_DAYS      6.0f
 #define HEN_LIFE_DAYS   108.0f
@@ -46,6 +48,8 @@
 #define MAX_WORKERS     16
 #define MAX_CARAVANS    2
 #define CARAVAN_GUARDS  2
+#define MAX_PLAYERS     5
+#define HOUSE_STN       6
 #define MAX_STARS       90
 #define MAX_TORCHES     176
 #define MAX_DYN_LIGHTS  24
@@ -100,7 +104,7 @@
 #define COL_WHEAT_GREEN CLITERAL(Color){ 110, 150,  60, 255 }
 #define COL_WHEAT_RIPE  CLITERAL(Color){ 222, 188,  92, 255 }
 #define COL_FIRE        CLITERAL(Color){ 255, 150,  50, 255 }
-#define COL_SKIN        CLITERAL(Color){ 170, 120,  84, 255 }
+#define COL_SKIN        CLITERAL(Color){ 152, 100,  68, 255 }
 #define COL_HAIR        CLITERAL(Color){  40,  30,  24, 255 }
 
 typedef enum {
@@ -121,7 +125,8 @@ enum { ARMOR_NONE, ARMOR_WOLF, ARMOR_LEATHER, ARMOR_BRONZE, ARMOR_KINDS };
 enum { SHAPE_BOX, SHAPE_CYL, SHAPE_BLOB, SHAPE_CONE };
 typedef struct { int in1, n1, in2, n2; OutKind kind; int out, nOut; int in3, n3; } Offer;
 
-typedef struct { Vector3 pos, size; Color color; bool solid, water, glow; float torch; unsigned char shape; } Box;
+// 'built' marks walls, houses and other works of people, drawn in finer detail up close than plants are.
+typedef struct { Vector3 pos, size; Color color; bool solid, water, glow; float torch; unsigned char shape; bool built; } Box;
 
 typedef enum { RES_PALM, RES_REEDS, RES_TREE, RES_CLAY, RES_ORE, RES_FISH, RES_HERB, RES_KINDS } ResKind;
 typedef struct { Vector3 pos; ResKind kind; float regrow, spin; bool farm; } Resource;
@@ -130,21 +135,24 @@ typedef enum { AN_GAZELLE, AN_ONAGER, AN_BOAR, AN_GOOSE, AN_WOLF, AN_SNAKE, AN_T
 // ST_HUNT: a wolf pack hunting, a wounded boar charging, a snake striking.
 typedef enum { ST_CALM, ST_ALERT, ST_FLEE, ST_DEAD, ST_HUNT } AnimalState;
 
+// 'target' is the player a hunting animal is after (meaningful only in ST_HUNT). In a joined game
+// 'netPos' and 'netHeading' are where the host last said the animal was; pos eases toward them.
 typedef struct {
     AnimalType type;
     AnimalState state;
-    Vector3 pos, lair;
-    float heading, speed, timer, awareness, respawn, bite;
-    int hp, arrowsIn, pack;
+    Vector3 pos, lair, netPos;
+    float heading, speed, timer, awareness, respawn, bite, netHeading;
+    int hp, arrowsIn, pack, target;
     bool active;
 } Animal;
 
+// 'owner' is the player who shot it; the damage was fixed when it left the bow.
 typedef struct {
     Vector3 pos, vel;
     float life, trailT, fade;
     bool flying, active, spent;
     Vector3 trail[TRAIL_POINTS];
-    int trailCount;
+    int trailCount, owner, damage;
 } Arrow;
 
 typedef struct { Vector3 pos, vel; float life, maxLife, size; Color color; bool ring; } Particle;
@@ -156,11 +164,13 @@ typedef struct { Vector3 pos; float heading, timer, speed; } Wanderer;
 typedef enum { ROLE_CIVILIAN, ROLE_WORKER, ROLE_CLERIC, ROLE_MERCHANT, ROLE_GUARD, ROLE_RAIDER, ROLE_BARBARIAN, ROLE_COUNT } Role;
 
 // Combat state shared by every person; while 'override' is set, 'at' replaces their scripted position.
+// 'target' is the player they are hostile to (meaningful while 'hostile' runs); 'netAt' is where the
+// host last put them in a joined game.
 typedef struct {
     float hp, hostile, cool, swing, deadT, windup, markT, foeT;
-    Vector3 at;
+    Vector3 at, netAt;
     float face;
-    int foe;
+    int foe, target;
     bool dead, override, looted, used;
     unsigned char mark;
 } Vitals;
@@ -169,8 +179,8 @@ enum { MARK_NONE, MARK_WARN, MARK_PARRIED, MARK_HIT };
 
 typedef enum { NPC_CIVILIAN, NPC_GUARD, NPC_CLERIC, NPC_VILLAGER, NPC_TRAVELLER } NpcKind;
 // Walks the straight lane a-b, or the whole of road 'road' when it is 0 or more.
-typedef struct { Vector3 a, b; float t, dir, speed; Color robe; NpcKind kind; float face, side; bool moving, templePost; Vitals vit; int road; } Villager;
-typedef struct { Vector3 home, pos; float face, timer, speed, respawnDay; bool moving; int camp; Vitals vit; } Raider;
+typedef struct { Vector3 a, b; float t, dir, speed; Color robe; NpcKind kind; float face, side; bool moving, templePost; Vitals vit; int road; float netT, netSide; } Villager;
+typedef struct { Vector3 home, pos, netPos; float face, timer, speed, respawnDay; bool moving; int camp; Vitals vit; } Raider;
 typedef struct { Vector3 wall, base, n; float top; } Ladder;
 
 typedef enum { JOB_WOOD, JOB_MINE, JOB_POTTER, JOB_KILN, JOB_SMITH, JOB_BOAT, JOB_DOCK, JOB_FARM } JobKind;
@@ -189,7 +199,7 @@ typedef struct {
     CaravanState state;
     Vector3 path[6];
     int points, trader;
-    float s, length, timer, blockedT, pushT;
+    float s, length, timer, blockedT, pushT, netS;
     Color robe, cloth;
     Vitals vit[1 + CARAVAN_GUARDS];
 } Caravan;
@@ -226,6 +236,55 @@ typedef struct {
 
 typedef struct { Color skin, cloth, top, hair; } Look;
 
+// Every player has a house of their own: bed, storage, quern, trough, workbench and oven.
+typedef struct { Vector3 center, door; Vector3 stations[HOUSE_STN]; float bedFacing; } House;
+
+// Playing alone, hosting a game others join, or playing in someone else's.
+typedef enum { NET_SOLO, NET_HOST, NET_CLIENT } NetRole;
+// PF_SLEEP: asleep or out cold (nothing attacks them); PF_BED: lying in bed waiting for the night to pass.
+enum { PF_CROUCH = 1, PF_RUN = 2, PF_MOVE = 4, PF_GROUND = 8, PF_AIM = 16, PF_SLEEP = 32, PF_CLIMB = 64, PF_PARRY = 128, PF_BED = 256 };
+#define NAME_LEN 16
+#define SAFE_RADIUS 22.0f
+
+// What every machine knows of each player. The owner reports where it is and what it is doing; the
+// host adds what only it can judge (alone outside the walls, wanted by the guards, wolves' anger).
+typedef struct {
+    bool active, alone;
+    char name[NAME_LEN];
+    Vector3 pos, shown;
+    float facing, shownFacing, stride, draw, health, swingT, wanted, aggro, heard;
+    int flags, equip, weapon, bow, armor, net;
+} Peer;
+
+// Everything a player owns and where they stand: kept by the host for each name, saved with its game.
+typedef struct {
+    char name[NAME_LEN];
+    int slot;
+    Vector3 pos;
+    float yaw, pitch, food, health, blessT;
+    int bagSlots, quiver, quiverMax, bow, tools, weapon, equip, armor, armorOwned, prayDay;
+    bool hasMace, templeAccess;
+    Slot bag[BAG_MAX], store[STORE_SLOTS];
+} PlayerRecord;
+#define MAX_RECORDS 24
+
+// Bytes for saves and network messages, little-endian. 'bad' is set on overflow or a short read.
+typedef struct { unsigned char *d; int n, cap; bool bad; } Writer;
+typedef struct { const unsigned char *d; int n, at; bool bad; } Reader;
+
+enum { LINK_OFF, LINK_CONNECTING, LINK_OPEN, LINK_CLOSED };
+// What the relay server says; S_DATA carries a message from another player.
+enum { S_HELLO = 1, S_JOIN, S_LEAVE, S_FULL, S_NOHOST, S_TAKEN, S_HOSTLEFT, S_DATA = 16 };
+typedef struct { int kind, from; const unsigned char *data; int len; } NetMessage;
+
+// What a guest asks the host before it changes the shared world (shots and blows need no answer).
+enum {
+    RQ_SHOOT = 1, RQ_STRIKE, RQ_CARCASS, RQ_GATHER, RQ_STASH, RQ_PLOT, RQ_DITCH, RQ_COOPWATER, RQ_EGGS, RQ_FEED,
+    RQ_SLAUGHTER, RQ_HEN, RQ_LOOT, RQ_COLLAPSE
+};
+#define REQ_ARGS 12
+enum { WARN_WOLF, WARN_SNAKE, WARN_KINDS };
+
 typedef struct {
     Box boxes[MAX_BOXES];
     int boxCount;
@@ -252,7 +311,7 @@ typedef struct {
     int ladderCount, climb, climbLadder, prayDay;
     float climbT;
     int equip, armor, armorOwned, dawnDay;
-    float wanted, wolfAggro, drawFog, parryT, parryCool;
+    float drawFog, parryT, parryCool;
     int mapZoom;
     bool templeAccess, wasFocused, firstPerson;
     Villager villagers[MAX_VILLAGERS];
@@ -262,6 +321,7 @@ typedef struct {
     Caravan caravans[MAX_CARAVANS];
     Trader traders[TR_COUNT];
     Vector3 stations[STN_COUNT];
+    House houses[MAX_PLAYERS];
     Vector3 home, coop, pen;
     Vector3 stars[MAX_STARS];
     Vector3 torches[MAX_TORCHES];
@@ -285,15 +345,14 @@ typedef struct {
     Slot store[STORE_SLOTS];
     int quiver, quiverMax, bow, tools, weapon;
     bool hasMace;
-    float swingT, swingCool, hitMarkT, impactT, herbT, snakeWarn;
+    float swingT, swingCool, hitMarkT, impactT, herbT;
     Vector3 impact;
     int followArrow;
     float followT, camBlend;
     Vector3 followPos, followDir;
     bool arrowCam;
     float food, hungerNag;
-    float health, hurtT, safeT, wolfWarn;
-    bool alone;
+    float health, hurtT, safeT;
 
     int day;
     float hour, daylight;
@@ -309,7 +368,15 @@ typedef struct {
     Panel panel;
     int trader;
     Target target;
-    bool cursorLocked, ignoreClick, quit;
+    bool cursorLocked, ignoreClick, quit, wasCaptured;
+    float autosaveT;
+
+    NetRole role;
+    int self, actor;
+    Peer peers[MAX_PLAYERS];
+    PlayerRecord records[MAX_RECORDS];
+    int recordCount;
+    bool waitBed;
 } Game;
 
 extern Game G;
@@ -328,6 +395,9 @@ void DrawGlowBox(Vector3 c, Vector3 s, Color col);
 void DrawShadedCylinder(Vector3 base, float rx, float rz, float h, float topScale, int sides, Color col);
 void DrawShadedBlob(Vector3 c, Vector3 r, Color col);
 void DrawShadedBlobFar(Vector3 c, Vector3 r, Color col);
+void DrawShadedBlobFine(Vector3 c, Vector3 r, Color col);
+void DrawBeveledBox(Vector3 c, Vector3 s, Color col, float bevel);
+Color Clothe(Color cloth, Color skin);
 void DrawHuman(Vector3 pos, float facing, float stride, Look look, bool crouch, bool bow, float draw);
 
 void AddTorch(float x, float y, float z, bool pole);
@@ -368,6 +438,10 @@ int LastSlot(void);
 
 float TerrainHeight(float x, float z);
 float MeshHeight(float x, float z);
+float GroundSurface(float x, float z);
+int ChannelCount(void);
+Rectangle ChannelRect(int i, bool *wet, Rectangle *surface);
+void DrawWater(void);
 float RayTerrain(Vector3 o, Vector3 dir, float maxT);
 float Fertility(float x, float z);
 bool WestBank(float x);
@@ -442,6 +516,7 @@ bool EatSlot(int slot);
 bool UseHerb(void);
 bool OfferCheck(const Offer *o, const char **why);
 bool OfferApply(const Offer *o);
+void OfferPay(const Offer *o);
 const char *OfferOutput(const Offer *o);
 #if defined(__GNUC__)
 #define PRINTF_LIKE(f, a) __attribute__((format(printf, f, a)))
@@ -472,13 +547,20 @@ float AnimalTop(const Animal *a);
 bool AnimalHidden(const Animal *a);
 bool AnyWolfHunting(void);
 bool AnyBeastAttacking(void);
-void CalmWolves(void);
+void CalmBeasts(int slot);
+void ShootFor(int slot, Vector3 from, Vector3 vel, int damage);
+void StrikeFor(Vector3 chest, Vector3 fwd, int equip, int weapon);
+void DrawArrow(const Arrow *ar);
+void DrawArrowTrails(const Arrow *arrows);
 int AnimalMaxHp(int type);
 void MeleeStrike(void);
 const char *WeaponName(int tier);
 const char *MaceName(void);
 
 void BuildVillage(void);
+Color PlayerColor(int slot);
+const char *PlayerColorName(int slot);
+void SetHome(int slot);
 int AddNpc(NpcKind kind, Vector3 a, Vector3 b, float speed, Color robe, float face);
 void UpdateVillage(float dt);
 void AdvanceHours(float h);
@@ -488,6 +570,12 @@ Vector3 VillagerLanePos(const Villager *v);
 Vector3 TraderPos(const Trader *t);
 void DrawPersonBody(Vector3 pos, float facing, Look look);
 void UpdateCombat(float dt);
+void CollectFighters(void);
+int FighterByOwner(int owner);
+int FighterOwner(int i);
+void CalmPeople(int slot);
+bool ClaimBody(int i);
+void GiveLoot(int i);
 void DamagePerson(int i, float dmg);
 int PersonOnSegment(Vector3 a, Vector3 b);
 int PersonInFront(Vector3 chest, Vector3 fwd, float range, float *dist);
@@ -497,19 +585,31 @@ int FighterCount(void);
 bool FighterInfo(int i, Vector3 *pos, float *hp, float *maxHp, const char **name, bool *hostile, bool *dead);
 int FighterMark(int i);
 bool BodyLootable(int i);
-void LootBody(int i);
 void RespawnPeople(void);
 void BuildRaiders(void);
 void UpdateRaiders(float dt);
 void DrawRaiders(void);
 void StashPrompt(int camp, char *buf, int size, bool *ok);
 void TakeStash(int camp);
+bool ClaimStash(int camp, const int *want, int *res, Vector3 by);
+void StashApply(bool ok, const int *res);
 int StashCamp(int station);
 Vector3 CampCenter(int camp);
 void StationPrompt(int s, char *buf, int size, bool *ok);
 void UseStation(int s);
 void PlotPrompt(int p, char *e, char *f, int size, bool *okE, bool *okF);
 void UsePlot(int p, bool alt);
+enum { PLOT_SOW, PLOT_PIT, PLOT_REAP, PLOT_CLEAR };
+bool PlotServe(int p, int action);
+void PlotApply(int action, bool ok);
+int PourServe(bool coop);
+void PourApply(bool coop, bool ok, int after);
+int FeedServe(bool wheat, int n, int *feed);
+void FeedApply(bool wheat, int n, int feed);
+int EggsServe(int most);
+void EggsApply(int n);
+bool SlaughterServe(int i, int key);
+void SlaughterApply(bool ok);
 void CoopPrompt(char *e, char *f, int size, bool *okE, bool *okF);
 void UseCoop(bool alt);
 void CollectEggs(void);
@@ -586,5 +686,120 @@ void GameUpdate(void);
 void GameDraw(void);
 void StartSleep(void);
 void HurtPlayer(float dmg);
+void WakeAfterNight(float hours, bool rained, bool dawn);
+void PassHours(float h);
+
+// Browser storage, pointer capture and the page's address (web.c); plain files and no-ops natively.
+const char *DataPath(const char *name);
+void MountStorage(void);
+bool StorageReady(void);
+void SyncStorage(void);
+void WantPointer(bool captured);
+bool PointerCaptured(void);
+const char *PageParam(const char *key);
+void ServerAddress(char *buf, int size, const char *query);
+bool OnWeb(void);
+
+// The connection to the relay server (net.c).
+bool NetOpen(bool host, const char *room);
+void NetShut(void);
+int NetLink(void);
+bool NetSend(int to, const void *data, int len);
+bool NetPoll(NetMessage *m);
+
+// Every player as the world sees them (players.c).
+void SyncSelf(void);
+bool PlayerIn(int s);
+bool PlayerAwake(int s);
+Vector3 PlayerAt(int s);
+int NearestPlayer(Vector3 p, float *dist);
+float NearestAnyone(Vector3 p);
+float PlayerStance(int s);
+void UpdatePlayerSafety(float dt);
+bool Warn(int s, int kind, float quiet);
+void HurtSlot(int s, float dmg);
+void HitMark(void);
+void ShowImpact(Vector3 at);
+void SayTo(int s, const char *fmt, ...) PRINTF_LIKE(2, 3);
+void Announce(const char *fmt, ...) PRINTF_LIKE(1, 2);
+void SayNear(Vector3 at, float r, const char *fmt, ...) PRINTF_LIKE(3, 4);
+void UpdatePeers(float dt);
+void DrawPeers(void);
+void DrawInBed(int s, Vector3 at, float facing, Look look);
+int PlayerCount(void);
+int PlayersInBed(void);
+
+// Multiplayer messages (mp.c).
+int WorldSignature(void);
+bool Online(void);
+bool IsClient(void);
+void NetEffect(Vector3 pos, Color c, int count, float speed, bool ring);
+const Arrow *NetArrows(void);
+void DrawNetArrows(void);
+void LocalSayV(const char *fmt, va_list ap);
+void NetSayV(int slot, const char *fmt, va_list ap);
+void NetHurt(int slot, float dmg);
+void NetHitMark(int slot);
+void NetImpact(int slot, Vector3 at);
+void NetParried(int slot);
+void NetSkip(float hours, bool rained, bool dawn);
+bool Asking(int kind, int first);
+void Ask(int kind, const int *args, int n);
+void NetShoot(Vector3 from, Vector3 vel, int damage);
+void NetStrike(Vector3 chest, Vector3 fwd, int equip, int weapon);
+void NetSendRecord(void);
+void NetSaveSoon(void);
+float NetSilence(void);
+bool NetBegin(bool host, const char *name, const char *room);
+int NetLobby(void);
+const char *NetFailure(void);
+const char *NetRoom(void);
+void NetLeave(void);
+void NetFrame(float dt);
+
+// Save files and the records the host keeps for each player (save.c).
+void W8(Writer *w, unsigned v);
+void W16(Writer *w, unsigned v);
+void W32(Writer *w, unsigned v);
+void WF(Writer *w, float f);
+void WStr(Writer *w, const char *s);
+unsigned R8(Reader *r);
+unsigned R16(Reader *r);
+unsigned R32(Reader *r);
+float RF(Reader *r);
+void RStr(Reader *r, char *out, int max);
+void WSlots(Writer *w, const Slot *s, int n);
+void RSlots(Reader *r, Slot *s, int n);
+bool WriteFile(const char *name, const Writer *w);
+int ReadFile(const char *name, unsigned char *buf, int size);
+void WriteRecord(Writer *w, const PlayerRecord *r);
+bool ReadRecord(Reader *rd, PlayerRecord *r);
+void CaptureRecord(PlayerRecord *r);
+void ApplyRecord(const PlayerRecord *r);
+bool SameName(const char *a, const char *b);
+PlayerRecord *FindRecord(const char *name);
+void KeepRecord(const PlayerRecord *r);
+bool SaveNetGame(void);
+bool LoadNetGame(void);
+bool NetSaveSummary(int *day, float *hour);
+void DeleteNetGame(void);
+
+// Things a player does to the shared world: the host does them, a guest asks first (actions.c).
+void Act(int kind, const int *args, int n);
+bool ServeRequest(int slot, int kind, const int *args, int n, int *res, int *nres);
+void ApplyReply(int kind, const int *args, int n, bool ok, const int *res, int nres);
+void FindTarget(bool play);
+void Interact(bool alt);
+void Barter(int trader, int offer);
+bool TraderWilling(int i);
+void SaveNow(void);
+void CalmFor(int slot);
+
+// The title screen in the browser: name, play alone, host or join (lobby.c).
+void OpenLobby(const char *why);
+bool InLobby(void);
+void LobbyFrame(void);
+void LeaveToLobby(const char *why);
+const char *PlayerName(void);
 
 #endif
