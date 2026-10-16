@@ -1,0 +1,269 @@
+#include "game.h"
+#include <math.h>
+
+#define COUNT(a) ((int)(sizeof(a) / sizeof((a)[0])))
+
+// The hunters butcher game better than your oven and deal in pelts and arrows.
+static const Offer HUNTER[] = {
+    { IT_GAZELLE, 1, IT_NONE,  0, OUT_ITEM,   IT_ROAST,  4, 0, 0 },
+    { IT_BOAR,    1, IT_NONE,  0, OUT_ITEM,   IT_ROAST,  7, 0, 0 },
+    { IT_DATES,  12, IT_NONE,  0, OUT_ITEM,   IT_ROAST,  2, 0, 0 },
+    { IT_BREAD,   4, IT_NONE,  0, OUT_ITEM,   IT_WOLF,   1, 0, 0 },
+    { IT_WOLF,    2, IT_NONE,  0, OUT_ITEM,   IT_ARROWS, 20, 0, 0 },
+    { IT_HERB,    4, IT_NONE,  0, OUT_ITEM,   IT_ARROWS, 10, 0, 0 },
+    { IT_GOOSE,   1, IT_REEDS, 4, OUT_ITEM,   IT_ARROWS, 12, 0, 0 },
+    { IT_WOLF,    2, IT_REEDS, 6, OUT_QUIVER, 0, 1, 0, 0 },
+    { IT_ONAGER,  1, IT_WOLF,  2, OUT_BOW,    2, 1, 0, 0 },
+};
+
+// The only fleeces and sheep for sale anywhere; plant waste is fodder here.
+static const Offer SHEPHERD[] = {
+    { IT_WHEAT, 6, IT_NONE, 0, OUT_ITEM, IT_SHEEPSKIN, 1, 0, 0 },
+    { IT_EGG,   4, IT_NONE, 0, OUT_ITEM, IT_SHEEPSKIN, 1, 0, 0 },
+    { IT_HERB,  3, IT_NONE, 0, OUT_ITEM, IT_SHEEPSKIN, 1, 0, 0 },
+    { IT_WOLF,  1, IT_NONE, 0, OUT_ITEM, IT_SHEEPSKIN, 2, 0, 0 },
+    { IT_BREAD, 3, IT_NONE, 0, OUT_ITEM, IT_SHEEP,     1, 0, 0 },
+    { IT_FISH,  6, IT_NONE, 0, OUT_ITEM, IT_SHEEP,     1, 0, 0 },
+    { IT_WASTE, 2, IT_NONE, 0, OUT_ITEM, IT_MILK,      1, 0, 0 },
+};
+
+static const char *const NAMES[VILLAGES] = { "Hunters' village", "Herders' village" };
+
+Vector3 VillageCenter(int v)
+{
+    float x = v == VIL_HUNTERS ? HUNTERS_X : HERDERS_X, z = v == VIL_HUNTERS ? HUNTERS_Z : HERDERS_Z;
+    return (Vector3){ x, TerrainHeight(x, z), z };
+}
+
+const char *VillageName(int v)
+{
+    return L(NAMES[v == VIL_HERDERS ? VIL_HERDERS : VIL_HUNTERS]);
+}
+
+// The sheepfold, where the herders' flock wanders.
+Rectangle FoldArea(void)
+{
+    return (Rectangle){ HERDERS_X + 3.0f, HERDERS_Z - 6.0f, 14.0f, 12.0f };
+}
+
+static float Ground(float x, float z)
+{
+    return TerrainHeight(x, z);
+}
+
+static void Post(float x, float z, float h, Color c)
+{
+    AddShape(x, Ground(x, z) - 0.1f, z, 0.14f, h + 0.1f, 0.14f, c, true, SHAPE_CYL);
+}
+
+// A wattle fence that follows the slope, one short panel at a time.
+static void FenceOn(float x0, float z0, float x1, float z1)
+{
+    const Color wattle = { 150, 130, 82, 255 };
+    float len = Vector2Distance((Vector2){ x0, z0 }, (Vector2){ x1, z1 });
+    int n = (int)ceilf(len / 2.0f);
+
+    for (int k = 0; k < n; k++) {
+        float ta = (float)k / (float)n, tb = (float)(k + 1) / (float)n;
+        float ax = Lerp(x0, x1, ta), az = Lerp(z0, z1, ta), bx = Lerp(x0, x1, tb), bz = Lerp(z0, z1, tb);
+        float w = fmaxf(fabsf(bx - ax), 0.12f), d = fmaxf(fabsf(bz - az), 0.12f);
+        AddBoxOn((ax + bx) / 2, (az + bz) / 2, w, 0.9f, d, wattle, true);
+        AddShape(ax, Ground(ax, az) - 0.1f, az, 0.17f, 1.25f, 0.17f, COL_WOOD, false, SHAPE_CYL);
+    }
+    AddShape(x1, Ground(x1, z1) - 0.1f, z1, 0.17f, 1.25f, 0.17f, COL_WOOD, false, SHAPE_CYL);
+}
+
+static void FirePit(float x, float z)
+{
+    float y = Ground(x, z);
+    for (int k = 0; k < 8; k++) {
+        float a = (float)k * 2.0f * PI / 8.0f;
+        AddShape(x + cosf(a) * 0.85f, y - 0.05f, z + sinf(a) * 0.85f, 0.36f, 0.3f, 0.32f, COL_STONE, false, SHAPE_BLOB);
+    }
+    AddBox(x, y, z, 1.0f, 0.12f, 0.2f, COL_WOOD, false);
+    AddBox(x, y, z, 0.2f, 0.12f, 1.0f, COL_WOOD, false);
+    AddGlow(x, y + 0.12f, z, 0.55f, 0.35f, 0.55f, COL_FIRE);
+    AddGlow(x, y + 0.3f, z, 0.3f, 0.45f, 0.3f, (Color){ 255, 214, 120, 255 });
+    AddFireLight(x, y + 0.5f, z);
+}
+
+// A conical hide tent with its door toward (fx, fz).
+static void HideTent(float x, float z, float r, Color hide, float fx, float fz)
+{
+    float y = Ground(x, z);
+    Vector2 to = Vector2Normalize((Vector2){ fx - x, fz - z });
+
+    AddShape(x, y - 0.2f, z, 2.0f * r, 3.4f, 2.0f * r, hide, true, SHAPE_CONE);
+    AddShape(x, y + 0.9f, z, 2.0f * r * 0.74f, 0.12f, 2.0f * r * 0.74f, Mix(hide, COL_MUD_DARK, 0.4f), false, SHAPE_CYL);
+    for (int k = 0; k < 3; k++) {
+        float a = (float)k * 2.1f;
+        AddShape(x + cosf(a) * 0.14f, y + 2.8f, z + sinf(a) * 0.14f, 0.08f, 1.0f, 0.08f, COL_WOOD, false, SHAPE_CYL);
+    }
+    AddBox(x + to.x * r * 0.62f, y - 0.05f, z + to.y * r * 0.62f, 0.9f, 1.45f, 0.9f, COL_DOORWAY, false);
+}
+
+static void DryingRack(float x, float z, bool alongX)
+{
+    static const Color hides[3] = { { 128, 122, 112, 255 }, { 150, 108, 70, 255 }, { 192, 142, 84, 255 } };
+    float y = Ground(x, z), dx = alongX ? 1.5f : 0.0f, dz = alongX ? 0.0f : 1.5f;
+
+    Post(x - dx, z - dz, 2.2f, COL_WOOD);
+    Post(x + dx, z + dz, 2.2f, COL_WOOD);
+    AddBox(x, y + 2.0f, z, alongX ? 3.2f : 0.1f, 0.1f, alongX ? 0.1f : 3.2f, COL_WOOD, false);
+    for (int k = 0; k < 3; k++) {
+        float o = ((float)k - 1.0f) * 0.95f;
+        AddBox(x + (alongX ? o : 0.0f), y + 1.05f, z + (alongX ? 0.0f : o), alongX ? 0.8f : 0.05f, 0.95f, alongX ? 0.05f : 0.8f, hides[k], false);
+    }
+}
+
+// Strips of meat over a smouldering bed.
+static void SmokeRack(float x, float z)
+{
+    float y = Ground(x, z);
+    for (int k = 0; k < 4; k++) Post(x + ((k & 1) ? 1.1f : -1.1f), z + ((k & 2) ? 0.6f : -0.6f), 1.2f, COL_WOOD);
+    AddBox(x, y + 1.1f, z - 0.6f, 2.4f, 0.08f, 0.08f, COL_WOOD, false);
+    AddBox(x, y + 1.1f, z + 0.6f, 2.4f, 0.08f, 0.08f, COL_WOOD, false);
+    for (int k = 0; k < 5; k++) AddBox(x - 0.9f + 0.45f * (float)k, y + 0.85f, z, 0.14f, 0.45f, 1.2f, (Color){ 140, 62, 44, 255 }, false);
+    AddGlow(x, y + 0.02f, z, 1.6f, 0.08f, 0.8f, (Color){ 200, 80, 30, 255 });
+}
+
+// A straw butt with painted rings, facing east.
+static void ArcheryButt(float x, float z)
+{
+    float y = Ground(x, z);
+    AddBoxOn(x, z, 0.5f, 1.5f, 1.4f, COL_STRAW, true);
+    AddBox(x + 0.26f, y + 0.45f, z, 0.03f, 0.9f, 0.9f, COL_LINEN, false);
+    AddBox(x + 0.28f, y + 0.65f, z, 0.03f, 0.5f, 0.5f, COL_BLANKET, false);
+    AddBox(x + 0.3f, y + 0.8f, z, 0.03f, 0.2f, 0.2f, COL_LINEN, false);
+}
+
+static void Woodpile(float x, float z)
+{
+    float y = Ground(x, z);
+    for (int k = 0; k < 3; k++) AddBox(x, y + 0.22f * (float)k, z + 0.1f * (float)k, 2.0f - 0.3f * (float)k, 0.22f, 0.9f, COL_PALM_TRUNK, true);
+}
+
+static void BuildHunters(void)
+{
+    const float cx = HUNTERS_X, cz = HUNTERS_Z;
+    static const float tents[5][3] = { { -10, -9, 2.0f }, { 1, -14, 2.2f }, { 12, -8, 1.9f }, { 12, 9, 2.1f }, { 0, 14, 2.0f } };
+    static const Color hide[2] = { { 150, 116, 80, 255 }, { 120, 92, 64, 255 } };
+
+    FirePit(cx, cz);
+    for (int k = 0; k < 5; k++) HideTent(cx + tents[k][0], cz + tents[k][1], tents[k][2], hide[k & 1], cx, cz);
+    DryingRack(cx - 7, cz + 8, true);
+    DryingRack(cx + 6, cz + 3, false);
+    SmokeRack(cx + 5, cz - 5);
+    Woodpile(cx + 16, cz + 1);
+    ArcheryButt(cx - 22, cz - 12);
+    for (int k = 0; k < 3; k++) {
+        float x = cx - 13 + 1.1f * (float)k, z = cz + 13 - 0.4f * (float)k;
+        AddShape(x, Ground(x, z) - 0.05f, z, 0.5f, 0.55f, 0.5f, COL_POT, true, SHAPE_BLOB);
+    }
+
+    // The hunter's stall faces the road: a bench of pelts and a pole hung with antlers.
+    float sx = cx - 7, sz = cz - 2, sy = Ground(sx, sz);
+    AddBoxOn(sx, sz, 0.9f, 0.75f, 2.2f, COL_WOOD, true);
+    AddBox(sx, sy + 0.75f, sz - 0.5f, 0.8f, 0.08f, 0.9f, (Color){ 128, 122, 112, 255 }, false);
+    AddBox(sx, sy + 0.75f, sz + 0.5f, 0.7f, 0.1f, 0.8f, (Color){ 150, 108, 70, 255 }, false);
+    Post(sx, sz + 1.7f, 2.0f, COL_WOOD);
+    AddBox(sx, sy + 2.0f, sz + 1.7f, 0.06f, 0.06f, 0.9f, COL_LINEN, false);
+    AddBox(sx, sy + 2.2f, sz + 1.7f, 0.7f, 0.4f, 0.06f, COL_LINEN, false);
+
+    G.traders[TR_HUNTER] = (Trader){ "Hunter", "Pelts, meat and arrows. Bring me game and I'll treat you fairly.",
+                                     { sx + 1.1f, Ground(sx + 1.1f, sz), sz }, -PI / 2, { 112, 84, 52, 255 }, HUNTER, COUNT(HUNTER), false, false, { .hp = 0 } };
+
+    AddTorch(cx - 15, Ground(cx - 15, cz + 7), cz + 7, true);
+    AddTorch(cx + 7, Ground(cx + 7, cz - 15), cz - 15, true);
+    AddTorch(cx + 6, Ground(cx + 6, cz + 15), cz + 15, true);
+    KeepOut(cx - 24, cz - 18, cx + 19, cz + 18);
+
+    const Color tan = { 150, 116, 76, 255 }, green = { 96, 104, 62, 255 };
+    AddNpc(NPC_VILLAGER, (Vector3){ cx - 4, Ground(cx - 4, cz + 5), cz + 5 }, (Vector3){ cx + 9, Ground(cx + 9, cz + 5), cz + 5 }, 0.6f, tan, 0);
+    AddNpc(NPC_VILLAGER, (Vector3){ cx - 3, Ground(cx - 3, cz - 8), cz - 8 }, (Vector3){ cx - 3, Ground(cx - 3, cz + 10), cz + 10 }, 0.5f, green, 0);
+    float ax = cx - 13, az = cz - 12;
+    AddNpc(NPC_VILLAGER, (Vector3){ ax, Ground(ax, az), az }, (Vector3){ ax, Ground(ax, az), az }, 0, green, -PI / 2);
+}
+
+// A low mud-brick house with a flat roof and its door toward (fx, fz).
+static void MudHouse(float x, float z, float w, float d, Color c, float fx, float fz)
+{
+    float y = Ground(x, z), h = 2.7f;
+    AddBoxOn(x, z, w, h, d, c, true);
+    AddBox(x, y + h - 0.05f, z, w + 0.2f, 0.2f, d + 0.2f, Mix(c, COL_MUD_DARK, 0.35f), false);
+    bool side = fabsf(fx - x) > fabsf(fz - z);
+    float dx = side ? (fx > x ? w / 2 : -w / 2) : 0.0f, dz = side ? 0.0f : (fz > z ? d / 2 : -d / 2);
+    AddBox(x + dx, y - 0.1f, z + dz, side ? 0.12f : 1.0f, 2.0f, side ? 1.0f : 0.12f, COL_DOORWAY, false);
+    AddBox(x + dx * 1.02f, y + 1.9f, z + dz * 1.02f, side ? 0.18f : 1.3f, 0.16f, side ? 1.3f : 0.18f, COL_WOOD, false);
+}
+
+static void BuildHerders(void)
+{
+    const float cx = HERDERS_X, cz = HERDERS_Z;
+    Rectangle f = FoldArea();
+    const Color wool = { 236, 230, 214, 255 };
+
+    MudHouse(cx - 13, cz - 7, 5.0f, 4.4f, COL_HOUSE, cx, cz);
+    MudHouse(cx - 14, cz + 6, 4.6f, 5.0f, COL_MUD_PALE, cx, cz);
+    MudHouse(cx - 3, cz + 12, 5.2f, 4.2f, COL_HOUSE_DARK, cx, cz);
+    MudHouse(cx + 7, cz - 12, 4.4f, 4.4f, COL_WALL, cx, cz);
+
+    // The fold, open on the side toward the houses.
+    FenceOn(f.x, f.y, f.x + f.width, f.y);
+    FenceOn(f.x, f.y + f.height, f.x + f.width, f.y + f.height);
+    FenceOn(f.x + f.width, f.y, f.x + f.width, f.y + f.height);
+    FenceOn(f.x, f.y, f.x, f.y + 4.5f);
+    FenceOn(f.x, f.y + f.height - 4.5f, f.x, f.y + f.height);
+    float tx = f.x + f.width - 2.0f, tz = f.y + 1.6f;
+    AddBoxOn(tx, tz, 2.4f, 0.4f, 0.8f, COL_WOOD, true);
+    AddBox(tx, Ground(tx, tz) + 0.4f, tz, 2.0f, 0.02f, 0.5f, COL_WATER, false);
+    float hx = f.x + f.width - 2.2f, hz = f.y + f.height - 2.2f;
+    AddShape(hx, Ground(hx, hz) - 0.3f, hz, 2.2f, 1.6f, 2.0f, COL_STRAW, false, SHAPE_BLOB);
+
+    // Bales of wool and a shearing bench by the gate.
+    for (int k = 0; k < 4; k++) {
+        float x = cx - 1.5f + 0.9f * (float)(k % 2), z = cz + 3.0f + 0.9f * (float)(k / 2);
+        AddBoxOn(x, z, 0.8f, 0.6f, 0.8f, wool, true);
+    }
+    AddBoxOn(cx - 1, cz - 4, 1.8f, 0.5f, 0.7f, COL_WOOD, true);
+    FirePit(cx - 7, cz);
+
+    G.traders[TR_SHEPHERD] = (Trader){ "Shepherd", "The only fleeces this side of the hills. Wolves are the bane of my flock.",
+                                       { cx + 0.5f, Ground(cx + 0.5f, cz - 3), cz - 3 }, PI, { 168, 150, 110, 255 }, SHEPHERD, COUNT(SHEPHERD), false, false, { .hp = 0 } };
+
+    AddTorch(cx - 9, Ground(cx - 9, cz - 10), cz - 10, true);
+    AddTorch(cx - 9, Ground(cx - 9, cz + 10), cz + 10, true);
+    AddTorch(f.x - 0.8f, Ground(f.x - 0.8f, cz + 2), cz + 2, true);
+    KeepOut(cx - 18, cz - 16, f.x + f.width + 2, cz + 16);
+
+    for (int i = 0; i < MAX_FLOCK; i++) {
+        float x = RandF(f.x + 1, f.x + f.width - 1), z = RandF(f.y + 1, f.y + f.height - 1);
+        G.flock[i] = (Wanderer){ { x, Ground(x, z), z }, RandF(-PI, PI), RandF(1, 3), 0 };
+    }
+
+    const Color brown = { 140, 110, 80, 255 }, pale = { 200, 186, 150, 255 };
+    AddNpc(NPC_VILLAGER, (Vector3){ f.x - 1.5f, Ground(f.x - 1.5f, f.y), f.y }, (Vector3){ f.x - 1.5f, Ground(f.x - 1.5f, f.y + f.height), f.y + f.height }, 0.5f, brown, 0);
+    AddNpc(NPC_VILLAGER, (Vector3){ cx - 10, Ground(cx - 10, cz - 3), cz - 3 }, (Vector3){ cx - 10, Ground(cx - 10, cz + 9), cz + 9 }, 0.45f, pale, 0);
+}
+
+// Travellers walk whole roads back and forth, day and night, carrying torches after dark.
+static void Traveller(int road, float t, float dir, float speed, Color robe)
+{
+    int i = AddNpc(NPC_TRAVELLER, (Vector3){ 0 }, (Vector3){ 0 }, speed, robe, 0);
+    if (i < 0) return;
+    G.villagers[i].road = road;
+    G.villagers[i].t = t;
+    G.villagers[i].dir = dir;
+    G.villagers[i].side = -dir;
+}
+
+void BuildVillages(void)
+{
+    BuildHunters();
+    BuildHerders();
+    Traveller(ROAD_EAST, 0.2f, 1.0f, 1.2f, (Color){ 150, 120, 84, 255 });
+    Traveller(ROAD_EAST, 0.75f, -1.0f, 1.0f, (Color){ 120, 96, 120, 255 });
+    Traveller(ROAD_HERDERS, 0.5f, 1.0f, 1.1f, (Color){ 176, 160, 120, 255 });
+    Traveller(ROAD_SOUTH, 0.35f, 1.0f, 1.15f, (Color){ 110, 120, 140, 255 });
+    Traveller(ROAD_NORTH, 0.3f, 1.0f, 1.0f, (Color){ 160, 110, 80, 255 });
+}

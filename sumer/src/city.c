@@ -192,8 +192,6 @@ void BuildCity(void)
     KeepOut(-40, -94, -34, 6);
 
     AddBox(0, 0, 38, 7, 0.03f, 88, COL_ROAD, false);
-    AddBox(0, 0, (92 + WORLD_LIMIT) / 2, 6, 0.05f, WORLD_LIMIT - 92, COL_ROAD, false);
-    KeepOut(-4, 92, 4, WORLD_HALF);
 
     Field(-62, 96, -10, 136);
     Field(10, 96, 62, 136);

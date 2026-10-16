@@ -35,6 +35,8 @@ const ItemDef ITEMS[IT_COUNT] = {
     [IT_WATER]   = { "Water bucket", 2, 0,  {  70, 130, 160, 255 } },
     [IT_WASTE]   = { "Plant waste", 10, 0,  { 140, 120,  70, 255 } },
     [IT_HEN]     = { "Hen",          2, 0,  { 220, 200, 170, 255 } },
+    [IT_HERB]    = { "Herbs",       10, 0,  { 120, 170,  96, 255 } },
+    [IT_SHEEP]   = { "Sheep",        1, 0,  { 226, 220, 204, 255 } },
 };
 
 const char *const BOW_NAMES[3] = { "Hunting bow", "Recurve bow", "Composite bow" };
@@ -202,6 +204,21 @@ bool EatSlot(int slot)
     return true;
 }
 
+// A mouthful of herbs heals a little at once and then keeps healing for a while.
+bool UseHerb(void)
+{
+    if (BagCount(IT_HERB) == 0) return false;
+    if (G.health >= HEALTH_MAX - 0.5f) {
+        Say("You are not hurt.");
+        return false;
+    }
+    BagRemove(IT_HERB, 1);
+    G.health = fminf(HEALTH_MAX, G.health + HERB_BURST);
+    G.herbT = HERB_SECONDS;
+    Say("You chew the herbs. Your wounds close quickly for a while.");
+    return true;
+}
+
 const char *OfferOutput(const Offer *o)
 {
     static char buf[128];
@@ -218,6 +235,7 @@ const char *OfferOutput(const Offer *o)
         break;
     case OUT_WEAPON: Fmt(buf, sizeof(buf), "%s", WeaponName(o->out)); break;
     case OUT_ARMOR:  Fmt(buf, sizeof(buf), "%s", ArmorName(o->out)); break;
+    case OUT_MACE:   Fmt(buf, sizeof(buf), "%s (hits all in front, key 4)", MaceName()); break;
     }
     return buf;
 }
@@ -298,6 +316,12 @@ bool OfferCheck(const Offer *o, const char **why)
             return false;
         }
         break;
+    case OUT_MACE:
+        if (G.hasMace) {
+            Fmt(reason, sizeof(reason), "You already have one");
+            return false;
+        }
+        break;
     }
     reason[0] = '\0';
     return true;
@@ -329,6 +353,9 @@ bool OfferApply(const Offer *o)
     case OUT_ARMOR:
         G.armorOwned |= 1 << o->out;
         if (ArmorReduction(o->out) > ArmorReduction(G.armor)) G.armor = o->out;
+        break;
+    case OUT_MACE:
+        G.hasMace = true;
         break;
     }
     return true;

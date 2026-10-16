@@ -5,8 +5,8 @@
 #include "raymath.h"
 #include <stdbool.h>
 
-#define WORLD_HALF      360.0f
-#define WORLD_LIMIT     354.0f
+#define WORLD_HALF      540.0f
+#define WORLD_LIMIT     534.0f
 #define HOUR_SECONDS    10.0f
 #define STEP_HEIGHT     0.55f
 #define PLAYER_RADIUS   0.4f
@@ -18,38 +18,41 @@
 #define CITY_A          100.0f
 #define CITY_B          84.0f
 #define WALL_TOP        6.5f
-#define CAMPS           2
+#define CAMPS           4
+#define EAST_CAMPS      2
 #define RIVER_X0        (-150.0f)
 #define RIVER_X1        (-128.0f)
-#define FORD_Z0         (-338.0f)
-#define FORD_Z1         (-326.0f)
+#define FORD_Z0         (-518.0f)
+#define FORD_Z1         (-506.0f)
 #define SEASON_DAYS     9
 #define WATER_DAYS      6.0f
 #define HEN_LIFE_DAYS   108.0f
 #define STARVE_DAYS     6.0f
 #define FEED_MAX        30.0f
 
-#define MAX_BOXES       9500
-#define MAX_RES         320
-#define MAX_ANIMALS     48
+#define MAX_BOXES       20000
+#define MAX_RES         512
+#define MAX_ANIMALS     96
 #define MAX_ARROWS      40
 #define MAX_PLOTS       15
 #define MAX_HENS        5
 #define MAX_COWS        3
 #define MAX_SHEEP       3
-#define MAX_RAIDERS     8
+#define MAX_FLOCK       8
+#define MAX_RAIDERS     16
 #define MAX_LADDERS     8
-#define MAX_FIGHTERS    96
-#define MAX_VILLAGERS   32
+#define MAX_FIGHTERS    128
+#define MAX_VILLAGERS   48
 #define MAX_WORKERS     16
 #define MAX_CARAVANS    2
+#define CARAVAN_GUARDS  2
 #define MAX_STARS       90
 #define MAX_TORCHES     176
-#define MAX_DYN_LIGHTS  16
+#define MAX_DYN_LIGHTS  24
 #define MAX_PARTICLES   192
 #define TRAIL_POINTS    16
 #define SAVE_SLOTS      3
-#define GROUND_TILES    120
+#define GROUND_TILES    180
 #define TILE_SIZE       6.0f
 #define BAG_START       6
 #define BAG_MAX         12
@@ -58,6 +61,9 @@
 #define QUIVER_BIG      20
 #define FOOD_MAX        100.0f
 #define HEALTH_MAX      100.0f
+#define HERB_BURST      10.0f
+#define HERB_RATE       2.5f
+#define HERB_SECONDS    20.0f
 
 #define COL_MUD         CLITERAL(Color){ 172, 128,  86, 255 }
 #define COL_MUD_LIGHT   CLITERAL(Color){ 186, 142,  98, 255 }
@@ -101,7 +107,7 @@ typedef enum {
     IT_NONE, IT_DATES, IT_REEDS, IT_SEEDS, IT_WHEAT, IT_FLOUR, IT_MILK, IT_DOUGH, IT_BREAD,
     IT_EGG, IT_ROAST, IT_ARROWS, IT_GAZELLE, IT_ONAGER, IT_BOAR, IT_GOOSE, IT_WOLF,
     IT_CLAY, IT_POT, IT_WOOD, IT_COPPER, IT_TIN, IT_BRONZE, IT_FISH, IT_GRILLED, IT_COWHIDE, IT_SHEEPSKIN,
-    IT_BUCKET, IT_WATER, IT_WASTE, IT_HEN, IT_COUNT
+    IT_BUCKET, IT_WATER, IT_WASTE, IT_HEN, IT_HERB, IT_SHEEP, IT_COUNT
 } ItemId;
 
 typedef struct { const char *name; int stack; int food; Color color; } ItemDef;
@@ -109,24 +115,25 @@ typedef struct { int item, count; } Slot;
 
 enum { TOOL_AXE = 1, TOOL_PICK = 2, TOOL_ARROWHEADS = 4 };
 
-typedef enum { OUT_ITEM, OUT_HEN, OUT_BASKET, OUT_BOW, OUT_QUIVER, OUT_TOOL, OUT_WEAPON, OUT_ARMOR } OutKind;
-enum { EQ_NONE, EQ_BOW, EQ_MELEE };
+typedef enum { OUT_ITEM, OUT_HEN, OUT_BASKET, OUT_BOW, OUT_QUIVER, OUT_TOOL, OUT_WEAPON, OUT_ARMOR, OUT_MACE } OutKind;
+enum { EQ_NONE, EQ_BOW, EQ_MELEE, EQ_MACE };
 enum { ARMOR_NONE, ARMOR_WOLF, ARMOR_LEATHER, ARMOR_BRONZE, ARMOR_KINDS };
 enum { SHAPE_BOX, SHAPE_CYL, SHAPE_BLOB, SHAPE_CONE };
 typedef struct { int in1, n1, in2, n2; OutKind kind; int out, nOut; int in3, n3; } Offer;
 
 typedef struct { Vector3 pos, size; Color color; bool solid, water, glow; float torch; unsigned char shape; } Box;
 
-typedef enum { RES_PALM, RES_REEDS, RES_TREE, RES_CLAY, RES_ORE, RES_FISH, RES_KINDS } ResKind;
+typedef enum { RES_PALM, RES_REEDS, RES_TREE, RES_CLAY, RES_ORE, RES_FISH, RES_HERB, RES_KINDS } ResKind;
 typedef struct { Vector3 pos; ResKind kind; float regrow, spin; bool farm; } Resource;
 
-typedef enum { AN_GAZELLE, AN_ONAGER, AN_BOAR, AN_GOOSE, AN_WOLF, AN_TYPES } AnimalType;
+typedef enum { AN_GAZELLE, AN_ONAGER, AN_BOAR, AN_GOOSE, AN_WOLF, AN_SNAKE, AN_TYPES } AnimalType;
+// ST_HUNT: a wolf pack hunting, a wounded boar charging, a snake striking.
 typedef enum { ST_CALM, ST_ALERT, ST_FLEE, ST_DEAD, ST_HUNT } AnimalState;
 
 typedef struct {
     AnimalType type;
     AnimalState state;
-    Vector3 pos;
+    Vector3 pos, lair;
     float heading, speed, timer, awareness, respawn, bite;
     int hp, arrowsIn, pack;
     bool active;
@@ -146,7 +153,7 @@ typedef enum { PLOT_EMPTY, PLOT_WHEAT, PLOT_SAPLING, PLOT_PALM, PLOT_DEAD } Plot
 typedef struct { Vector3 pos; PlotState state; float growth, dry; } Plot;
 
 typedef struct { Vector3 pos; float heading, timer, speed; } Wanderer;
-typedef enum { ROLE_CIVILIAN, ROLE_WORKER, ROLE_CLERIC, ROLE_MERCHANT, ROLE_GUARD, ROLE_RAIDER, ROLE_COUNT } Role;
+typedef enum { ROLE_CIVILIAN, ROLE_WORKER, ROLE_CLERIC, ROLE_MERCHANT, ROLE_GUARD, ROLE_RAIDER, ROLE_BARBARIAN, ROLE_COUNT } Role;
 
 // Combat state shared by every person; while 'override' is set, 'at' replaces their scripted position.
 typedef struct {
@@ -160,8 +167,9 @@ typedef struct {
 
 enum { MARK_NONE, MARK_WARN, MARK_PARRIED, MARK_HIT };
 
-typedef enum { NPC_CIVILIAN, NPC_GUARD, NPC_CLERIC } NpcKind;
-typedef struct { Vector3 a, b; float t, dir, speed; Color robe; NpcKind kind; float face, side; bool moving, templePost; Vitals vit; } Villager;
+typedef enum { NPC_CIVILIAN, NPC_GUARD, NPC_CLERIC, NPC_VILLAGER, NPC_TRAVELLER } NpcKind;
+// Walks the straight lane a-b, or the whole of road 'road' when it is 0 or more.
+typedef struct { Vector3 a, b; float t, dir, speed; Color robe; NpcKind kind; float face, side; bool moving, templePost; Vitals vit; int road; } Villager;
 typedef struct { Vector3 home, pos; float face, timer, speed, respawnDay; bool moving; int camp; Vitals vit; } Raider;
 typedef struct { Vector3 wall, base, n; float top; } Ladder;
 
@@ -183,10 +191,10 @@ typedef struct {
     int points, trader;
     float s, length, timer, blockedT, pushT;
     Color robe, cloth;
-    Vitals vit[2];
+    Vitals vit[1 + CARAVAN_GUARDS];
 } Caravan;
 
-typedef enum { TR_BOWYER, TR_FARMER, TR_WEAVER, TR_HERDER, TR_SMITH, TR_DILMUN, TR_ELAM, TR_COUNT } TraderId;
+typedef enum { TR_BOWYER, TR_FARMER, TR_WEAVER, TR_HERDER, TR_SMITH, TR_HUNTER, TR_SHEPHERD, TR_DILMUN, TR_ELAM, TR_COUNT } TraderId;
 
 typedef struct {
     const char *name, *greeting;
@@ -201,7 +209,7 @@ typedef struct {
 
 typedef enum {
     STN_BED, STN_STORAGE, STN_QUERN, STN_TROUGH, STN_OVEN, STN_KILN, STN_SMELTER, STN_BENCH, STN_ALTAR, STN_STASH, STN_STASH2,
-    STN_WELL, STN_DITCH, STN_FERRY_E, STN_FERRY_W, STN_COUNT
+    STN_STASH3, STN_STASH4, STN_WELL, STN_DITCH, STN_FERRY_E, STN_FERRY_W, STN_COUNT
 } StationId;
 typedef enum { PANEL_NONE, PANEL_BAG, PANEL_STORAGE, PANEL_TRADE, PANEL_PAUSE, PANEL_HELP, PANEL_COOP } Panel;
 typedef enum { TGT_NONE, TGT_CARCASS, TGT_RES, TGT_STATION, TGT_PLOT, TGT_COOP, TGT_TRADER, TGT_BODY, TGT_OFFER, TGT_LADDER, TGT_WATER } TargetKind;
@@ -236,6 +244,7 @@ typedef struct {
     int seasonSeen, slaughterHen, slaughterStep;
     Wanderer cows[MAX_COWS];
     Wanderer sheep[MAX_SHEEP];
+    Wanderer flock[MAX_FLOCK];
     Raider raiders[MAX_RAIDERS];
     Slot stash[CAMPS][4];
     int stashDay;
@@ -275,7 +284,8 @@ typedef struct {
     int bagSlots;
     Slot store[STORE_SLOTS];
     int quiver, quiverMax, bow, tools, weapon;
-    float swingT, swingCool, hitMarkT, impactT;
+    bool hasMace;
+    float swingT, swingCool, hitMarkT, impactT, herbT, snakeWarn;
     Vector3 impact;
     int followArrow;
     float followT, camBlend;
@@ -317,9 +327,11 @@ void DrawShadedBox(Vector3 c, Vector3 s, Color col);
 void DrawGlowBox(Vector3 c, Vector3 s, Color col);
 void DrawShadedCylinder(Vector3 base, float rx, float rz, float h, float topScale, int sides, Color col);
 void DrawShadedBlob(Vector3 c, Vector3 r, Color col);
+void DrawShadedBlobFar(Vector3 c, Vector3 r, Color col);
 void DrawHuman(Vector3 pos, float facing, float stride, Look look, bool crouch, bool bow, float draw);
 
 void AddTorch(float x, float y, float z, bool pole);
+void AddFireLight(float x, float y, float z);
 void BuildLights(void);
 void UpdateLights(void);
 float TorchLightAt(Vector3 p);
@@ -336,6 +348,8 @@ void UpdateEffects(float dt);
 void DrawEffects(void);
 
 enum { OWNER_PLAYER = 1, OWNER_VILLAGER = 1000, OWNER_WORKER = 2000, OWNER_TRADER = 3000, OWNER_CARAVAN = 4000, OWNER_RAIDER = 5000 };
+// Each caravan member has its own id, so a raider fighting one guard does not chase the other.
+#define CARAVAN_OWNER(c, k) (OWNER_CARAVAN + (c) * 8 + (k))
 void CollectBodies(void);
 Vector2 PushOutBodies(Vector2 p, float r, int self);
 bool BodyAhead(Vector3 from, Vector3 to, float r, int self);
@@ -353,10 +367,32 @@ void RememberSlot(void);
 int LastSlot(void);
 
 float TerrainHeight(float x, float z);
+float MeshHeight(float x, float z);
 float RayTerrain(Vector3 o, Vector3 dir, float maxT);
 float Fertility(float x, float z);
+bool WestBank(float x);
 void BuildTerrain(void);
 void DrawGround(void);
+float GroundTorch(float x, float z);
+
+// Main roads outside the walls; city streets are only drawn on the map.
+enum { ROAD_SOUTH, ROAD_EAST, ROAD_HERDERS, ROAD_NORTH, ROAD_FERRY, ROAD_WEST_NORTH, ROAD_WEST_SOUTH, ROADS };
+void BuildRoads(void);
+void DrawRoads(void);
+float RoadDistance(float x, float z);
+float RoadLength(int road);
+Vector3 RoadPoint(int road, float s, Vector3 *dir);
+void DrawRoadMap(float mx, float mz, float scale);
+
+#define HUNTERS_X       440.0f
+#define HUNTERS_Z       20.0f
+#define HERDERS_X       (-62.0f)
+#define HERDERS_Z       425.0f
+enum { VIL_HUNTERS, VIL_HERDERS, VILLAGES };
+void BuildVillages(void);
+Vector3 VillageCenter(int v);
+const char *VillageName(int v);
+Rectangle FoldArea(void);
 
 bool InsideWalls(float x, float z, float margin);
 void BuildCity(void);
@@ -371,6 +407,7 @@ void AddBox(float x, float y0, float z, float w, float h, float d, Color c, bool
 void AddBoxOn(float x, float z, float w, float h, float d, Color c, bool solid);
 void AddShape(float x, float y0, float z, float w, float h, float d, Color c, bool solid, int shape);
 void AddWater(float x0, float z0, float x1, float z1);
+void AddPond(float cx, float cz, float rx, float rz);
 void AddGlow(float x, float y0, float z, float w, float h, float d, Color c);
 void AddTree(float x, float z, float scale, bool poplar);
 void KeepOut(float x0, float z0, float x1, float z1);
@@ -402,6 +439,7 @@ int GiveArrows(int n);
 void RefillQuiver(void);
 void RefillQuiverFromStore(void);
 bool EatSlot(int slot);
+bool UseHerb(void);
 bool OfferCheck(const Offer *o, const char **why);
 bool OfferApply(const Offer *o);
 const char *OfferOutput(const Offer *o);
@@ -431,13 +469,17 @@ float BowSpeed(void);
 const char *AnimalName(int type);
 int CarcassItem(int type);
 float AnimalTop(const Animal *a);
+bool AnimalHidden(const Animal *a);
 bool AnyWolfHunting(void);
+bool AnyBeastAttacking(void);
 void CalmWolves(void);
 int AnimalMaxHp(int type);
 void MeleeStrike(void);
 const char *WeaponName(int tier);
+const char *MaceName(void);
 
 void BuildVillage(void);
+int AddNpc(NpcKind kind, Vector3 a, Vector3 b, float speed, Color robe, float face);
 void UpdateVillage(float dt);
 void AdvanceHours(float h);
 void DrawVillage(void);
@@ -449,6 +491,8 @@ void UpdateCombat(float dt);
 void DamagePerson(int i, float dmg);
 int PersonOnSegment(Vector3 a, Vector3 b);
 int PersonInFront(Vector3 chest, Vector3 fwd, float range, float *dist);
+int PeopleInArc(Vector3 chest, Vector3 fwd, float range, float minDot, int *out, int max);
+bool FighterIsFoe(int i);
 int FighterCount(void);
 bool FighterInfo(int i, Vector3 *pos, float *hp, float *maxHp, const char **name, bool *hostile, bool *dead);
 int FighterMark(int i);
@@ -460,6 +504,7 @@ void UpdateRaiders(float dt);
 void DrawRaiders(void);
 void StashPrompt(int camp, char *buf, int size, bool *ok);
 void TakeStash(int camp);
+int StashCamp(int station);
 Vector3 CampCenter(int camp);
 void StationPrompt(int s, char *buf, int size, bool *ok);
 void UseStation(int s);
@@ -500,8 +545,8 @@ void BlessPrompt(char *buf, int size, bool *ok);
 void SpringRespawn(void);
 int CityFarmCount(void);
 Vector3 CityFarmSpot(int i);
-unsigned long long AnimalsAwaitingSpring(void);
-void HoldAnimalsForSpring(unsigned long long mask);
+void AnimalsAwaitingSpring(unsigned char *mask, int bytes);
+void HoldAnimalsForSpring(const unsigned char *mask, int bytes);
 void ForgePrompt(char *buf, int size, bool *ok);
 void UseForge(void);
 void CloakPrompt(char *buf, int size, bool *ok);

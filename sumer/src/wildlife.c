@@ -2,12 +2,24 @@
 #include "rlgl.h"
 #include <math.h>
 #include <stddef.h>
+#include <string.h>
 
 #define ARROW_GRAVITY  5.0f
 #define ALERT_LEVEL    0.45f
 #define CALM_LEVEL     0.25f
 #define WOLF_BITE      6.0f
 #define BITE_COOLDOWN  2.0f
+#define BOAR_GORE      10.0f
+#define GORE_COOLDOWN  1.7f
+#define CHARGE_TIME    15.0f
+#define SNAKE_BITE     8.0f
+#define SNAKE_COOLDOWN 2.4f
+#define SNAKE_HISS     0.8f
+#define CLOSE_LANDING  6.0f
+#define CLOSE_FLYBY    3.0f
+#define MACE_DAMAGE    30
+#define MACE_REACH     2.9f
+#define MACE_ARC       0.2f
 
 typedef struct {
     const char *name;
@@ -28,26 +40,38 @@ static const AnimalDef DEFS[AN_TYPES] = {
     [AN_ONAGER]  = { "Onager", { 0.55f, 0.62f, 1.6f }, 0.85f, { 172, 150, 126, 255 }, { 84, 70, 58, 255 },
                      1.6f, 8.8f, 32.0f, 1.0f, 0.55f, 40, IT_ONAGER, false, false },
     [AN_BOAR]    = { "Boar", { 0.55f, 0.55f, 1.2f }, 0.36f, { 82, 66, 56, 255 }, { 46, 38, 32, 255 },
-                     1.0f, 6.0f, 18.0f, 0.8f, 1.0f, 45, IT_BOAR, false, false },
+                     1.0f, 6.0f, 18.0f, 0.8f, 1.0f, 135, IT_BOAR, false, false },
     [AN_GOOSE]   = { "Goose", { 0.3f, 0.3f, 0.55f }, 0.24f, { 204, 200, 190, 255 }, { 90, 90, 92, 255 },
                      0.8f, 5.5f, 15.0f, 1.6f, 0.45f, 12, IT_GOOSE, true, true },
     [AN_WOLF]    = { "Wolf", { 0.36f, 0.46f, 1.1f }, 0.55f, { 128, 122, 112, 255 }, { 72, 68, 62, 255 },
-                     1.8f, 7.0f, 22.0f, 1.0f, 1.0f, 35, IT_WOLF, false, false },
+                     1.8f, 7.0f, 22.0f, 1.0f, 1.0f, 60, IT_WOLF, false, false },
+    [AN_SNAKE]   = { "Snake", { 0.14f, 0.1f, 1.2f }, 0.0f, { 112, 118, 64, 255 }, { 62, 68, 40, 255 },
+                     0.7f, 3.2f, 3.0f, 1.0f, 1.0f, 16, IT_NONE, false, false },
 };
 
-// East of the river, a den by the far-north ford, and the empty west bank.
+// City side: herds near and far, three packs of four (one denning by the far-north ford).
+// Across the river: two packs of six. A few snakes lie in the long grass on both banks.
 static const Herd HERDS[] = {
     { AN_GAZELLE, 6, { 40, 150, 260, 180 } },
     { AN_ONAGER,  4, { 60, -330, 240, 170 } },
     { AN_BOAR,    4, { -126, 20, 24, 300 } },
-    { AN_GOOSE,   6, { -147, -320, 16, 640 } },
-    { AN_WOLF,    3, { -125, -350, 475, 700 } },
-    { AN_WOLF,    3, { -125, -350, 475, 700 } },
-    { AN_WOLF,    4, { -125, -354, 110, 70 } },
-    { AN_GAZELLE, 5, { -350, -120, 190, 320 } },
-    { AN_ONAGER,  4, { -350, -340, 190, 200 } },
-    { AN_BOAR,    3, { -350, 160, 190, 180 } },
-    { AN_WOLF,    3, { -354, -354, 200, 708 } },
+    { AN_GOOSE,   6, { -147, -500, 16, 1000 } },
+    { AN_WOLF,    4, { -125, -530, 655, 1060 } },
+    { AN_WOLF,    4, { -125, -530, 655, 1060 } },
+    { AN_WOLF,    4, { -125, -534, 110, 70 } },
+    { AN_GAZELLE, 5, { 300, 120, 220, 220 } },
+    { AN_ONAGER,  4, { 150, -520, 330, 160 } },
+    { AN_BOAR,    3, { 380, -140, 140, 90 } },
+    { AN_SNAKE,   1, { -124, 60, 20, 70 } },
+    { AN_SNAKE,   1, { -124, -300, 22, 80 } },
+    { AN_SNAKE,   1, { -118, 300, 40, 60 } },
+    { AN_GAZELLE, 6, { -520, -160, 330, 330 } },
+    { AN_ONAGER,  4, { -520, -520, 330, 260 } },
+    { AN_BOAR,    4, { -520, 200, 330, 300 } },
+    { AN_WOLF,    6, { -534, -534, 375, 1068 } },
+    { AN_WOLF,    6, { -534, -534, 375, 1068 } },
+    { AN_SNAKE,   1, { -380, 120, 110, 110 } },
+    { AN_SNAKE,   1, { -300, -200, 100, 120 } },
 };
 #define HERD_COUNT ((int)(sizeof(HERDS) / sizeof(HERDS[0])))
 
@@ -59,6 +83,11 @@ static const char *const WEAPONS[3] = { "Wooden club", "Copper mace", "Bronze si
 const char *WeaponName(int tier)
 {
     return L(WEAPONS[tier < 0 ? 0 : tier > 2 ? 2 : tier]);
+}
+
+const char *MaceName(void)
+{
+    return L("War mace");
 }
 
 int AnimalMaxHp(int type)
@@ -99,10 +128,12 @@ float AnimalTop(const Animal *a)
     return a->pos.y + d->legH + d->body.y + 0.7f;
 }
 
+// Snakes lie up only in green grass, away from roads, fields, camps and villages.
 static bool GoodSpot(const AnimalDef *d, float x, float z)
 {
     if (!d->swims && InWater(x, z)) return false;
     if (InsideWalls(x, z, d == &DEFS[AN_WOLF] ? -20.0f : -6.0f)) return false;
+    if (d == &DEFS[AN_SNAKE] && (Fertility(x, z) < 0.45f || InKeepOut(x, z, 6.0f))) return false;
     return !SolidAt(x, z, 0.8f);
 }
 
@@ -142,6 +173,7 @@ static void Respawn(Animal *a)
         return;
     }
     a->pos.y = d->flies ? 0.0f : TerrainHeight(a->pos.x, a->pos.z);
+    a->lair = a->pos;
     a->state = ST_CALM;
     a->heading = RandF(-PI, PI);
     a->speed = 0;
@@ -175,18 +207,19 @@ void SpringRespawn(void)
     }
 }
 
-unsigned long long AnimalsAwaitingSpring(void)
+// One bit per animal: set for those killed and waiting for spring.
+void AnimalsAwaitingSpring(unsigned char *mask, int bytes)
 {
-    unsigned long long mask = 0;
-    for (int i = 0; i < G.animalCount && i < 64; i++)
-        if ((!G.animals[i].active && G.animals[i].respawn < 0) || (G.animals[i].active && G.animals[i].state == ST_DEAD)) mask |= 1ull << i;
-    return mask;
+    memset(mask, 0, (size_t)bytes);
+    for (int i = 0; i < G.animalCount && i < bytes * 8; i++)
+        if ((!G.animals[i].active && G.animals[i].respawn < 0) || (G.animals[i].active && G.animals[i].state == ST_DEAD))
+            mask[i >> 3] |= (unsigned char)(1u << (i & 7));
 }
 
-void HoldAnimalsForSpring(unsigned long long mask)
+void HoldAnimalsForSpring(const unsigned char *mask, int bytes)
 {
-    for (int i = 0; i < G.animalCount && i < 64; i++) {
-        if (!(mask >> i & 1)) continue;
+    for (int i = 0; i < G.animalCount && i < bytes * 8; i++) {
+        if (!(mask[i >> 3] >> (i & 7) & 1)) continue;
         G.animals[i].active = false;
         G.animals[i].respawn = -1.0f;
     }
@@ -214,14 +247,20 @@ static bool Wounded(const Animal *a)
     return (float)a->hp < 0.45f * (float)DEFS[a->type].hp;
 }
 
+static void StartleMates(const Animal *a);
+
+// Prey bolts; a charging boar keeps charging and a snake slips away into other grass.
 static void Startle(Animal *a, bool herd)
 {
-    if (a->state == ST_DEAD || a->type == AN_WOLF) return;
+    if (a->state == ST_DEAD || a->type == AN_WOLF || (a->type == AN_BOAR && a->state == ST_HUNT)) return;
     a->state = ST_FLEE;
-    a->timer = 5.0f;
+    a->timer = a->type == AN_SNAKE ? 3.0f : 5.0f;
     a->awareness = 1.2f;
+    if (herd) StartleMates(a);
+}
 
-    if (!herd) return;
+static void StartleMates(const Animal *a)
+{
     for (int i = 0; i < G.animalCount; i++) {
         Animal *m = &G.animals[i];
         if (m != a && m->active && m->type == a->type && m->state != ST_FLEE && Vector3Distance(m->pos, a->pos) < 15.0f)
@@ -348,6 +387,100 @@ static void UpdateWolf(Animal *a, const AnimalDef *d, float dt)
     Step(a, d, dt);
 }
 
+// A wounded boar charges whoever hurt it, gores, and charges again until it gives up or nearly dies.
+static void UpdateCharge(Animal *a, const AnimalDef *d, float dt)
+{
+    Vector3 to = Vector3Subtract(G.player.pos, a->pos);
+    to.y = 0;
+    float dist = Vector3Length(to);
+
+    a->timer -= dt;
+    a->bite -= dt;
+    if (a->timer <= 0 || dist > 45.0f || G.sleeping || (float)a->hp < 0.2f * (float)d->hp) {
+        a->state = ST_FLEE;
+        a->timer = 6.0f;
+        a->awareness = 1.2f;
+        return;
+    }
+    a->heading = atan2f(to.x, to.z);
+    if (dist > 1.5f) {
+        a->speed = d->run * 1.05f;
+    } else {
+        a->speed = 0;
+        if (a->bite <= 0 && fabsf(G.player.pos.y - a->pos.y) < 1.5f) {
+            HurtPlayer(BOAR_GORE);
+            a->bite = GORE_COOLDOWN;
+        }
+    }
+    Step(a, d, dt);
+}
+
+// Lies hidden in its clump of grass. Someone too close makes it rear up and hiss, then strike.
+// Crouching lets you creep much nearer. It never strays more than a lunge from its grass.
+static void UpdateSnake(Animal *a, const AnimalDef *d, float dt)
+{
+    const Player *p = &G.player;
+    Vector3 to = Vector3Subtract(p->pos, a->pos);
+    to.y = 0;
+    float dist = Vector3Length(to);
+    bool level = fabsf(p->pos.y - a->pos.y) < 1.6f && !G.sleeping && G.climb == 0;
+    float notice = p->crouching ? 1.6f : p->running ? 3.4f : 2.8f;
+
+    a->bite -= dt;
+    switch (a->state) {
+    case ST_CALM: {
+        Vector3 home = Vector3Subtract(a->lair, a->pos);
+        home.y = 0;
+        a->speed = Vector3Length(home) > 0.3f ? d->walk : 0.0f;
+        if (a->speed > 0) a->heading = atan2f(home.x, home.z);
+        if (level && dist < notice) {
+            a->state = ST_ALERT;
+            a->timer = SNAKE_HISS;
+            a->speed = 0;
+            if (G.snakeWarn <= 0) {
+                Say("A snake rears up in the grass, hissing! Back away.");
+                G.snakeWarn = 25.0f;
+            }
+        }
+        break;
+    }
+    case ST_ALERT:
+        a->speed = 0;
+        a->heading = atan2f(to.x, to.z);
+        a->timer -= dt;
+        if (!level || dist > notice + 2.0f) a->state = ST_CALM;
+        else if (a->timer <= 0) {
+            a->state = ST_HUNT;
+            a->timer = 6.0f;
+        }
+        break;
+    case ST_HUNT:
+        a->heading = atan2f(to.x, to.z);
+        a->timer -= dt;
+        a->speed = (dist > 1.1f && XZDist(a->pos, a->lair) < 3.0f) ? d->run : 0.0f;
+        if (dist < 1.7f && level && a->bite <= 0) {
+            HurtPlayer(SNAKE_BITE);
+            a->bite = SNAKE_COOLDOWN;
+            Say("A snake bit you!");
+        }
+        if (a->timer <= 0 || dist > 7.0f || !level) a->state = ST_CALM;
+        break;
+    case ST_FLEE:
+        a->timer -= dt;
+        a->heading = atan2f(-to.x, -to.z);
+        a->speed = d->run;
+        if (a->timer <= 0) {
+            a->state = ST_CALM;
+            a->speed = 0;
+            a->lair = a->pos;
+        }
+        break;
+    default:
+        break;
+    }
+    Step(a, d, dt);
+}
+
 bool AnyWolfHunting(void)
 {
     for (int i = 0; i < G.animalCount; i++)
@@ -355,12 +488,28 @@ bool AnyWolfHunting(void)
     return false;
 }
 
+// A boar charging or a snake striking.
+bool AnyBeastAttacking(void)
+{
+    for (int i = 0; i < G.animalCount; i++) {
+        const Animal *a = &G.animals[i];
+        if (a->active && a->type != AN_WOLF && a->state == ST_HUNT && XZDist(a->pos, G.player.pos) < 40.0f) return true;
+    }
+    return false;
+}
+
+// A snake lying still in its grass shows nothing: no bar, no mark, no dot on the map.
+bool AnimalHidden(const Animal *a)
+{
+    return a->type == AN_SNAKE && a->state == ST_CALM && a->hp >= DEFS[AN_SNAKE].hp;
+}
+
 void CalmWolves(void)
 {
     for (int i = 0; i < G.animalCount; i++) {
         Animal *a = &G.animals[i];
-        if (a->type == AN_WOLF && a->active && a->state == ST_HUNT) {
-            a->state = ST_FLEE;
+        if (a->active && a->state == ST_HUNT) {
+            a->state = a->type == AN_SNAKE ? ST_CALM : ST_FLEE;
             a->timer = 20.0f;
         }
     }
@@ -392,6 +541,14 @@ void UpdateWildlife(float dt)
         }
         if (a->type == AN_WOLF) {
             UpdateWolf(a, d, dt);
+            continue;
+        }
+        if (a->type == AN_SNAKE) {
+            UpdateSnake(a, d, dt);
+            continue;
+        }
+        if (a->state == ST_HUNT) {
+            UpdateCharge(a, d, dt);
             continue;
         }
 
@@ -446,8 +603,39 @@ static void Kill(Animal *a)
 {
     a->state = ST_DEAD;
     a->speed = 0;
-    a->timer = 240.0f;
+    a->timer = a->type == AN_SNAKE ? 60.0f : 240.0f;
     a->awareness = 0;
+}
+
+// An arrow that hisses past or lands close by: wolves come for the archer, everything else runs.
+static void React(Animal *a)
+{
+    if (!a->active || a->state == ST_DEAD) return;
+    if (a->type == AN_WOLF) {
+        if (a->state == ST_HUNT) return;
+        G.wolfAggro = fmaxf(G.wolfAggro, 60.0f);
+        if (G.wolfWarn <= 0) {
+            Say("Your arrow flew among the wolves. The pack comes for you!");
+            G.wolfWarn = 30.0f;
+        }
+        HuntPack(a);
+        return;
+    }
+    if (a->state != ST_FLEE) Startle(a, true);
+}
+
+static void ReactAround(Vector3 at, float r)
+{
+    for (int i = 0; i < G.animalCount; i++)
+        if (G.animals[i].active && Vector3Distance(Center(&G.animals[i]), at) < r) React(&G.animals[i]);
+}
+
+static float SegDist(Vector3 a, Vector3 b, Vector3 c)
+{
+    Vector3 ab = Vector3Subtract(b, a);
+    float len2 = Vector3DotProduct(ab, ab);
+    float t = len2 > 0 ? Clamp(Vector3DotProduct(Vector3Subtract(c, a), ab) / len2, 0.0f, 1.0f) : 0.0f;
+    return Vector3Distance(Vector3Add(a, Vector3Scale(ab, t)), c);
 }
 
 static Animal *ArrowHit(Vector3 from, Vector3 to)
@@ -471,14 +659,7 @@ static void StickArrow(Arrow *ar)
     ar->flying = false;
     ar->life = 90.0f;
     ar->fade = 0.6f;
-
-    for (int i = 0; i < G.animalCount; i++) {
-        Animal *a = &G.animals[i];
-        if (!a->active || a->state == ST_DEAD || a->type == AN_WOLF || Vector3Distance(a->pos, ar->pos) > 7.0f) continue;
-        a->awareness += 0.6f;
-        if (a->awareness >= 1.0f) Startle(a, true);
-        else if (a->state == ST_CALM) a->state = ST_ALERT;
-    }
+    ReactAround(ar->pos, CLOSE_LANDING);
 }
 
 int ShootArrow(Vector3 from, Vector3 to, float power)
@@ -504,7 +685,19 @@ static void HitAnimal(Animal *a, int damage)
     SpawnBurst(Center(a), (Color){ 170, 30, 30, 255 }, 12, 2.4f);
     if (a->hp <= 0) {
         Kill(a);
-        Say("%s down! Walk up to it and press E to take the carcass.", AnimalName(a->type));
+        if (a->type == AN_SNAKE) Say("You killed the snake.");
+        else Say("%s down! Walk up to it and press E to take the carcass.", AnimalName(a->type));
+    } else if (a->type == AN_BOAR && (float)a->hp >= 0.2f * (float)DEFS[AN_BOAR].hp) {
+        if (a->state != ST_HUNT) Say("The boar turns on you and charges!");
+        a->state = ST_HUNT;
+        a->timer = CHARGE_TIME;
+        a->bite = fmaxf(a->bite, 0.5f);
+        StartleMates(a);
+    } else if (a->type == AN_SNAKE) {
+        bool near = XZDist(a->pos, G.player.pos) < 3.0f;
+        a->state = near ? ST_HUNT : ST_FLEE;
+        a->timer = near ? 6.0f : 3.0f;
+        Say(near ? "The snake strikes back!" : "The snake slithers away through the grass.");
     } else if (a->type == AN_WOLF) {
         G.wolfAggro = 90.0f;
         if (Wounded(a)) {
@@ -559,9 +752,14 @@ void UpdateArrows(float dt)
             if (ar->trailCount < TRAIL_POINTS) ar->trailCount++;
         }
 
-        // An unaware animal takes double damage.
+        // An unaware animal takes double damage; a near miss still sends it running (or the wolves after you).
         Animal *hit = ArrowHit(prev, ar->pos);
         int person = PersonOnSegment(prev, ar->pos);
+        if (!hit && person < 0)
+            for (int k = 0; k < G.animalCount; k++) {
+                Animal *a = &G.animals[k];
+                if (a->active && a->state != ST_DEAD && SegDist(prev, ar->pos, Center(a)) < CLOSE_FLYBY) React(a);
+            }
         if (person >= 0) {
             Vector3 pos;
             float hp, maxHp;
@@ -595,6 +793,7 @@ void UpdateArrows(float dt)
                 ar->flying = false;
                 ar->spent = true;
                 ar->fade = 0.6f;
+                ReactAround(at, CLOSE_LANDING);
             } else {
                 ar->pos = at;
                 SpawnBurst(at, (Color){ 150, 128, 92, 255 }, 10, 1.6f);
@@ -669,7 +868,7 @@ static void DrawAnimal(const Animal *a)
     rlPushMatrix();
     rlTranslatef(a->pos.x, a->pos.y + bob, a->pos.z);
     rlRotatef(a->heading * RAD2DEG, 0, 1, 0);
-    if (a->state == ST_DEAD) {
+    if (a->state == ST_DEAD && a->type != AN_SNAKE) {
         rlTranslatef(0, bw / 2, 0);
         rlRotatef(90, 0, 0, 1);
     }
@@ -720,6 +919,31 @@ static void DrawAnimal(const Animal *a)
         Part(0, top - 0.12f, -bl / 2 - 0.22f, 0.1f, 0.1f, 0.45f, d->dark);
         break;
     }
+    case AN_SNAKE: {
+        // Coiled at rest, an S while it moves, the neck raised while it hisses and strikes.
+        bool raised = a->state == ST_ALERT || a->state == ST_HUNT;
+        float lunge = a->state == ST_HUNT ? Clamp((a->bite - (SNAKE_COOLDOWN - 0.3f)) / 0.3f, 0.0f, 1.0f) : 0.0f;
+        for (int k = 8; k >= 0; k--) {
+            float u = (float)k / 8.0f, x, y = 0.06f, z;
+            if (moving || a->state == ST_DEAD) {
+                z = 0.5f - u * 1.1f;
+                x = sinf((a->state == ST_DEAD ? 0.0f : t * 9.0f) + u * 6.0f) * 0.12f;
+            } else {
+                float ang = u * 4.6f, r = 0.27f - u * 0.13f;
+                x = sinf(ang) * r;
+                z = cosf(ang) * r;
+            }
+            if (raised && k < 3) {
+                x = 0;
+                y = 0.06f + 0.18f * (float)(3 - k);
+                z = 0.1f + 0.07f * (float)(2 - k) + 0.4f * lunge;
+            }
+            float s = (k == 0 ? 0.13f : 0.11f - 0.006f * (float)k);
+            Blob(x, y, z, s * 1.6f, s * 1.3f, s * 2.0f, k == 0 ? d->dark : (k & 1) ? d->coat : Mix(d->coat, d->dark, 0.45f));
+            if (k == 0 && raised && sinf(t * 22.0f) > 0.2f) Part(x, y - 0.02f, z + 0.16f, 0.02f, 0.01f, 0.14f, (Color){ 200, 40, 40, 255 });
+        }
+        break;
+    }
     case AN_GOOSE: {
         const Color beak = { 230, 130, 40, 255 };
         Part(-0.07f, lh / 2, 0, 0.04f, lh, 0.04f, beak);
@@ -750,14 +974,72 @@ static void DrawAnimal(const Animal *a)
     rlPopMatrix();
 }
 
+// The tuft of long grass a snake lies up in; it moves with the snake when it finds a new hiding place.
+static void DrawSnakeGrass(const Animal *a, int i)
+{
+    for (int k = 0; k < 10; k++) {
+        float ang = (float)k * 0.63f + (float)i, r = 0.22f + 0.45f * Hash2(i, k);
+        Vector3 base = { a->lair.x + cosf(ang) * r, a->lair.y - 0.05f, a->lair.z + sinf(ang) * r };
+        DrawShadedCylinder(base, 0.2f, 0.2f, 0.55f + 0.4f * Hash2(k, i + 3), 0.0f, 5, Mix(COL_GRASS, COL_WHEAT_GREEN, Hash2(k, i)));
+    }
+}
+
 void DrawWildlife(void)
 {
     for (int i = 0; i < G.animalCount; i++) {
-        if (!G.animals[i].active || XZDist(G.animals[i].pos, G.cam.position) > 260.0f) continue;
-        LightFor(G.animals[i].pos);
-        DrawAnimal(&G.animals[i]);
+        const Animal *a = &G.animals[i];
+        float d = XZDist(a->pos, G.cam.position);
+        if (!a->active || d > 260.0f || (a->type == AN_SNAKE && d > 110.0f)) continue;
+        LightFor(a->pos);
+        if (a->type == AN_SNAKE) DrawSnakeGrass(a, i);
+        DrawAnimal(a);
     }
     G.drawTorch = G.drawFog = 0;
+}
+
+static void KnockBack(Animal *a, Vector3 dir, float dist)
+{
+    if (a->state == ST_DEAD || dist <= 0.3f) return;
+    Vector3 push = Vector3Scale(dir, 0.9f / dist);
+    if (!SolidAt(a->pos.x + push.x, a->pos.z + push.z, 0.3f)) {
+        a->pos.x += push.x;
+        a->pos.z += push.z;
+    }
+}
+
+// The war mace sweeps a wide arc: every animal in reach and every foe in front is struck. A bystander
+// is only hit when the blow was clearly aimed at them (nearest of everything in front).
+static void MaceStrike(Vector3 chest, Vector3 fwd)
+{
+    int people[16], n = PeopleInArc(chest, fwd, MACE_REACH, MACE_ARC, people, 16);
+    float nearestAnimal = 1e9f;
+
+    for (int i = 0; i < G.animalCount; i++) {
+        Animal *a = &G.animals[i];
+        if (!a->active || a->state == ST_DEAD) continue;
+        Vector3 d = Vector3Subtract(Center(a), chest);
+        d.y = 0;
+        float dist = Vector3Length(d);
+        if (dist - Radius(a) * 0.6f > MACE_REACH || fabsf(Center(a).y - chest.y) > 1.8f) continue;
+        if (dist > 0.3f && Vector3DotProduct(Vector3Scale(d, 1.0f / dist), fwd) < MACE_ARC) continue;
+        nearestAnimal = fminf(nearestAnimal, dist);
+        HitAnimal(a, a->state == ST_CALM ? MACE_DAMAGE * 3 / 2 : MACE_DAMAGE);
+        KnockBack(a, d, dist);
+    }
+    for (int k = 0; k < n; k++) {
+        Vector3 pos;
+        float hp, maxHp;
+        const char *name;
+        bool hostile, dead;
+        FighterInfo(people[k], &pos, &hp, &maxHp, &name, &hostile, &dead);
+        bool aimed = k == 0 && XZDist(pos, chest) < nearestAnimal;
+        if (aimed || FighterIsFoe(people[k])) DamagePerson(people[k], (float)MACE_DAMAGE);
+    }
+    for (int k = -3; k <= 3; k++) {
+        float a = atan2f(fwd.x, fwd.z) + 0.32f * (float)k;
+        Vector3 at = { chest.x + sinf(a) * 2.0f, chest.y - 0.6f, chest.z + cosf(a) * 2.0f };
+        SpawnBurst(at, (Color){ 196, 176, 132, 255 }, 3, 1.4f);
+    }
 }
 
 // Strikes the closest animal in front, toward where the camera looks; unaware animals take half again as much.
@@ -771,6 +1053,10 @@ void MeleeStrike(void)
     Vector3 dir = { 0 };
 
     p->facing = p->yaw + PI;
+    if (G.equip == EQ_MACE) {
+        MaceStrike(chest, fwd);
+        return;
+    }
     for (int i = 0; i < G.animalCount; i++) {
         Animal *a = &G.animals[i];
         if (!a->active || a->state == ST_DEAD) continue;
@@ -796,13 +1082,7 @@ void MeleeStrike(void)
 
     if (target->state == ST_CALM) damage = damage * 3 / 2;
     HitAnimal(target, damage);
-    if (target->state != ST_DEAD && best > 0.3f) {
-        Vector3 push = Vector3Scale(dir, 0.9f / best);
-        if (!SolidAt(target->pos.x + push.x, target->pos.z + push.z, 0.3f)) {
-            target->pos.x += push.x;
-            target->pos.z += push.z;
-        }
-    }
+    KnockBack(target, dir, best);
 }
 
 void DrawArrows(void)

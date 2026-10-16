@@ -3,7 +3,7 @@
 #include <math.h>
 #include <stddef.h>
 
-#define CARAVAN_SPEED  2.2f
+#define CARAVAN_SPEED  2.7f
 #define TRADE_SECONDS  150.0f
 #define SPACING        2.6f
 
@@ -12,6 +12,7 @@ static const Offer DILMUN[] = {
     { IT_FISH,   6, IT_NONE, 0, OUT_ITEM,   IT_TIN,     1, 0, 0 },
     { IT_WHEAT,  6, IT_NONE, 0, OUT_ITEM,   IT_COPPER,  4, 0, 0 },
     { IT_EGG,    6, IT_NONE, 0, OUT_ITEM,   IT_TIN,     1, 0, 0 },
+    { IT_HERB,   6, IT_NONE, 0, OUT_ITEM,   IT_TIN,     1, 0, 0 },
     { IT_BRONZE, 2, IT_NONE, 0, OUT_BASKET, 0,          1, 0, 0 },
 };
 
@@ -96,7 +97,7 @@ static bool Blocked(Caravan *c, int i, float ds, float dt)
         c->pushT -= dt;
         return false;
     }
-    if (!BodyAheadIgnoring(cur, next, 0.6f, OWNER_CARAVAN + i, OWNER_CARAVAN, OWNER_CARAVAN + MAX_CARAVANS)) {
+    if (!BodyAheadIgnoring(cur, next, 0.6f, CARAVAN_OWNER(i, 0), OWNER_CARAVAN, CARAVAN_OWNER(MAX_CARAVANS, 0))) {
         c->blockedT = 0;
         return false;
     }
@@ -106,6 +107,14 @@ static bool Blocked(Caravan *c, int i, float ds, float dt)
         c->pushT = 2.0f;
     }
     return true;
+}
+
+// The caravan halts while any of its people is fighting.
+static bool Halted(const Caravan *c)
+{
+    for (int k = 0; k <= CARAVAN_GUARDS; k++)
+        if (c->vit[k].override) return true;
+    return false;
 }
 
 void UpdateCaravans(float dt)
@@ -123,7 +132,7 @@ void UpdateCaravans(float dt)
             }
             break;
         case CV_ARRIVE:
-            if (c->vit[0].override || c->vit[1].override || Blocked(c, i, CARAVAN_SPEED * dt, dt)) break;
+            if (Halted(c) || Blocked(c, i, CARAVAN_SPEED * dt, dt)) break;
             c->s += CARAVAN_SPEED * dt;
             if (c->s >= c->length) {
                 c->s = c->length;
@@ -137,7 +146,7 @@ void UpdateCaravans(float dt)
             if (c->timer <= 0) c->state = CV_LEAVE;
             break;
         case CV_LEAVE:
-            if (c->vit[0].override || c->vit[1].override || Blocked(c, i, -CARAVAN_SPEED * dt, dt)) break;
+            if (Halted(c) || Blocked(c, i, -CARAVAN_SPEED * dt, dt)) break;
             c->s -= CARAVAN_SPEED * dt;
             if (c->s <= 0) {
                 c->state = CV_AWAY;
@@ -149,7 +158,7 @@ void UpdateCaravans(float dt)
     }
 }
 
-// Member 0 is the merchant, 1-2 donkeys, 3 the guard.
+// Member 0 is the merchant, 1-2 donkeys, 3-4 the guards.
 static Vector3 Member(const Caravan *c, int k, float *facing)
 {
     Vector3 dir;
@@ -158,7 +167,7 @@ static Vector3 Member(const Caravan *c, int k, float *facing)
     Vector3 p;
 
     if (c->state == CV_TRADE) {
-        static const float off[4][3] = { { 0, 0, 0 }, { 2.4f, 0, -1.2f }, { 2.4f, 0, 1.0f }, { -1.9f, 0, 1.6f } };
+        static const float off[5][3] = { { 0, 0, 0 }, { 2.4f, 0, -1.2f }, { 2.4f, 0, 1.0f }, { -1.9f, 0, 1.6f }, { -2.2f, 0, -1.3f } };
         p = (Vector3){ stall.x + off[k][0] * side, 0, stall.z + off[k][2] };
         *facing = (k == 1 || k == 2) ? -side * PI / 2 : 0.0f;
     } else {
@@ -182,7 +191,7 @@ bool CaravanMemberScript(int ci, int k, Vector3 *pos, float *facing)
 
 static const Vitals *MemberVitals(const Caravan *c, int k)
 {
-    return k == 0 ? &c->vit[0] : k == 3 ? &c->vit[1] : NULL;
+    return k == 0 ? &c->vit[0] : k >= 3 && k < 3 + CARAVAN_GUARDS ? &c->vit[k - 2] : NULL;
 }
 
 bool CaravanMember(int ci, int k, Vector3 *pos, float *facing)
@@ -204,9 +213,9 @@ bool CaravanNear(Vector3 p, float r)
     for (int i = 0; i < MAX_CARAVANS; i++) {
         Vector3 m;
         float f;
-        for (int k = 0; k < 4; k += 3) {
+        for (int k = 0; k < 3 + CARAVAN_GUARDS; k++) {
             const Vitals *v = MemberVitals(&G.caravans[i], k);
-            if (!v->dead && CaravanMember(i, k, &m, &f) && XZDist(m, p) < r) return true;
+            if (v && !v->dead && CaravanMember(i, k, &m, &f) && XZDist(m, p) < r) return true;
         }
     }
     return false;
@@ -281,7 +290,7 @@ void DrawCaravans(void)
     for (int i = 0; i < MAX_CARAVANS; i++) {
         const Caravan *c = &G.caravans[i];
         if (c->state == CV_AWAY) continue;
-        bool moving = c->state != CV_TRADE && !c->vit[0].override && !c->vit[1].override;
+        bool moving = c->state != CV_TRADE && !Halted(c);
         float f;
         Vector3 p;
 
@@ -306,18 +315,21 @@ void DrawCaravans(void)
             DrawDonkey(d, f, c->cloth, moving);
         }
 
-        Vector3 g;
-        CaravanMember(i, 3, &g, &f);
-        LightFor(g);
-        Look guard = { COL_SKIN, (Color){ 120, 100, 80, 255 }, COL_SKIN, COL_HAIR };
-        if (c->vit[1].dead) {
-            DrawPersonBody(g, f, guard);
-            continue;
+        for (int k = 0; k < CARAVAN_GUARDS; k++) {
+            const Vitals *v = &c->vit[1 + k];
+            Vector3 g;
+            CaravanMember(i, 3 + k, &g, &f);
+            LightFor(g);
+            Look guard = { COL_SKIN, k ? (Color){ 100, 86, 70, 255 } : (Color){ 120, 100, 80, 255 }, COL_SKIN, COL_HAIR };
+            if (v->dead) {
+                DrawPersonBody(g, f, guard);
+                continue;
+            }
+            float stride = v->override ? time * 8.0f : moving ? c->s * 2.5f + 1.0f + (float)k : 0.0f;
+            DrawHuman(g, f, stride, guard, false, false, 0);
+            if (G.night >= 0.3f) DrawHandTorch(g, f);
+            DrawSpear(g, f, v->swing, v->windup);
         }
-        float stride = c->vit[1].override ? time * 8.0f : moving ? c->s * 2.5f + 1.0f : 0.0f;
-        DrawHuman(g, f, stride, guard, false, false, 0);
-        if (G.night >= 0.3f) DrawHandTorch(g, f);
-        DrawSpear(g, f, c->vit[1].swing, c->vit[1].windup);
     }
     G.drawTorch = G.drawFog = 0;
 }

@@ -24,6 +24,7 @@ static const Offer FARMER[] = {
     { IT_WHEAT,   8, IT_NONE, 0, OUT_HEN,  0, 1, 0, 0 },
     { IT_BREAD,   2, IT_NONE, 0, OUT_ITEM, IT_SEEDS, 6, 0, 0 },
     { IT_FISH,    4, IT_NONE, 0, OUT_ITEM, IT_SEEDS, 6, 0, 0 },
+    { IT_HERB,    4, IT_NONE, 0, OUT_ITEM, IT_SEEDS, 6, 0, 0 },
 };
 
 static const Offer WEAVER[] = {
@@ -35,6 +36,7 @@ static const Offer WEAVER[] = {
     { IT_REEDS, 6, IT_NONE,  0, OUT_ITEM,   IT_BUCKET, 1, 0, 0 },
 };
 
+// The cattle herder deals only in milk and cowhide; fleeces come from the herders' village.
 static const Offer HERDER[] = {
     { IT_DATES, 30, IT_NONE, 0, OUT_ITEM, IT_MILK, 1, 0, 0 },
     { IT_EGG,    2, IT_NONE, 0, OUT_ITEM, IT_MILK, 1, 0, 0 },
@@ -42,12 +44,10 @@ static const Offer HERDER[] = {
     { IT_ONAGER, 1, IT_NONE, 0, OUT_ITEM, IT_MILK, 4, 0, 0 },
     { IT_WOLF,   1, IT_NONE, 0, OUT_ITEM, IT_MILK, 4, 0, 0 },
     { IT_FISH,   3, IT_NONE, 0, OUT_ITEM, IT_MILK, 1, 0, 0 },
+    { IT_SEEDS,  6, IT_NONE, 0, OUT_ITEM, IT_MILK, 1, 0, 0 },
     { IT_BREAD,  2, IT_NONE, 0, OUT_ITEM, IT_COWHIDE, 1, 0, 0 },
     { IT_ROAST,  2, IT_NONE, 0, OUT_ITEM, IT_COWHIDE, 1, 0, 0 },
-    { IT_EGG,    4, IT_NONE, 0, OUT_ITEM, IT_SHEEPSKIN, 1, 0, 0 },
-    { IT_WHEAT,  6, IT_NONE, 0, OUT_ITEM, IT_SHEEPSKIN, 1, 0, 0 },
-    { IT_WASTE,  1, IT_NONE, 0, OUT_ITEM, IT_DATES, 1, 0, 0 },
-    { IT_SEEDS,  6, IT_NONE, 0, OUT_ITEM, IT_MILK, 1, 0, 0 },
+    { IT_WHEAT,  6, IT_NONE, 0, OUT_ITEM, IT_COWHIDE, 1, 0, 0 },
 };
 
 static const Offer QUERN  = { IT_WHEAT, 2, IT_NONE, 0, OUT_ITEM, IT_FLOUR, 1, 0, 0 };
@@ -67,6 +67,7 @@ static const Offer OVEN[] = {
     { IT_GAZELLE, 1, IT_NONE, 0, OUT_ITEM, IT_ROAST, 3, 0, 0 },
     { IT_ONAGER,  1, IT_NONE, 0, OUT_ITEM, IT_ROAST, 4, 0, 0 },
     { IT_BOAR,    1, IT_NONE, 0, OUT_ITEM, IT_ROAST, 5, 0, 0 },
+    { IT_SHEEP,   1, IT_NONE, 0, OUT_ITEM, IT_ROAST, 4, 0, 0 },
     { IT_HEN,     1, IT_NONE, 0, OUT_ITEM, IT_ROAST, 2, 0, 0 },
 };
 
@@ -184,10 +185,11 @@ static void BuildMarket(void)
     AddShape(47.4f, 0, 33.0f, 0.5f, 0.65f, 0.5f, COL_CLAY, true, SHAPE_BLOB);
 }
 
-static void AddNpc(NpcKind kind, Vector3 a, Vector3 b, float speed, Color robe, float face)
+int AddNpc(NpcKind kind, Vector3 a, Vector3 b, float speed, Color robe, float face)
 {
-    if (G.villagerCount >= MAX_VILLAGERS) return;
-    G.villagers[G.villagerCount++] = (Villager){ a, b, speed > 0 ? RandF(0, 1) : 0.0f, 1.0f, speed, robe, kind, face, 0.0f, false, false, { .hp = 0 } };
+    if (G.villagerCount >= MAX_VILLAGERS) return -1;
+    G.villagers[G.villagerCount] = (Villager){ a, b, speed > 0 ? RandF(0, 1) : 0.0f, 1.0f, speed, robe, kind, face, 0.0f, false, false, { .hp = 0 }, -1 };
+    return G.villagerCount++;
 }
 
 static void AddVillager(float ax, float az, float bx, float bz, float speed, Color robe)
@@ -231,8 +233,17 @@ Vector3 TraderPos(const Trader *t)
     return t->vit.override ? t->vit.at : t->pos;
 }
 
+static float LaneLength(const Villager *v)
+{
+    return v->road >= 0 ? RoadLength(v->road) : fmaxf(Vector3Distance(v->a, v->b), 0.1f);
+}
+
 Vector3 VillagerLanePos(const Villager *v)
 {
+    if (v->road >= 0) {
+        Vector3 dir, p = RoadPoint(v->road, v->t * RoadLength(v->road), &dir);
+        return (Vector3){ p.x + dir.z * v->side, p.y, p.z - dir.x * v->side };
+    }
     Vector3 p = Vector3Lerp(v->a, v->b, v->t);
     float dx = v->b.x - v->a.x, dz = v->b.z - v->a.z, len = sqrtf(dx * dx + dz * dz);
     if (len < 0.01f || v->side == 0) return p;
@@ -243,7 +254,7 @@ Vector3 VillagerLanePos(const Villager *v)
 static void WalkVillager(Villager *v, int i, float dt)
 {
     const int self = OWNER_VILLAGER + i;
-    float len = fmaxf(Vector3Distance(v->a, v->b), 0.1f);
+    float len = LaneLength(v);
     Villager next = *v;
 
     v->moving = false;
@@ -255,7 +266,8 @@ static void WalkVillager(Villager *v, int i, float dt)
     Vector3 cur = VillagerPos(v), to = VillagerPos(&next);
     if (BodyAhead(cur, to, 0.35f, self)) {
         Villager aside = *v;
-        aside.side = Clamp(v->side - v->dir * 1.2f * dt, -1.3f, 1.3f);
+        float room = v->road >= 0 ? 2.2f : 1.3f;
+        aside.side = Clamp(v->side - v->dir * 1.2f * dt, -room, room);
         Vector3 sp = VillagerPos(&aside);
         if (!SolidAt(sp.x, sp.z, 0.3f) && !BodyAt(sp, 0.35f, self)) v->side = aside.side;
         return;
@@ -263,10 +275,12 @@ static void WalkVillager(Villager *v, int i, float dt)
     *v = next;
     v->moving = true;
     if (to.x != cur.x || to.z != cur.z) v->face = atan2f(to.x - cur.x, to.z - cur.z);
-    if (v->side != 0) {
+    // On a road the way back is to the right-hand side of the direction of travel.
+    float home = v->road >= 0 ? -1.0f * v->dir : 0.0f;
+    if (v->side != home) {
         Villager back = *v;
         float step = 0.6f * dt;
-        back.side = fabsf(v->side) <= step ? 0.0f : v->side - copysignf(step, v->side);
+        back.side = fabsf(v->side - home) <= step ? home : v->side - copysignf(step, v->side - home);
         if (!BodyAt(VillagerPos(&back), 0.35f, self)) v->side = back.side;
     }
 }
@@ -329,6 +343,13 @@ void UpdateVillage(float dt)
     for (int i = 0; i < G.henCount; i++) WanderIn(&G.hens[i], (Rectangle){ 15.5f, 31.0f, 5.0f, 2.5f }, 0.6f, dt);
     for (int i = 0; i < MAX_COWS; i++) WanderIn(&G.cows[i], (Rectangle){ 51.5f, 27.8f, 7.0f, 7.0f }, 0.5f, dt);
     for (int i = 0; i < MAX_SHEEP; i++) WanderIn(&G.sheep[i], (Rectangle){ 51.0f, 27.0f, 8.0f, 8.0f }, 0.45f, dt);
+    Rectangle fold = FoldArea();
+    fold = (Rectangle){ fold.x + 0.8f, fold.y + 0.8f, fold.width - 1.6f, fold.height - 1.6f };
+    for (int i = 0; i < MAX_FLOCK; i++) {
+        if (XZDist(G.flock[i].pos, G.cam.position) > 220.0f) continue;
+        WanderIn(&G.flock[i], fold, 0.45f, dt);
+        G.flock[i].pos.y = TerrainHeight(G.flock[i].pos.x, G.flock[i].pos.z);
+    }
 }
 
 // Date palms fruit once a day, never in winter; the farm palm also needs the farm watered.
@@ -531,12 +552,24 @@ static void Part(float x, float y, float z, float w, float h, float l, Color c)
     DrawShadedBox((Vector3){ x, y, z }, (Vector3){ w, h, l }, c);
 }
 
+// A walking staff, a bundle on the back and a wide straw hat.
+static void DrawTravelGear(Vector3 pos, float face, Color robe)
+{
+    rlPushMatrix();
+    rlTranslatef(pos.x, pos.y, pos.z);
+    rlRotatef(face * RAD2DEG, 0, 1, 0);
+    Part(0.36f, 1.0f, 0.24f, 0.05f, 2.0f, 0.05f, COL_WOOD);
+    DrawShadedBlob((Vector3){ 0, 1.3f, -0.3f }, (Vector3){ 0.22f, 0.26f, 0.16f }, Mix(robe, COL_STRAW, 0.5f));
+    Part(0, 1.95f, -0.02f, 0.46f, 0.05f, 0.46f, COL_STRAW);
+    rlPopMatrix();
+}
+
 static void DrawSheep(const Wanderer *w, int i)
 {
     const Color wool = { 226, 220, 204, 255 }, face = { 52, 44, 40, 255 };
 
     rlPushMatrix();
-    rlTranslatef(w->pos.x, 0, w->pos.z);
+    rlTranslatef(w->pos.x, w->pos.y, w->pos.z);
     rlRotatef(w->heading * RAD2DEG, 0, 1, 0);
     for (int k = 0; k < 4; k++)
         DrawShadedCylinder((Vector3){ (k & 1) ? 0.16f : -0.16f, 0, (k & 2) ? 0.32f : -0.32f }, 0.04f, 0.04f, 0.5f, 0.8f, 5, face);
@@ -576,12 +609,18 @@ void DrawVillage(void)
     LightFor(G.pen);
     for (int i = 0; i < MAX_COWS; i++) DrawCow(&G.cows[i], i);
     for (int i = 0; i < MAX_SHEEP; i++) DrawSheep(&G.sheep[i], i);
+    for (int i = 0; i < MAX_FLOCK; i++) {
+        if (XZDist(G.flock[i].pos, G.cam.position) > 200.0f) continue;
+        LightFor(G.flock[i].pos);
+        DrawSheep(&G.flock[i], i);
+    }
 
     for (int i = 0; i < TR_COUNT; i++) {
         const Trader *tr = &G.traders[i];
         if (tr->roaming) continue;
         Look look = { COL_SKIN, tr->robe, tr->robe, COL_HAIR };
         Vector3 tp = TraderPos(tr);
+        if (XZDist(tp, G.cam.position) > 220.0f) continue;
         LightFor(tp);
         if (tr->vit.dead) DrawPersonBody(tp, tr->vit.face, look);
         else DrawHuman(tp, tr->vit.override ? tr->vit.face : tr->facing, tr->vit.override ? (float)GetTime() * 8.0f : 0.0f, look, false, false, 0);
@@ -589,7 +628,7 @@ void DrawVillage(void)
     for (int i = 0; i < G.villagerCount; i++) {
         const Villager *v = &G.villagers[i];
         Vector3 pos = VillagerPos(v);
-        float len = Vector3Distance(v->a, v->b), stride = v->moving ? v->t * len * 3.0f : 0.0f;
+        float stride = v->moving ? v->t * LaneLength(v) * 3.0f : 0.0f;
         float face = v->vit.override ? v->vit.face : v->face;
         if (XZDist(pos, G.cam.position) > 200.0f) continue;
         if (v->vit.override && v->vit.hostile > 0) stride = (float)GetTime() * 8.0f;
@@ -599,9 +638,14 @@ void DrawVillage(void)
             DrawPersonBody(pos, face, look);
             continue;
         }
-        if (v->kind == NPC_CIVILIAN) {
+        if (v->kind == NPC_CIVILIAN || v->kind == NPC_VILLAGER || v->kind == NPC_TRAVELLER) {
             Look look = { COL_SKIN, v->robe, (i % 2) ? COL_SKIN : v->robe, COL_HAIR };
-            DrawHuman(pos, face, stride, look, false, false, 0);
+            // A villager standing still at the hunters' butt keeps drawing a bow.
+            bool archer = v->kind == NPC_VILLAGER && v->speed <= 0 && !v->vit.override;
+            float pull = archer ? fmaxf(0.0f, sinf((float)GetTime() * 0.9f + (float)i)) : 0.0f;
+            DrawHuman(pos, face, stride, look, false, archer, pull);
+            if (v->kind == NPC_TRAVELLER) DrawTravelGear(pos, face, v->robe);
+            if (v->kind == NPC_TRAVELLER && G.night >= 0.3f) DrawHandTorch(pos, face);
         } else if (v->kind == NPC_GUARD) {
             Look look = { COL_SKIN, v->robe, (Color){ 120, 96, 66, 255 }, COL_BRONZE };
             DrawHuman(pos, face, stride, look, false, false, 0);

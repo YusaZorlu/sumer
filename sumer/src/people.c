@@ -1,7 +1,7 @@
 #include "game.h"
 #include <math.h>
 
-#define MAX_BODIES 128
+#define MAX_BODIES 160
 
 typedef struct { Vector3 pos; float r; int owner; } Body;
 
@@ -29,11 +29,11 @@ void CollectBodies(void)
         if (!t->roaming && !t->vit.dead) Add(TraderPos(t), 0.4f, OWNER_TRADER + i);
     }
     for (int c = 0; c < MAX_CARAVANS; c++) {
-        for (int k = 0; k < 4; k++) {
+        for (int k = 0; k < 3 + CARAVAN_GUARDS; k++) {
             Vector3 p;
             float f;
-            if ((k == 0 && G.caravans[c].vit[0].dead) || (k == 3 && G.caravans[c].vit[1].dead)) continue;
-            if (CaravanMember(c, k, &p, &f)) Add(p, (k == 1 || k == 2) ? 0.55f : 0.35f, OWNER_CARAVAN + c);
+            if ((k == 0 && G.caravans[c].vit[0].dead) || (k >= 3 && G.caravans[c].vit[k - 2].dead)) continue;
+            if (CaravanMember(c, k, &p, &f)) Add(p, (k == 1 || k == 2) ? 0.55f : 0.35f, CARAVAN_OWNER(c, k));
         }
     }
     for (int i = 0; i < MAX_RAIDERS; i++) {
