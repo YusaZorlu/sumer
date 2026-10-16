@@ -1,0 +1,11 @@
+# Built by run.sh and build-web.sh
+/sumer
+/raylib/
+/raylib-linux/
+/raylib-web
+
+# Saves and settings the game writes next to itself
+*.sav
+*.sav.tmp
+sumer.slot
+sumer.lang

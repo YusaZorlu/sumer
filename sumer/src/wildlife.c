@@ -137,17 +137,22 @@ static bool GoodSpot(const AnimalDef *d, float x, float z)
     return !SolidAt(x, z, 0.8f);
 }
 
+// Geese rest on the water, or on the ground where there is none.
+static float RestHeight(float x, float z)
+{
+    return InWater(x, z) ? WATER_LEVEL : TerrainHeight(x, z);
+}
+
+// Comes back out of sight of every player, beside a herd mate when one is far enough away.
 static void Respawn(Animal *a)
 {
     const AnimalDef *d = &DEFS[a->type];
     Rectangle zone = HERDS[a->pack].zone;
-    Vector2 player = { G.player.pos.x, G.player.pos.z };
     const Animal *mate = NULL;
 
     for (int i = 0; i < G.animalCount; i++) {
         const Animal *m = &G.animals[i];
-        if (m != a && m->active && m->type == a->type && m->pack == a->pack && m->state != ST_DEAD &&
-            Vector2Distance((Vector2){ m->pos.x, m->pos.z }, player) > 45.0f) {
+        if (m != a && m->active && m->type == a->type && m->pack == a->pack && m->state != ST_DEAD && NearestAnyone(m->pos) > 45.0f) {
             mate = m;
             break;
         }
@@ -163,7 +168,7 @@ static void Respawn(Animal *a)
             x = RandF(zone.x, zone.x + zone.width);
             z = RandF(zone.y, zone.y + zone.height);
         }
-        if (!GoodSpot(d, x, z) || (tries < 80 && Vector2Distance((Vector2){ x, z }, player) < 45.0f)) continue;
+        if (!GoodSpot(d, x, z) || (tries < 80 && NearestAnyone((Vector3){ x, 0, z }) < 45.0f)) continue;
         a->pos = (Vector3){ x, 0, z };
         found = true;
     }
@@ -172,7 +177,7 @@ static void Respawn(Animal *a)
         a->respawn = 10.0f;
         return;
     }
-    a->pos.y = d->flies ? 0.0f : TerrainHeight(a->pos.x, a->pos.z);
+    a->pos.y = d->flies ? RestHeight(a->pos.x, a->pos.z) : TerrainHeight(a->pos.x, a->pos.z);
     a->lair = a->pos;
     a->state = ST_CALM;
     a->heading = RandF(-PI, PI);
@@ -182,6 +187,7 @@ static void Respawn(Animal *a)
     a->hp = d->hp;
     a->arrowsIn = 0;
     a->bite = 0;
+    a->target = -1;
     a->active = true;
 }
 
@@ -202,7 +208,7 @@ void SpringRespawn(void)
 {
     for (int i = 0; i < G.animalCount; i++) {
         Animal *a = &G.animals[i];
-        bool carcass = a->active && a->state == ST_DEAD && XZDist(a->pos, G.player.pos) > 80.0f;
+        bool carcass = a->active && a->state == ST_DEAD && NearestAnyone(a->pos) > 80.0f;
         if ((!a->active && a->respawn < 0) || carcass) Respawn(a);
     }
 }
@@ -225,21 +231,10 @@ void HoldAnimalsForSpring(const unsigned char *mask, int bytes)
     }
 }
 
-static float Stance(void)
+// A wolf-pelt cloak keeps the pack off a player who has not attacked it.
+static bool Intimidated(int s)
 {
-    const Player *p = &G.player;
-    float f;
-
-    if (!p->grounded) f = 1.3f;
-    else if (p->crouching) f = p->moving ? 0.45f : 0.3f;
-    else if (p->running) f = 1.6f;
-    else f = p->moving ? 1.0f : 0.7f;
-    return f;
-}
-
-static bool Intimidated(void)
-{
-    return G.armor == ARMOR_WOLF && G.wolfAggro <= 0;
+    return PlayerIn(s) && G.peers[s].armor == ARMOR_WOLF && G.peers[s].aggro <= 0;
 }
 
 static bool Wounded(const Animal *a)
@@ -290,7 +285,7 @@ static void Step(Animal *a, const AnimalDef *d, float dt)
 
     float nx = a->pos.x + sinf(a->heading) * a->speed * dt;
     float nz = a->pos.z + cosf(a->heading) * a->speed * dt;
-    bool airborne = d->flies && a->pos.y > 0.8f;
+    bool airborne = d->flies && a->pos.y > RestHeight(a->pos.x, a->pos.z) + 0.8f;
     bool blocked = !airborne && ((!d->swims && InWater(nx, nz)) || SolidAt(nx, nz, 0.4f));
     if (InsideWalls(nx, nz, a->type == AN_WOLF ? -8.0f : -4.0f)) blocked = true;
 
@@ -303,7 +298,7 @@ static void Step(Animal *a, const AnimalDef *d, float dt)
     if (!d->flies) a->pos.y = TerrainHeight(nx, nz);
 }
 
-static void HuntPack(const Animal *leader)
+static void HuntPack(const Animal *leader, int s)
 {
     for (int i = 0; i < G.animalCount; i++) {
         Animal *m = &G.animals[i];
@@ -311,23 +306,32 @@ static void HuntPack(const Animal *leader)
             Vector3Distance(m->pos, leader->pos) < 45.0f) {
             m->state = ST_HUNT;
             m->timer = 0;
+            m->target = s;
         }
     }
-    if (G.wolfWarn <= 0) {
-        Say("Wolves! They hunt people who are alone. Run to the city or to other people, or fight.");
-        G.wolfWarn = 30.0f;
-    }
+    if (Warn(s, WARN_WOLF, 30.0f)) SayTo(s, "Wolves! They hunt people who are alone. Run to the city or to other people, or fight.");
 }
 
-// Hunts only a player who is alone outside the walls; bites, circles, bites again.
+// Which way is away from the nearest player; the way it already faces when everyone sleeps.
+static Vector3 AwayFromPlayers(const Animal *a)
+{
+    float dist;
+    int s = NearestPlayer(a->pos, &dist);
+    if (s < 0) return (Vector3){ sinf(a->heading), 0, cosf(a->heading) };
+    return (Vector3){ a->pos.x - G.peers[s].pos.x, 0, a->pos.z - G.peers[s].pos.z };
+}
+
+// How close a player may come before the pack notices: nearer by night, much nearer crouching.
+static float WolfRange(int s, bool night)
+{
+    int f = G.peers[s].flags;
+    return (night ? 38.0f : 22.0f) * ((f & PF_CROUCH) ? 0.6f : (f & PF_RUN) ? 1.3f : 1.0f);
+}
+
+// Hunts a player who is alone outside the walls, or one who shot at the pack; bites, circles, bites again.
 static void UpdateWolf(Animal *a, const AnimalDef *d, float dt)
 {
-    const Player *p = &G.player;
-    Vector3 to = Vector3Subtract(p->pos, a->pos);
-    to.y = 0;
-    float dist = Vector3Length(to);
     bool night = G.daylight < 0.45f;
-    float range = (night ? 38.0f : 22.0f) * (p->crouching ? 0.6f : p->running ? 1.3f : 1.0f);
 
     a->bite -= dt;
     switch (a->state) {
@@ -344,16 +348,26 @@ static void UpdateWolf(Animal *a, const AnimalDef *d, float dt)
                 break;
             }
         }
-        if (G.wolfAggro > 0 ? dist < range * 1.5f : (G.alone && dist < range && !Intimidated())) HuntPack(a);
+        for (int s = 0; s < MAX_PLAYERS; s++) {
+            if (!PlayerAwake(s)) continue;
+            const Peer *p = &G.peers[s];
+            float dist = XZDist(p->pos, a->pos), range = WolfRange(s, night);
+            if (p->aggro > 0 ? dist < range * 1.5f : (p->alone && dist < range && !Intimidated(s))) {
+                HuntPack(a, s);
+                break;
+            }
+        }
         break;
-    case ST_HUNT:
-        if ((!G.alone && G.wolfAggro <= 0) || dist > 80.0f || Intimidated() || Wounded(a)) {
+    case ST_HUNT: {
+        int s = a->target;
+        const Peer *p = PlayerIn(s) ? &G.peers[s] : NULL;
+        Vector3 to = p ? Vector3Subtract(p->pos, a->pos) : (Vector3){ 0, 0, 0 };
+        to.y = 0;
+        float dist = Vector3Length(to);
+        if (!p || !PlayerAwake(s) || (!p->alone && p->aggro <= 0) || dist > 80.0f || Intimidated(s) || Wounded(a)) {
             a->state = ST_FLEE;
             a->timer = Wounded(a) ? 12.0f : 6.0f;
-            if (Intimidated() && dist < 30.0f && G.wolfWarn <= 0) {
-                Say("The wolves shy away from your wolf-pelt cloak.");
-                G.wolfWarn = 30.0f;
-            }
+            if (p && Intimidated(s) && dist < 30.0f && Warn(s, WARN_WOLF, 30.0f)) SayTo(s, "The wolves shy away from your wolf-pelt cloak.");
             break;
         }
         a->heading = atan2f(to.x, to.z);
@@ -366,21 +380,24 @@ static void UpdateWolf(Animal *a, const AnimalDef *d, float dt)
         } else {
             a->speed = 0;
             if (a->bite <= 0) {
-                HurtPlayer(WOLF_BITE);
+                HurtSlot(s, WOLF_BITE);
                 a->bite = BITE_COOLDOWN;
                 a->timer = 1.2f;
             }
         }
         break;
-    case ST_FLEE:
+    }
+    case ST_FLEE: {
+        Vector3 away = AwayFromPlayers(a);
         a->timer -= dt;
-        a->heading = atan2f(-to.x, -to.z);
+        a->heading = atan2f(away.x, away.z);
         a->speed = d->run;
         if (a->timer <= 0) {
             a->state = ST_CALM;
             a->speed = 0;
         }
         break;
+    }
     case ST_DEAD:
         break;
     }
@@ -390,13 +407,14 @@ static void UpdateWolf(Animal *a, const AnimalDef *d, float dt)
 // A wounded boar charges whoever hurt it, gores, and charges again until it gives up or nearly dies.
 static void UpdateCharge(Animal *a, const AnimalDef *d, float dt)
 {
-    Vector3 to = Vector3Subtract(G.player.pos, a->pos);
+    int s = a->target;
+    Vector3 to = Vector3Subtract(PlayerAt(s), a->pos);
     to.y = 0;
     float dist = Vector3Length(to);
 
     a->timer -= dt;
     a->bite -= dt;
-    if (a->timer <= 0 || dist > 45.0f || G.sleeping || (float)a->hp < 0.2f * (float)d->hp) {
+    if (a->timer <= 0 || dist > 45.0f || !PlayerAwake(s) || (float)a->hp < 0.2f * (float)d->hp) {
         a->state = ST_FLEE;
         a->timer = 6.0f;
         a->awareness = 1.2f;
@@ -407,8 +425,8 @@ static void UpdateCharge(Animal *a, const AnimalDef *d, float dt)
         a->speed = d->run * 1.05f;
     } else {
         a->speed = 0;
-        if (a->bite <= 0 && fabsf(G.player.pos.y - a->pos.y) < 1.5f) {
-            HurtPlayer(BOAR_GORE);
+        if (a->bite <= 0 && fabsf(PlayerAt(s).y - a->pos.y) < 1.5f) {
+            HurtSlot(s, BOAR_GORE);
             a->bite = GORE_COOLDOWN;
         }
     }
@@ -419,14 +437,17 @@ static void UpdateCharge(Animal *a, const AnimalDef *d, float dt)
 // Crouching lets you creep much nearer. It never strays more than a lunge from its grass.
 static void UpdateSnake(Animal *a, const AnimalDef *d, float dt)
 {
-    const Player *p = &G.player;
-    Vector3 to = Vector3Subtract(p->pos, a->pos);
+    bool roused = a->state == ST_ALERT || a->state == ST_HUNT;
+    int s = roused && PlayerAwake(a->target) ? a->target : NearestPlayer(a->pos, NULL);
+    const Peer *p = s >= 0 ? &G.peers[s] : NULL;
+    Vector3 to = p ? Vector3Subtract(p->pos, a->pos) : (Vector3){ 0, 0, 0 };
     to.y = 0;
-    float dist = Vector3Length(to);
-    bool level = fabsf(p->pos.y - a->pos.y) < 1.6f && !G.sleeping && G.climb == 0;
-    float notice = p->crouching ? 1.6f : p->running ? 3.4f : 2.8f;
+    float dist = p ? Vector3Length(to) : 1e9f;
+    bool level = p && fabsf(p->pos.y - a->pos.y) < 1.6f && !(p->flags & PF_CLIMB);
+    float notice = !p ? 0.0f : (p->flags & PF_CROUCH) ? 1.6f : (p->flags & PF_RUN) ? 3.4f : 2.8f;
 
     a->bite -= dt;
+    if (!p && a->state != ST_FLEE) a->state = ST_CALM;
     switch (a->state) {
     case ST_CALM: {
         Vector3 home = Vector3Subtract(a->lair, a->pos);
@@ -437,10 +458,8 @@ static void UpdateSnake(Animal *a, const AnimalDef *d, float dt)
             a->state = ST_ALERT;
             a->timer = SNAKE_HISS;
             a->speed = 0;
-            if (G.snakeWarn <= 0) {
-                Say("A snake rears up in the grass, hissing! Back away.");
-                G.snakeWarn = 25.0f;
-            }
+            a->target = s;
+            if (Warn(s, WARN_SNAKE, 25.0f)) SayTo(s, "A snake rears up in the grass, hissing! Back away.");
         }
         break;
     }
@@ -459,15 +478,16 @@ static void UpdateSnake(Animal *a, const AnimalDef *d, float dt)
         a->timer -= dt;
         a->speed = (dist > 1.1f && XZDist(a->pos, a->lair) < 3.0f) ? d->run : 0.0f;
         if (dist < 1.7f && level && a->bite <= 0) {
-            HurtPlayer(SNAKE_BITE);
+            HurtSlot(s, SNAKE_BITE);
             a->bite = SNAKE_COOLDOWN;
-            Say("A snake bit you!");
+            SayTo(s, "A snake bit you!");
         }
         if (a->timer <= 0 || dist > 7.0f || !level) a->state = ST_CALM;
         break;
-    case ST_FLEE:
+    case ST_FLEE: {
+        Vector3 away = AwayFromPlayers(a);
         a->timer -= dt;
-        a->heading = atan2f(-to.x, -to.z);
+        a->heading = atan2f(away.x, away.z);
         a->speed = d->run;
         if (a->timer <= 0) {
             a->state = ST_CALM;
@@ -475,25 +495,30 @@ static void UpdateSnake(Animal *a, const AnimalDef *d, float dt)
             a->lair = a->pos;
         }
         break;
+    }
     default:
         break;
     }
     Step(a, d, dt);
 }
 
+// Wolves after this machine's player.
 bool AnyWolfHunting(void)
 {
-    for (int i = 0; i < G.animalCount; i++)
-        if (G.animals[i].active && G.animals[i].type == AN_WOLF && G.animals[i].state == ST_HUNT) return true;
+    for (int i = 0; i < G.animalCount; i++) {
+        const Animal *a = &G.animals[i];
+        if (a->active && a->type == AN_WOLF && a->state == ST_HUNT && a->target == G.self) return true;
+    }
     return false;
 }
 
-// A boar charging or a snake striking.
+// A boar charging or a snake striking at this machine's player.
 bool AnyBeastAttacking(void)
 {
     for (int i = 0; i < G.animalCount; i++) {
         const Animal *a = &G.animals[i];
-        if (a->active && a->type != AN_WOLF && a->state == ST_HUNT && XZDist(a->pos, G.player.pos) < 40.0f) return true;
+        if (a->active && a->type != AN_WOLF && a->state == ST_HUNT && a->target == G.self && XZDist(a->pos, G.player.pos) < 40.0f)
+            return true;
     }
     return false;
 }
@@ -504,11 +529,12 @@ bool AnimalHidden(const Animal *a)
     return a->type == AN_SNAKE && a->state == ST_CALM && a->hp >= DEFS[AN_SNAKE].hp;
 }
 
-void CalmWolves(void)
+// Everything hunting this player (every player for -1) gives up and slinks off.
+void CalmBeasts(int slot)
 {
     for (int i = 0; i < G.animalCount; i++) {
         Animal *a = &G.animals[i];
-        if (a->active && a->state == ST_HUNT) {
+        if (a->active && a->state == ST_HUNT && (slot < 0 || a->target == slot)) {
             a->state = a->type == AN_SNAKE ? ST_CALM : ST_FLEE;
             a->timer = 20.0f;
         }
@@ -517,7 +543,8 @@ void CalmWolves(void)
 
 void UpdateWildlife(float dt)
 {
-    float stance = Stance();
+    for (int s = 0; s < MAX_PLAYERS; s++)
+        if (G.peers[s].aggro > 0) G.peers[s].aggro -= dt;
 
     for (int i = 0; i < G.animalCount; i++) {
         Animal *a = &G.animals[i];
@@ -552,10 +579,11 @@ void UpdateWildlife(float dt)
             continue;
         }
 
-        Vector3 away = Vector3Subtract(a->pos, G.player.pos);
-        away.y = 0;
-        float dist = Vector3Length(away);
-        float range = d->sense * stance * Lerp(1.0f, d->nightSense, G.night);
+        // Prey watches the nearest player who is up and about.
+        float dist;
+        int s = NearestPlayer(a->pos, &dist);
+        Vector3 away = AwayFromPlayers(a);
+        float range = d->sense * (s >= 0 ? PlayerStance(s) : 1.0f) * Lerp(1.0f, d->nightSense, G.night);
 
         if (dist < range) a->awareness += d->wariness * (1.0f - dist / range) * 1.8f * dt;
         else a->awareness -= 0.15f * dt;
@@ -593,7 +621,7 @@ void UpdateWildlife(float dt)
 
         Step(a, d, dt);
         if (d->flies) {
-            float target = (a->state == ST_FLEE) ? 3.0f : 0.0f;
+            float target = RestHeight(a->pos.x, a->pos.z) + (a->state == ST_FLEE ? 3.0f : 0.0f);
             a->pos.y += (target - a->pos.y) * fminf(1.0f, dt * 1.5f);
         }
     }
@@ -610,15 +638,13 @@ static void Kill(Animal *a)
 // An arrow that hisses past or lands close by: wolves come for the archer, everything else runs.
 static void React(Animal *a)
 {
+    int s = G.actor;
     if (!a->active || a->state == ST_DEAD) return;
     if (a->type == AN_WOLF) {
-        if (a->state == ST_HUNT) return;
-        G.wolfAggro = fmaxf(G.wolfAggro, 60.0f);
-        if (G.wolfWarn <= 0) {
-            Say("Your arrow flew among the wolves. The pack comes for you!");
-            G.wolfWarn = 30.0f;
-        }
-        HuntPack(a);
+        if (a->state == ST_HUNT || !PlayerIn(s)) return;
+        G.peers[s].aggro = fmaxf(G.peers[s].aggro, 60.0f);
+        if (Warn(s, WARN_WOLF, 30.0f)) SayTo(s, "Your arrow flew among the wolves. The pack comes for you!");
+        HuntPack(a, s);
         return;
     }
     if (a->state != ST_FLEE) Startle(a, true);
@@ -662,7 +688,7 @@ static void StickArrow(Arrow *ar)
     ReactAround(ar->pos, CLOSE_LANDING);
 }
 
-int ShootArrow(Vector3 from, Vector3 to, float power)
+static int SpawnArrow(int owner, Vector3 from, Vector3 vel, int damage)
 {
     Arrow *slot = NULL;
 
@@ -671,41 +697,62 @@ int ShootArrow(Vector3 from, Vector3 to, float power)
     for (int i = 0; i < MAX_ARROWS && !slot; i++)
         if (!G.arrows[i].flying) slot = &G.arrows[i];
     if (!slot) return -1;
-
-    Vector3 dir = Vector3Normalize(Vector3Subtract(to, from));
-    float speed = BOW_SPEED[G.bow] * (0.35f + 0.65f * power);
-    *slot = (Arrow){ .pos = from, .vel = Vector3Scale(dir, speed), .life = 4.0f, .fade = 1.0f, .flying = true, .active = true };
+    *slot = (Arrow){ .pos = from, .vel = vel, .life = 4.0f, .fade = 1.0f, .flying = true, .active = true, .owner = owner, .damage = damage };
     return (int)(slot - G.arrows);
 }
 
+// This machine's player looses an arrow. In someone else's game it flies here only to be watched:
+// the host flies the real one and says what it hit.
+int ShootArrow(Vector3 from, Vector3 to, float power)
+{
+    Vector3 dir = Vector3Normalize(Vector3Subtract(to, from));
+    Vector3 vel = Vector3Scale(dir, BOW_SPEED[G.bow] * (0.35f + 0.65f * power));
+    int damage = BOW_DAMAGE[G.bow] + ((G.tools & TOOL_ARROWHEADS) ? 10 : 0);
+    if (IsClient()) NetShoot(from, vel, damage);
+    return SpawnArrow(G.self, from, vel, damage);
+}
+
+// A guest's arrow, flown by the host. Nothing faster than the best bow or harder than its best arrow.
+void ShootFor(int slot, Vector3 from, Vector3 vel, int damage)
+{
+    float speed = Vector3Length(vel);
+    if (!PlayerIn(slot) || Vector3Distance(from, G.peers[slot].pos) > 6.0f || speed < 1.0f) return;
+    if (speed > BOW_SPEED[2]) vel = Vector3Scale(vel, BOW_SPEED[2] / speed);
+    SpawnArrow(slot, from, vel, damage < 0 ? 0 : damage > BOW_DAMAGE[2] + 10 ? BOW_DAMAGE[2] + 10 : damage);
+}
+
+// The acting player (G.actor) hurt it: a boar or a snake turns on them, the pack comes for them.
 static void HitAnimal(Animal *a, int damage)
 {
+    int s = G.actor;
     a->hp -= damage;
-    G.hitMarkT = 0.3f;
+    HitMark();
     SpawnBurst(Center(a), (Color){ 170, 30, 30, 255 }, 12, 2.4f);
     if (a->hp <= 0) {
         Kill(a);
         if (a->type == AN_SNAKE) Say("You killed the snake.");
         else Say("%s down! Walk up to it and press E to take the carcass.", AnimalName(a->type));
     } else if (a->type == AN_BOAR && (float)a->hp >= 0.2f * (float)DEFS[AN_BOAR].hp) {
-        if (a->state != ST_HUNT) Say("The boar turns on you and charges!");
+        if (a->state != ST_HUNT || a->target != s) Say("The boar turns on you and charges!");
         a->state = ST_HUNT;
+        a->target = s;
         a->timer = CHARGE_TIME;
         a->bite = fmaxf(a->bite, 0.5f);
         StartleMates(a);
     } else if (a->type == AN_SNAKE) {
-        bool near = XZDist(a->pos, G.player.pos) < 3.0f;
+        bool near = XZDist(a->pos, PlayerAt(s)) < 3.0f;
         a->state = near ? ST_HUNT : ST_FLEE;
+        a->target = s;
         a->timer = near ? 6.0f : 3.0f;
         Say(near ? "The snake strikes back!" : "The snake slithers away through the grass.");
     } else if (a->type == AN_WOLF) {
-        G.wolfAggro = 90.0f;
+        if (PlayerIn(s)) G.peers[s].aggro = 90.0f;
         if (Wounded(a)) {
             a->state = ST_FLEE;
             a->timer = 12.0f;
             Say("Wolf badly wounded. It limps away.");
         } else {
-            HuntPack(a);
+            HuntPack(a, s);
             Say("The wolf turns on you, and its pack with it!");
         }
     } else {
@@ -714,11 +761,72 @@ static void HitAnimal(Animal *a, int damage)
     }
 }
 
+// An arrow on the ground goes back into the quiver of the archer who walks over it. A guest gathers
+// its own copy; the host's copy of a guest's arrow just goes.
+static void Recover(Arrow *ar)
+{
+    if (ar->owner == G.self) {
+        Vector3 d = Vector3Subtract(ar->pos, G.player.pos);
+        d.y -= 0.9f;
+        if (Vector3Length(d) < 1.4f && G.quiver < G.quiverMax) {
+            ar->active = false;
+            G.quiver++;
+            Say("Arrow recovered (%d/%d).", G.quiver, G.quiverMax);
+        }
+    } else if (PlayerIn(ar->owner) && XZDist(ar->pos, G.peers[ar->owner].pos) < 1.4f && fabsf(ar->pos.y - G.peers[ar->owner].pos.y) < 2.0f) {
+        ar->active = false;
+    }
+}
+
+static void Spend(Arrow *ar)
+{
+    ar->flying = false;
+    ar->spent = true;
+    ar->fade = 0.6f;
+}
+
+// A guest's own arrow, flown for the eye only: where it strikes is shown at once, the host decides the rest.
+static void WatchArrow(Arrow *ar, Vector3 prev)
+{
+    Animal *hit = ArrowHit(prev, ar->pos);
+    int person = PersonOnSegment(prev, ar->pos);
+    if (person >= 0 || hit) {
+        Vector3 pos = hit ? Center(hit) : (Vector3){ 0 };
+        float hp, maxHp;
+        const char *name;
+        bool hostile, dead;
+        if (!hit && FighterInfo(person, &pos, &hp, &maxHp, &name, &hostile, &dead)) pos.y += 1.2f;
+        ShowImpact(pos);
+        Spend(ar);
+    } else if (ar->pos.y <= WATER_LEVEL && InWater(ar->pos.x, ar->pos.z)) {
+        ShowImpact((Vector3){ ar->pos.x, WATER_LEVEL + 0.05f, ar->pos.z });
+        Spend(ar);
+    } else if (ar->pos.y <= TerrainHeight(ar->pos.x, ar->pos.z)) {
+        ar->pos.y = TerrainHeight(ar->pos.x, ar->pos.z) + 0.05f;
+        ShowImpact(ar->pos);
+        ar->flying = false;
+        ar->life = 90.0f;
+        ar->fade = 0.6f;
+    } else if (PointInSolid(ar->pos)) {
+        ar->pos = prev;
+        ShowImpact(prev);
+        ar->flying = false;
+        ar->life = 90.0f;
+        ar->fade = 0.6f;
+    } else if (ar->life <= 0) {
+        ar->active = false;
+    }
+}
+
+// Each arrow acts for whoever shot it: what it hits answers to them, and they hear about it.
 void UpdateArrows(float dt)
 {
+    int actor = G.actor;
+
     for (int i = 0; i < MAX_ARROWS; i++) {
         Arrow *ar = &G.arrows[i];
         if (!ar->active) continue;
+        G.actor = ar->owner;
 
         if (!ar->flying) {
             ar->fade = fmaxf(0.0f, ar->fade - dt);
@@ -727,15 +835,8 @@ void UpdateArrows(float dt)
                 continue;
             }
             ar->life -= dt;
-            Vector3 d = Vector3Subtract(ar->pos, G.player.pos);
-            d.y -= 0.9f;
-            if (ar->life <= 0) {
-                ar->active = false;
-            } else if (Vector3Length(d) < 1.4f && G.quiver < G.quiverMax) {
-                ar->active = false;
-                G.quiver++;
-                Say("Arrow recovered (%d/%d).", G.quiver, G.quiverMax);
-            }
+            if (ar->life <= 0) ar->active = false;
+            else Recover(ar);
             continue;
         }
 
@@ -750,6 +851,10 @@ void UpdateArrows(float dt)
             for (int k = TRAIL_POINTS - 1; k > 0; k--) ar->trail[k] = ar->trail[k - 1];
             ar->trail[0] = prev;
             if (ar->trailCount < TRAIL_POINTS) ar->trailCount++;
+        }
+        if (IsClient()) {
+            WatchArrow(ar, prev);
+            continue;
         }
 
         // An unaware animal takes double damage; a near miss still sends it running (or the wolves after you).
@@ -766,52 +871,42 @@ void UpdateArrows(float dt)
             const char *name;
             bool hostile, dead;
             FighterInfo(person, &pos, &hp, &maxHp, &name, &hostile, &dead);
-            DamagePerson(person, (float)(BOW_DAMAGE[G.bow] + ((G.tools & TOOL_ARROWHEADS) ? 10 : 0)));
-            G.impact = (Vector3){ pos.x, pos.y + 1.2f, pos.z };
-            G.impactT = 3.0f;
-            ar->flying = false;
-            ar->spent = true;
-            ar->fade = 0.6f;
+            DamagePerson(person, (float)ar->damage);
+            ShowImpact((Vector3){ pos.x, pos.y + 1.2f, pos.z });
+            Spend(ar);
         } else if (hit) {
-            int damage = BOW_DAMAGE[G.bow] + ((G.tools & TOOL_ARROWHEADS) ? 10 : 0);
+            int damage = ar->damage;
             if (hit->state == ST_CALM) damage *= 2;
             hit->arrowsIn++;
-            G.impact = Center(hit);
-            G.impactT = 3.0f;
+            ShowImpact(Center(hit));
             HitAnimal(hit, damage);
-            ar->flying = false;
-            ar->spent = true;
-            ar->fade = 0.6f;
-        } else if (ar->pos.y <= TerrainHeight(ar->pos.x, ar->pos.z)) {
+            Spend(ar);
+        } else if (ar->pos.y <= TerrainHeight(ar->pos.x, ar->pos.z) || (ar->pos.y <= WATER_LEVEL && InWater(ar->pos.x, ar->pos.z))) {
             Vector3 at = { ar->pos.x, TerrainHeight(ar->pos.x, ar->pos.z) + 0.05f, ar->pos.z };
             if (InWater(at.x, at.z)) {
-                at.y = 0.1f;
+                at.y = WATER_LEVEL + 0.05f;
                 SpawnBurst(at, (Color){ 210, 230, 240, 255 }, 14, 2.2f);
                 SpawnRing(at, (Color){ 220, 240, 250, 255 });
-                G.impact = at;
-                G.impactT = 3.0f;
-                ar->flying = false;
-                ar->spent = true;
-                ar->fade = 0.6f;
+                ShowImpact(at);
+                Spend(ar);
                 ReactAround(at, CLOSE_LANDING);
             } else {
                 ar->pos = at;
                 SpawnBurst(at, (Color){ 150, 128, 92, 255 }, 10, 1.6f);
                 SpawnRing(at, (Color){ 255, 214, 140, 255 });
-                G.impact = at;
-                G.impactT = 3.0f;
+                ShowImpact(at);
                 StickArrow(ar);
             }
         } else if (PointInSolid(ar->pos)) {
             ar->pos = prev;
             SpawnBurst(prev, (Color){ 170, 160, 150, 255 }, 8, 1.4f);
-            G.impact = prev;
-            G.impactT = 3.0f;
+            ShowImpact(prev);
             StickArrow(ar);
         } else if (ar->life <= 0) {
             ar->active = false;
         }
     }
+    G.actor = actor;
 }
 
 Vector3 AimPoint(void)
@@ -1042,18 +1137,15 @@ static void MaceStrike(Vector3 chest, Vector3 fwd)
     }
 }
 
-// Strikes the closest animal in front, toward where the camera looks; unaware animals take half again as much.
-void MeleeStrike(void)
+// A blow by the acting player (G.actor): the closest animal or person in front of the chest, toward
+// where they look; unaware animals take half again as much. The war mace sweeps instead.
+void StrikeFor(Vector3 chest, Vector3 fwd, int equip, int weapon)
 {
-    Player *p = &G.player;
-    Vector3 fwd = { -sinf(p->yaw), 0, -cosf(p->yaw) };
-    Vector3 chest = { p->pos.x, p->pos.y + 1.0f, p->pos.z };
     Animal *target = NULL;
     float best = 1e9f;
     Vector3 dir = { 0 };
 
-    p->facing = p->yaw + PI;
-    if (G.equip == EQ_MACE) {
+    if (equip == EQ_MACE) {
         MaceStrike(chest, fwd);
         return;
     }
@@ -1071,7 +1163,7 @@ void MeleeStrike(void)
             dir = d;
         }
     }
-    int damage = MELEE_DAMAGE[G.weapon < 0 ? 0 : G.weapon > 2 ? 2 : G.weapon];
+    int damage = MELEE_DAMAGE[weapon < 0 ? 0 : weapon > 2 ? 2 : weapon];
     float personDist;
     int person = PersonInFront(chest, fwd, 2.3f, &personDist);
     if (person >= 0 && (!target || personDist < best)) {
@@ -1085,22 +1177,35 @@ void MeleeStrike(void)
     KnockBack(target, dir, best);
 }
 
+// This machine's player swings; in someone else's game the host plays the blow out.
+void MeleeStrike(void)
+{
+    Player *p = &G.player;
+    Vector3 fwd = { -sinf(p->yaw), 0, -cosf(p->yaw) };
+    Vector3 chest = { p->pos.x, p->pos.y + 1.0f, p->pos.z };
+
+    p->facing = p->yaw + PI;
+    if (IsClient()) NetStrike(chest, fwd, G.equip, G.weapon);
+    else StrikeFor(chest, fwd, G.equip, G.weapon);
+}
+
+void DrawArrow(const Arrow *ar)
+{
+    if (!ar->active || ar->spent) return;
+    LightFor(ar->pos);
+    Vector3 v = ar->vel;
+    float yaw = atan2f(v.x, v.z), pitch = atan2f(v.y, sqrtf(v.x * v.x + v.z * v.z));
+    rlPushMatrix();
+    rlTranslatef(ar->pos.x, ar->pos.y, ar->pos.z);
+    rlRotatef(yaw * RAD2DEG, 0, 1, 0);
+    rlRotatef(-pitch * RAD2DEG, 1, 0, 0);
+    DrawShadedBox((Vector3){ 0, 0, -0.36f }, (Vector3){ 0.03f, 0.03f, 0.72f }, COL_REED);
+    DrawShadedBox((Vector3){ 0, 0, 0.02f }, (Vector3){ 0.05f, 0.05f, 0.08f }, COL_STONE);
+    DrawShadedBox((Vector3){ 0, 0, -0.66f }, (Vector3){ 0.12f, 0.02f, 0.12f }, COL_LINEN);
+    rlPopMatrix();
+}
+
 void DrawArrows(void)
 {
-    for (int i = 0; i < MAX_ARROWS; i++) {
-        const Arrow *ar = &G.arrows[i];
-        if (!ar->active || ar->spent) continue;
-
-        LightFor(ar->pos);
-        Vector3 v = ar->vel;
-        float yaw = atan2f(v.x, v.z), pitch = atan2f(v.y, sqrtf(v.x * v.x + v.z * v.z));
-        rlPushMatrix();
-        rlTranslatef(ar->pos.x, ar->pos.y, ar->pos.z);
-        rlRotatef(yaw * RAD2DEG, 0, 1, 0);
-        rlRotatef(-pitch * RAD2DEG, 1, 0, 0);
-        DrawShadedBox((Vector3){ 0, 0, -0.36f }, (Vector3){ 0.03f, 0.03f, 0.72f }, COL_REED);
-        DrawShadedBox((Vector3){ 0, 0, 0.02f }, (Vector3){ 0.05f, 0.05f, 0.08f }, COL_STONE);
-        DrawShadedBox((Vector3){ 0, 0, -0.66f }, (Vector3){ 0.12f, 0.02f, 0.12f }, COL_LINEN);
-        rlPopMatrix();
-    }
+    for (int i = 0; i < MAX_ARROWS; i++) DrawArrow(&G.arrows[i]);
 }

@@ -207,7 +207,7 @@ void UpdateRaiders(float dt)
         Raider *r = &G.raiders[i];
         if (r->vit.dead) {
             if (r->respawnDay == 0) r->respawnDay = (float)G.day;
-            bool far = XZDist(G.player.pos, r->home) > 70.0f;
+            bool far = NearestAnyone(r->home) > 70.0f;
             if ((float)G.day > r->respawnDay && G.hour >= 6.0f && far) {
                 r->vit = (Vitals){ .used = false };
                 r->pos = r->home;
@@ -292,20 +292,63 @@ void StashPrompt(int camp, char *buf, int size, bool *ok)
     else Fmt(buf, size, "The raiders' chest is empty. They bring back more at dawn.");
 }
 
+// Asks for as much of each of the chest's heaps as fits in this player's quiver and baskets.
 void TakeStash(int camp)
 {
-    char log[256] = "";
-    bool left = false;
+    int args[5] = { camp, 0, 0, 0, 0 }, quiver = G.quiverMax - G.quiver;
+    Slot bag[BAG_MAX];
+    bool any = false;
 
+    memcpy(bag, G.bag, sizeof(bag));
+    for (int k = 0; k < 4; k++) {
+        const Slot *s = &G.stash[camp][k];
+        if (s->item == IT_NONE) continue;
+        int n = s->count, q = 0;
+        if (s->item == IT_ARROWS) {
+            q = n < quiver ? n : quiver;
+            quiver -= q;
+        }
+        args[1 + k] = q + SlotsAdd(bag, G.bagSlots, s->item, n - q);
+        any = any || args[1 + k] > 0;
+    }
+    if (any) Act(RQ_STASH, args, 5);
+    else if (StashItems(camp) > 0) Say("No room in your baskets.");
+}
+
+// The chest's half: what was asked for, as far as it still holds it. res: item and count for each
+// heap, then how many things are left.
+bool ClaimStash(int camp, const int *want, int *res, Vector3 by)
+{
+    int got = 0;
+    if (camp < 0 || camp >= CAMPS || XZDist(G.stations[STASHES[camp]], by) > 8.0f) return false;
     for (int k = 0; k < 4; k++) {
         Slot *s = &G.stash[camp][k];
-        if (s->item == IT_NONE) continue;
-        int got = s->item == IT_ARROWS ? GiveArrows(s->count) : BagAdd(s->item, s->count);
-        if (got > 0) snprintf(log + strlen(log), sizeof(log) - strlen(log), "%s%d %s", log[0] ? ", " : "", got, ItemName(s->item));
-        s->count -= got;
+        int n = want[k] < s->count ? want[k] : s->count;
+        if (n < 0) n = 0;
+        res[k * 2] = s->item;
+        res[k * 2 + 1] = n;
+        s->count -= n;
         if (s->count <= 0) *s = (Slot){ IT_NONE, 0 };
-        else left = true;
+        got += n;
+    }
+    res[8] = StashItems(camp);
+    return got > 0;
+}
+
+void StashApply(bool ok, const int *res)
+{
+    char log[256] = "";
+
+    if (!ok) {
+        Say("Someone else emptied the chest first.");
+        return;
+    }
+    for (int k = 0; k < 4; k++) {
+        int item = res[k * 2], n = res[k * 2 + 1];
+        if (item <= IT_NONE || item >= IT_COUNT || n <= 0) continue;
+        int got = item == IT_ARROWS ? GiveArrows(n) : BagAdd(item, n);
+        if (got > 0) snprintf(log + strlen(log), sizeof(log) - strlen(log), "%s%d %s", log[0] ? ", " : "", got, ItemName(item));
     }
     if (!log[0]) Say("No room in your baskets.");
-    else Say(left ? "Took %s. Your baskets are full." : "Took %s.", log);
+    else Say(res[8] > 0 ? "Took %s. Your baskets are full." : "Took %s.", log);
 }

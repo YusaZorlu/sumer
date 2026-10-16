@@ -46,12 +46,59 @@ static float SumBumps(const Bump *b, int n, float x, float z)
     return h;
 }
 
+// Channels cut into the ground: the river (broken by the shallow ford in the far north), the canals
+// round the city and the harbor. Each bank slopes from the land down to water a little below it.
+typedef struct { float x0, z0, x1, z1, depth, inner, outer; bool wet; } Channel;
+
+static const Channel CHANNELS[] = {
+    { RIVER_X0, -WORLD_HALF - 40.0f, RIVER_X1, FORD_Z0, 2.2f, 6.5f, 2.5f, true },
+    { RIVER_X0, FORD_Z1, RIVER_X1, WORLD_HALF + 40.0f, 2.2f, 6.5f, 2.5f, true },
+    { RIVER_X0, FORD_Z0, RIVER_X1, FORD_Z1, 0.62f, 1.0f, 2.5f, false },
+    { -128.0f, 87.0f, 124.0f, 91.0f, 1.4f, 1.8f, 1.0f, true },
+    { 120.0f, -108.0f, 124.0f, 91.0f, 1.4f, 1.8f, 1.0f, true },
+    { -128.0f, -108.0f, 124.0f, -104.0f, 1.4f, 1.8f, 1.0f, true },
+    { -128.0f, -15.0f, -74.0f, -5.0f, 1.6f, 2.0f, 1.0f, true },
+    { -75.0f, -26.0f, -58.0f, 2.0f, 1.8f, 1.9f, 0.8f, true },
+};
+#define CHANNEL_COUNT COUNT_OF(CHANNELS)
+
+int ChannelCount(void)
+{
+    return CHANNEL_COUNT;
+}
+
+// The channel's water, and the surface drawn for it: a little wider, so the banks decide the shore.
+Rectangle ChannelRect(int i, bool *wet, Rectangle *surface)
+{
+    const Channel *c = &CHANNELS[i];
+    float m = c->outer * 0.8f;
+    if (wet) *wet = c->wet;
+    if (surface) *surface = (Rectangle){ c->x0 - m, c->z0 - m, c->x1 - c->x0 + 2 * m, c->z1 - c->z0 + 2 * m };
+    return (Rectangle){ c->x0, c->z0, c->x1 - c->x0, c->z1 - c->z0 };
+}
+
+// How far the ground is lowered: nothing away from water, a channel's full depth well inside it.
+static float Carve(float x, float z)
+{
+    float best = 0.0f;
+    for (int i = 0; i < CHANNEL_COUNT; i++) {
+        const Channel *c = &CHANNELS[i];
+        if (x < c->x0 - c->outer || x > c->x1 + c->outer || z < c->z0 - c->outer || z > c->z1 + c->outer) continue;
+        float dx = fmaxf(c->x0 - x, x - c->x1), dz = fmaxf(c->z0 - z, z - c->z1);
+        float ox = fmaxf(dx, 0.0f), oz = fmaxf(dz, 0.0f);
+        float d = (dx > 0 || dz > 0) ? sqrtf(ox * ox + oz * oz) : fmaxf(dx, dz);
+        float cut = -c->depth * (1.0f - Smooth(-c->inner, c->outer, d));
+        if (cut < best) best = cut;
+    }
+    return best;
+}
+
 bool WestBank(float x)
 {
     return x < RIVER_X0;
 }
 
-float TerrainHeight(float x, float z)
+static float Land(float x, float z)
 {
     float edge = Smooth(WORLD_HALF, WORLD_HALF - 20.0f, fabsf(x)) * Smooth(WORLD_HALF, WORLD_HALF - 20.0f, fabsf(z));
     float east = Smooth(142.0f, 168.0f, x);
@@ -69,6 +116,11 @@ float TerrainHeight(float x, float z)
         h += bank * (SumBumps(WEST_BANK, COUNT_OF(WEST_BANK), x, z) + roll);
     }
     return h * edge;
+}
+
+float TerrainHeight(float x, float z)
+{
+    return Land(x, z) + Carve(x, z);
 }
 
 // The drawn ground: each tile is two triangles split along its (x0,z0)-(x1,z1) diagonal.
@@ -123,6 +175,52 @@ float Fertility(float x, float z)
 }
 
 static Color vertexTint[GROUND_TILES + 1][GROUND_TILES + 1];
+static float vertexCut[GROUND_TILES + 1][GROUND_TILES + 1];
+
+// Tiles that banks run through are drawn finer near the camera, so even a narrow canal is cut cleanly.
+#define FINE_SUB   4
+#define FINE_PTS   ((FINE_SUB + 1) * (FINE_SUB + 1))
+#define MAX_FINE   2600
+#define FINE_DIST  210.0f
+static short fineIndex[GROUND_TILES][GROUND_TILES];
+static float fineH[MAX_FINE][FINE_PTS], fineCut[MAX_FINE][FINE_PTS];
+static int fineCount;
+static bool fineNow[GROUND_TILES][GROUND_TILES];
+
+static void FindFineTiles(void)
+{
+    const float s = TILE_SIZE / FINE_SUB;
+    fineCount = 0;
+    for (int i = 0; i < GROUND_TILES; i++) {
+        for (int j = 0; j < GROUND_TILES; j++) {
+            float x0 = -WORLD_HALF + (float)i * TILE_SIZE, z0 = -WORLD_HALF + (float)j * TILE_SIZE;
+            bool near = false;
+            for (int c = 0; c < CHANNEL_COUNT && !near; c++) {
+                const Channel *ch = &CHANNELS[c];
+                float m = ch->outer + 0.25f;
+                near = x0 < ch->x1 + m && x0 + TILE_SIZE > ch->x0 - m && z0 < ch->z1 + m && z0 + TILE_SIZE > ch->z0 - m;
+            }
+            fineIndex[i][j] = -1;
+            if (!near || fineCount >= MAX_FINE) continue;
+            int k = fineCount++;
+            fineIndex[i][j] = (short)k;
+            for (int u = 0; u <= FINE_SUB; u++)
+                for (int v = 0; v <= FINE_SUB; v++) {
+                    float x = x0 + s * (float)u, z = z0 + s * (float)v;
+                    fineH[k][u * (FINE_SUB + 1) + v] = TerrainHeight(x, z);
+                    fineCut[k][u * (FINE_SUB + 1) + v] = Carve(x, z);
+                }
+        }
+    }
+}
+
+// The ground as drawn near the camera: finely cut along the water, coarse triangles elsewhere.
+float GroundSurface(float x, float z)
+{
+    int i = (int)Clamp((x + WORLD_HALF) / TILE_SIZE, 0.0f, (float)GROUND_TILES - 1.0f);
+    int j = (int)Clamp((z + WORLD_HALF) / TILE_SIZE, 0.0f, (float)GROUND_TILES - 1.0f);
+    return fineIndex[i][j] >= 0 ? TerrainHeight(x, z) : MeshHeight(x, z);
+}
 
 static void BlendCorners(void)
 {
@@ -153,8 +251,12 @@ void BuildTerrain(void)
     const int n = GROUND_TILES;
 
     for (int i = 0; i <= n; i++)
-        for (int j = 0; j <= n; j++)
-            G.heights[i][j] = TerrainHeight(-WORLD_HALF + (float)i * TILE_SIZE, -WORLD_HALF + (float)j * TILE_SIZE);
+        for (int j = 0; j <= n; j++) {
+            float x = -WORLD_HALF + (float)i * TILE_SIZE, z = -WORLD_HALF + (float)j * TILE_SIZE;
+            G.heights[i][j] = TerrainHeight(x, z);
+            vertexCut[i][j] = Carve(x, z);
+        }
+    FindFineTiles();
 
     for (int i = 0; i < n; i++) {
         for (int j = 0; j < n; j++) {
@@ -235,14 +337,88 @@ static bool VertexShown(int i, int j)
     return false;
 }
 
+// Banks darken toward the water, as wet mud does.
+static Color Wet(Color c, float cut)
+{
+    float k = Clamp(-cut / 0.5f, 0.0f, 1.0f);
+    if (k <= 0.0f) return c;
+    return (Color){ (unsigned char)((float)c.r * (1.0f - 0.32f * k)), (unsigned char)((float)c.g * (1.0f - 0.38f * k)),
+                    (unsigned char)((float)c.b * (1.0f - 0.46f * k)), 255 };
+}
+
+static Color Bilerp(Color a, Color b, Color c, Color d, float u, float v)
+{
+    float w00 = (1 - u) * (1 - v), w10 = u * (1 - v), w01 = (1 - u) * v, w11 = u * v;
+    return (Color){ (unsigned char)(a.r * w00 + b.r * w10 + c.r * w01 + d.r * w11), (unsigned char)(a.g * w00 + b.g * w10 + c.g * w01 + d.g * w11),
+                    (unsigned char)(a.b * w00 + b.b * w10 + c.b * w01 + d.b * w11), 255 };
+}
+
+static bool CoarseAt(int i, int j)
+{
+    return i < 0 || j < 0 || i >= GROUND_TILES || j >= GROUND_TILES || !fineNow[i][j];
+}
+
+// A tile cut into FINE_SUB x FINE_SUB cells. An edge shared with a coarse neighbor follows that
+// neighbor's straight edge, so no cracks open between them.
+static void DrawFineTile(int i, int j, Color (*dry)[GROUND_TILES + 1], Color (*lit)[GROUND_TILES + 1])
+{
+    const int N = FINE_SUB;
+    const float s = TILE_SIZE / N;
+    const int k = fineIndex[i][j];
+    float x0 = -WORLD_HALF + (float)i * TILE_SIZE, z0 = -WORLD_HALF + (float)j * TILE_SIZE;
+    float h[FINE_SUB + 1][FINE_SUB + 1];
+    Color c[FINE_SUB + 1][FINE_SUB + 1];
+    bool west = CoarseAt(i - 1, j), east = CoarseAt(i + 1, j), north = CoarseAt(i, j - 1), south = CoarseAt(i, j + 1);
+
+    for (int u = 0; u <= N; u++) {
+        for (int v = 0; v <= N; v++) {
+            float fu = (float)u / N, fv = (float)v / N;
+            h[u][v] = fineH[k][u * (N + 1) + v];
+            c[u][v] = Wet(Bilerp(dry[i][j], dry[i + 1][j], dry[i][j + 1], dry[i + 1][j + 1], fu, fv), fineCut[k][u * (N + 1) + v]);
+            if (u == 0 && west) {
+                h[u][v] = Lerp(G.heights[i][j], G.heights[i][j + 1], fv);
+                c[u][v] = Mix(lit[i][j], lit[i][j + 1], fv);
+            } else if (u == N && east) {
+                h[u][v] = Lerp(G.heights[i + 1][j], G.heights[i + 1][j + 1], fv);
+                c[u][v] = Mix(lit[i + 1][j], lit[i + 1][j + 1], fv);
+            } else if (v == 0 && north) {
+                h[u][v] = Lerp(G.heights[i][j], G.heights[i + 1][j], fu);
+                c[u][v] = Mix(lit[i][j], lit[i + 1][j], fu);
+            } else if (v == N && south) {
+                h[u][v] = Lerp(G.heights[i][j + 1], G.heights[i + 1][j + 1], fu);
+                c[u][v] = Mix(lit[i][j + 1], lit[i + 1][j + 1], fu);
+            }
+        }
+    }
+    rlCheckRenderBatchLimit(4 * N * N);
+    rlBegin(RL_QUADS);
+    for (int u = 0; u < N; u++) {
+        for (int v = 0; v < N; v++) {
+            float xa = x0 + s * (float)u, za = z0 + s * (float)v, xb = xa + s, zb = za + s;
+            Color a = c[u][v], b = c[u][v + 1], cc = c[u + 1][v + 1], d = c[u + 1][v];
+            rlColor4ub(a.r, a.g, a.b, 255); rlVertex3f(xa, h[u][v], za);
+            rlColor4ub(b.r, b.g, b.b, 255); rlVertex3f(xa, h[u][v + 1], zb);
+            rlColor4ub(cc.r, cc.g, cc.b, 255); rlVertex3f(xb, h[u + 1][v + 1], zb);
+            rlColor4ub(d.r, d.g, d.b, 255); rlVertex3f(xb, h[u + 1][v], za);
+        }
+    }
+    rlEnd();
+}
+
 void DrawGround(void)
 {
-    static Color lit[GROUND_TILES + 1][GROUND_TILES + 1];
+    static Color dry[GROUND_TILES + 1][GROUND_TILES + 1], lit[GROUND_TILES + 1][GROUND_TILES + 1];
     const int n = GROUND_TILES;
+    Vector3 eye = G.cam.position;
 
     CullTiles();
-    for (int i = 0; i < n; i++)
-        for (int j = 0; j < n; j++) tileLight[i][j] = tileShown[i][j] ? TileLight(i, j) : 0.0f;
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            tileLight[i][j] = tileShown[i][j] ? TileLight(i, j) : 0.0f;
+            float dx = -WORLD_HALF + ((float)i + 0.5f) * TILE_SIZE - eye.x, dz = -WORLD_HALF + ((float)j + 0.5f) * TILE_SIZE - eye.z;
+            fineNow[i][j] = tileShown[i][j] && fineIndex[i][j] >= 0 && dx * dx + dz * dz < FINE_DIST * FINE_DIST;
+        }
+    }
     for (int i = 0; i <= n; i++) {
         for (int j = 0; j <= n; j++) {
             if (!VertexShown(i, j)) continue;
@@ -258,15 +434,20 @@ void DrawGround(void)
             }
             G.drawTorch = sum / (float)k;
             G.drawFog = FogAt((Vector3){ -WORLD_HALF + (float)i * TILE_SIZE, G.heights[i][j], -WORLD_HALF + (float)j * TILE_SIZE }) * (1.0f - 0.6f * G.drawTorch);
-            lit[i][j] = Lit(vertexTint[i][j], 1.0f);
+            dry[i][j] = Lit(vertexTint[i][j], 1.0f);
+            lit[i][j] = Wet(dry[i][j], vertexCut[i][j]);
         }
     }
+
+    for (int i = 0; i < n; i++)
+        for (int j = 0; j < n; j++)
+            if (fineNow[i][j]) DrawFineTile(i, j, dry, lit);
 
     for (int i = 0; i < n; i++) {
         rlCheckRenderBatchLimit(4 * n);
         rlBegin(RL_QUADS);
         for (int j = 0; j < n; j++) {
-            if (!tileShown[i][j]) continue;
+            if (!tileShown[i][j] || fineNow[i][j]) continue;
             float x0 = -WORLD_HALF + (float)i * TILE_SIZE, z0 = -WORLD_HALF + (float)j * TILE_SIZE;
             float x1 = x0 + TILE_SIZE, z1 = z0 + TILE_SIZE;
             Color a = lit[i][j], b = lit[i][j + 1], c = lit[i + 1][j + 1], d = lit[i + 1][j];
@@ -280,15 +461,16 @@ void DrawGround(void)
 
     G.drawTorch = 0;
     G.drawFog = G.night * 0.8f;
-    // Beyond the edge the land goes on: steppe on the city side, meadow across the river.
+    // Beyond the edge the land goes on: steppe on the city side, meadow across the river. The river
+    // itself runs on between them (see DrawWater).
     Color outer = Lit((Color){ 150, 150, 98, 255 }, 0.95f), green = Lit((Color){ 96, 134, 60, 255 }, 0.95f);
-    const float W = WORLD_HALF, F = 1150.0f, R = (RIVER_X0 + RIVER_X1) / 2;
+    const float W = WORLD_HALF, F = 1150.0f, A = RIVER_X0 - 3.0f, B = RIVER_X1 + 3.0f;
     rlCheckRenderBatchLimit(24);
     rlBegin(RL_QUADS);
-    Quad(R, -F, F, -W, 0, 0, 0, 0, outer);
-    Quad(R, W, F, F, 0, 0, 0, 0, outer);
-    Quad(-F, -F, R, -W, 0, 0, 0, 0, green);
-    Quad(-F, W, R, F, 0, 0, 0, 0, green);
+    Quad(B, -F, F, -W, 0, 0, 0, 0, outer);
+    Quad(B, W, F, F, 0, 0, 0, 0, outer);
+    Quad(-F, -F, A, -W, 0, 0, 0, 0, green);
+    Quad(-F, W, A, F, 0, 0, 0, 0, green);
     Quad(-F, -W, -W, W, 0, 0, 0, 0, green);
     Quad(W, -W, F, W, 0, 0, 0, 0, outer);
     rlEnd();

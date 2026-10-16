@@ -61,13 +61,18 @@ float ArmorReduction(int armor)
     }
 }
 
+// A message for the acting player: on this screen, or sent to the guest the host is acting for.
 void Say(const char *fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
-    vsnprintf(G.msg, sizeof(G.msg), L(fmt), ap);
+    if (G.role == NET_HOST && G.actor != G.self) {
+        if (PlayerIn(G.actor)) NetSayV(G.actor, fmt, ap);
+    } else {
+        vsnprintf(G.msg, sizeof(G.msg), L(fmt), ap);
+        G.msgT = 3.0f;
+    }
     va_end(ap);
-    G.msgT = 3.0f;
 }
 
 void Fmt(char *buf, int size, const char *fmt, ...)
@@ -327,6 +332,13 @@ bool OfferCheck(const Offer *o, const char **why)
     return true;
 }
 
+void OfferPay(const Offer *o)
+{
+    if (o->in1) BagRemove(o->in1, o->n1);
+    if (o->in2) BagRemove(o->in2, o->n2);
+    if (o->in3) BagRemove(o->in3, o->n3);
+}
+
 bool OfferApply(const Offer *o)
 {
     const char *why;
@@ -335,9 +347,7 @@ bool OfferApply(const Offer *o)
         Say("%s.", why);
         return false;
     }
-    if (o->in1) BagRemove(o->in1, o->n1);
-    if (o->in2) BagRemove(o->in2, o->n2);
-    if (o->in3) BagRemove(o->in3, o->n3);
+    OfferPay(o);
 
     switch (o->kind) {
     case OUT_ITEM:

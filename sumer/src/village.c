@@ -85,53 +85,128 @@ static void Fence(float x0, float z0, float x1, float z1)
     }
 }
 
-static void BuildHome(void)
+// Each player's home: the first one by the farm, the others in a row south of the east-west street,
+// their doors toward it. A house is laid out in its own frame with the door on its -x side.
+static const float HOUSE_SPOTS[MAX_PLAYERS][3] = { { 20, 22, 0 }, { 14, 50, 1 }, { 28, 50, 1 }, { 42, 50, 1 }, { -14, 50, 1 } };
+static const int HOUSE_STATIONS[HOUSE_STN] = { STN_BED, STN_STORAGE, STN_QUERN, STN_TROUGH, STN_BENCH, STN_OVEN };
+
+Color PlayerColor(int slot)
 {
-    const float hx = 20, hz = 22, W = 10, D = 10, H = 3, t = 0.5f, gap = 1.8f;
+    static const Color colors[MAX_PLAYERS] = {
+        { 38, 84, 160, 255 }, { 176, 46, 40, 255 }, { 46, 128, 62, 255 }, { 222, 162, 30, 255 }, { 118, 60, 150, 255 },
+    };
+    return colors[slot >= 0 && slot < MAX_PLAYERS ? slot : 0];
+}
+
+const char *PlayerColorName(int slot)
+{
+    static const char *const names[MAX_PLAYERS] = { "blue", "red", "green", "yellow", "purple" };
+    return L(names[slot >= 0 && slot < MAX_PLAYERS ? slot : 0]);
+}
+
+typedef struct { float cx, cz; int rot; } Frame;
+
+// Quarter turns about the house's center: 1 puts the door to the north, 2 east, 3 south.
+static Vector2 Turn(const Frame *f, float lx, float lz)
+{
+    switch (f->rot & 3) {
+    case 1:  return (Vector2){ f->cx - lz, f->cz + lx };
+    case 2:  return (Vector2){ f->cx - lx, f->cz - lz };
+    case 3:  return (Vector2){ f->cx + lz, f->cz - lx };
+    default: return (Vector2){ f->cx + lx, f->cz + lz };
+    }
+}
+
+static void HShape(const Frame *f, float lx, float y, float lz, float w, float h, float d, Color c, bool solid, int shape)
+{
+    Vector2 p = Turn(f, lx, lz);
+    bool across = (f->rot & 1) != 0;
+    AddShape(p.x, y, p.y, across ? d : w, h, across ? w : d, c, solid, shape);
+}
+
+static void HBox(const Frame *f, float lx, float y, float lz, float w, float h, float d, Color c, bool solid)
+{
+    HShape(f, lx, y, lz, w, h, d, c, solid, SHAPE_BOX);
+}
+
+static Vector3 HPoint(const Frame *f, float lx, float lz)
+{
+    Vector2 p = Turn(f, lx, lz);
+    return (Vector3){ p.x, 0, p.y };
+}
+
+// Walls tinted toward the owner's color, a band of it under the roofline and over the door.
+static void BuildHouse(int h)
+{
+    const float W = 10, D = 10, H = 3, t = 0.5f, gap = 1.8f;
     const float seg = (D - 2 * t - gap) / 2;
+    Frame f = { HOUSE_SPOTS[h][0], HOUSE_SPOTS[h][1], (int)HOUSE_SPOTS[h][2] };
+    House *home = &G.houses[h];
+    Color own = PlayerColor(h), wall = Mix(COL_MUD_PALE, own, 0.12f), band = Mix(own, COL_MUD_PALE, 0.25f);
+    Vector3 st[HOUSE_STN];
 
-    G.home = (Vector3){ hx, 0, hz };
-    AddBox(hx, 0, hz - D / 2 + t / 2, W, H, t, COL_MUD_PALE, true);
-    AddBox(hx, 0, hz + D / 2 - t / 2, W, H, t, COL_MUD_PALE, true);
-    AddBox(hx + W / 2 - t / 2, 0, hz, t, H, D - 2 * t, COL_MUD_PALE, true);
-    AddBox(hx - W / 2 + t / 2, 0, hz - gap / 2 - seg / 2, t, H, seg, COL_MUD_PALE, true);
-    AddBox(hx - W / 2 + t / 2, 0, hz + gap / 2 + seg / 2, t, H, seg, COL_MUD_PALE, true);
-    AddBox(hx - W / 2 + t / 2, H - 0.5f, hz, t + 0.1f, 0.5f, gap, COL_LAPIS, false);
-    AddBox(hx, 0, hz, W - 2 * t, 0.04f, D - 2 * t, COL_BRICK, false);
+    home->center = (Vector3){ f.cx, 0, f.cz };
+    HBox(&f, 0, 0, -D / 2 + t / 2, W, H, t, wall, true);
+    HBox(&f, 0, 0, D / 2 - t / 2, W, H, t, wall, true);
+    HBox(&f, W / 2 - t / 2, 0, 0, t, H, D - 2 * t, wall, true);
+    HBox(&f, -W / 2 + t / 2, 0, -gap / 2 - seg / 2, t, H, seg, wall, true);
+    HBox(&f, -W / 2 + t / 2, 0, gap / 2 + seg / 2, t, H, seg, wall, true);
+    HBox(&f, -W / 2 + t / 2, H - 0.5f, 0, t + 0.1f, 0.5f, gap, own, false);
+    HBox(&f, 0, 0, 0, W - 2 * t, 0.04f, D - 2 * t, COL_BRICK, false);
+    HBox(&f, 0, H - 0.42f, -D / 2 + t / 2, W + 0.08f, 0.24f, t + 0.08f, band, false);
+    HBox(&f, 0, H - 0.42f, D / 2 - t / 2, W + 0.08f, 0.24f, t + 0.08f, band, false);
+    HBox(&f, W / 2 - t / 2, H - 0.42f, 0, t + 0.08f, 0.24f, D - 2 * t, band, false);
 
-    Vector3 bed = { hx + 3.0f, 0, hz - 3.0f };
-    G.stations[STN_BED] = bed;
-    AddBox(bed.x, 0, bed.z, 1.3f, 0.45f, 2.3f, COL_WOOD, true);
-    AddBox(bed.x, 0.45f, bed.z - 0.8f, 1.0f, 0.15f, 0.5f, COL_LINEN, false);
-    AddBox(bed.x, 0.45f, bed.z + 0.4f, 1.2f, 0.06f, 1.3f, COL_BLANKET, false);
+    st[0] = HPoint(&f, 3.0f, -3.0f);
+    HBox(&f, 3.0f, 0, -3.0f, 1.3f, 0.45f, 2.3f, COL_WOOD, true);
+    HBox(&f, 3.0f, 0.45f, -3.8f, 1.0f, 0.15f, 0.5f, COL_LINEN, false);
+    HBox(&f, 3.0f, 0.45f, -2.6f, 1.2f, 0.06f, 1.3f, h == 0 ? COL_BLANKET : own, false);
 
-    G.stations[STN_STORAGE] = (Vector3){ hx - 1.6f, 0, hz - 3.4f };
+    st[1] = HPoint(&f, -1.6f, -3.4f);
     for (int k = 0; k < 3; k++) {
-        float x = hx - 2.7f + 1.1f * k;
-        AddShape(x, -0.1f, hz - 4.05f, 0.8f, 1.2f, 0.8f, COL_CLAY, true, SHAPE_BLOB);
-        AddShape(x, 0.95f, hz - 4.05f, 0.42f, 0.25f, 0.42f, COL_CLAY_DARK, false, SHAPE_CYL);
+        float x = -2.7f + 1.1f * (float)k;
+        HShape(&f, x, -0.1f, -4.05f, 0.8f, 1.2f, 0.8f, COL_CLAY, true, SHAPE_BLOB);
+        HShape(&f, x, 0.95f, -4.05f, 0.42f, 0.25f, 0.42f, COL_CLAY_DARK, false, SHAPE_CYL);
     }
 
-    G.stations[STN_QUERN] = (Vector3){ hx - 3.4f, 0, hz + 3.6f };
-    AddBox(hx - 3.4f, 0, hz + 3.6f, 0.9f, 0.45f, 0.7f, COL_STONE, true);
-    AddBox(hx - 3.4f, 0.45f, hz + 3.6f, 0.55f, 0.12f, 0.45f, (Color){ 100, 96, 90, 255 }, false);
+    st[2] = HPoint(&f, -3.4f, 3.6f);
+    HBox(&f, -3.4f, 0, 3.6f, 0.9f, 0.45f, 0.7f, COL_STONE, true);
+    HBox(&f, -3.4f, 0.45f, 3.6f, 0.55f, 0.12f, 0.45f, (Color){ 100, 96, 90, 255 }, false);
 
-    G.stations[STN_TROUGH] = (Vector3){ hx, 0, hz + 3.9f };
-    AddBox(hx, 0, hz + 3.9f, 1.4f, 0.55f, 0.6f, COL_WOOD, true);
-    AddBox(hx, 0.55f, hz + 3.9f, 1.1f, 0.03f, 0.35f, (Color){ 226, 204, 160, 255 }, false);
+    st[3] = HPoint(&f, 0, 3.9f);
+    HBox(&f, 0, 0, 3.9f, 1.4f, 0.55f, 0.6f, COL_WOOD, true);
+    HBox(&f, 0, 0.55f, 3.9f, 1.1f, 0.03f, 0.35f, (Color){ 226, 204, 160, 255 }, false);
 
-    G.stations[STN_BENCH] = (Vector3){ hx + 2.9f, 0, hz + 0.6f };
-    AddBox(hx + 4.0f, 0, hz + 0.6f, 0.8f, 0.75f, 1.6f, COL_WOOD, true);
-    AddBox(hx + 4.0f, 0.75f, hz + 0.3f, 0.5f, 0.04f, 0.6f, (Color){ 130, 92, 60, 255 }, false);
-    AddBox(hx + 4.0f, 0.75f, hz + 1.1f, 0.4f, 0.1f, 0.3f, (Color){ 222, 214, 196, 255 }, false);
-    AddBox(hx + 4.42f, 1.0f, hz + 0.6f, 0.06f, 1.2f, 1.4f, (Color){ 112, 84, 58, 255 }, false);
+    // The workbench with a hide and a bundle of wool on it.
+    st[4] = HPoint(&f, 2.9f, 0.6f);
+    HBox(&f, 4.0f, 0, 0.6f, 0.8f, 0.75f, 1.6f, COL_WOOD, true);
+    HBox(&f, 4.0f, 0.75f, 0.3f, 0.5f, 0.04f, 0.6f, (Color){ 130, 92, 60, 255 }, false);
+    HBox(&f, 4.0f, 0.75f, 1.1f, 0.4f, 0.1f, 0.3f, (Color){ 222, 214, 196, 255 }, false);
 
-    G.stations[STN_OVEN] = (Vector3){ hx + 3.4f, 0, hz + 3.4f };
-    AddShape(hx + 3.4f, -0.4f, hz + 3.4f, 1.2f, 1.6f, 1.2f, COL_CLAY, true, SHAPE_BLOB);
-    AddShape(hx + 3.4f, 0.85f, hz + 3.4f, 0.5f, 0.2f, 0.5f, COL_CLAY_DARK, false, SHAPE_CYL);
-    AddGlow(hx + 3.4f, 1.05f, hz + 3.4f, 0.32f, 0.03f, 0.32f, COL_FIRE);
+    st[5] = HPoint(&f, 3.4f, 3.4f);
+    HShape(&f, 3.4f, -0.4f, 3.4f, 1.2f, 1.6f, 1.2f, COL_CLAY, true, SHAPE_BLOB);
+    HShape(&f, 3.4f, 0.85f, 3.4f, 0.5f, 0.2f, 0.5f, COL_CLAY_DARK, false, SHAPE_CYL);
+    Vector2 glow = Turn(&f, 3.4f, 3.4f);
+    AddGlow(glow.x, 1.05f, glow.y, 0.32f, 0.03f, 0.32f, COL_FIRE);
 
-    KeepOut(hx - W / 2 - 1, hz - D / 2 - 1, hx + W / 2 + 1, hz + D / 2 + 1);
+    for (int k = 0; k < HOUSE_STN; k++) home->stations[k] = st[k];
+    home->door = HPoint(&f, -W / 2 - 0.8f, 0);
+    home->bedFacing = -(float)f.rot * PI / 2;
+    KeepOut(f.cx - W / 2 - 1, f.cz - D / 2 - 1, f.cx + W / 2 + 1, f.cz + D / 2 + 1);
+}
+
+// The stations of the house this player lives in become theirs to use.
+void SetHome(int slot)
+{
+    const House *home = &G.houses[slot >= 0 && slot < MAX_PLAYERS ? slot : 0];
+    G.home = home->center;
+    for (int k = 0; k < HOUSE_STN; k++) G.stations[HOUSE_STATIONS[k]] = home->stations[k];
+}
+
+static void BuildHome(void)
+{
+    for (int h = 0; h < MAX_PLAYERS; h++) BuildHouse(h);
+    SetHome(0);
 }
 
 static void BuildPen(void)
@@ -188,7 +263,7 @@ static void BuildMarket(void)
 int AddNpc(NpcKind kind, Vector3 a, Vector3 b, float speed, Color robe, float face)
 {
     if (G.villagerCount >= MAX_VILLAGERS) return -1;
-    G.villagers[G.villagerCount] = (Villager){ a, b, speed > 0 ? RandF(0, 1) : 0.0f, 1.0f, speed, robe, kind, face, 0.0f, false, false, { .hp = 0 }, -1 };
+    G.villagers[G.villagerCount] = (Villager){ a, b, speed > 0 ? RandF(0, 1) : 0.0f, 1.0f, speed, robe, kind, face, 0.0f, false, false, { .hp = 0 }, -1, 0.0f, 0.0f };
     return G.villagerCount++;
 }
 
@@ -329,6 +404,8 @@ static void WanderIn(Wanderer *w, Rectangle area, float speed, float dt)
     w->pos.z = nz;
 }
 
+// Townsfolk walk where the host says; the gate guards step aside for whoever on this machine made
+// an offering, and the livestock wander on every machine on their own.
 void UpdateVillage(float dt)
 {
     for (int i = 0; i < G.villagerCount; i++) {
@@ -338,7 +415,7 @@ void UpdateVillage(float dt)
             Vector3 post = G.templeAccess ? (Vector3){ 1.75f * s, 7, -24.4f } : (Vector3){ 0.55f * s, 7, -25.9f };
             v->a = v->b = post;
         }
-        WalkVillager(v, i, dt);
+        if (!IsClient()) WalkVillager(v, i, dt);
     }
     for (int i = 0; i < G.henCount; i++) WanderIn(&G.hens[i], (Rectangle){ 15.5f, 31.0f, 5.0f, 2.5f }, 0.6f, dt);
     for (int i = 0; i < MAX_COWS; i++) WanderIn(&G.cows[i], (Rectangle){ 51.5f, 27.8f, 7.0f, 7.0f }, 0.5f, dt);
@@ -364,7 +441,6 @@ void AdvanceHours(float h)
     }
     // Long sleeps run the farm an hour at a time so water runs out at the right moment.
     for (float left = h; left > 0.0f; left -= 1.0f) FarmHours(fminf(left, 1.0f));
-    if (G.blessT > 0) G.blessT = fmaxf(0.0f, G.blessT - h);
 }
 
 static const Offer *OvenRecipe(void)

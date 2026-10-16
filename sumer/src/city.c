@@ -25,48 +25,46 @@ static void Bridge(float x, float z, bool alongX, float len)
 
 static void Boat(float x, float z, bool alongX)
 {
-    float l = 3.6f, w = 1.0f;
+    float l = 3.6f, w = 1.0f, y = WATER_LEVEL;
     if (alongX) {
-        AddBox(x, -0.12f, z, l, 0.36f, w, COL_STRAW, false);
-        AddBox(x - l / 2, 0.0f, z, 0.35f, 0.55f, w * 0.7f, COL_STRAW, false);
-        AddBox(x + l / 2, 0.0f, z, 0.35f, 0.55f, w * 0.7f, COL_STRAW, false);
+        AddBox(x, y - 0.12f, z, l, 0.36f, w, COL_STRAW, false);
+        AddBox(x - l / 2, y, z, 0.35f, 0.55f, w * 0.7f, COL_STRAW, false);
+        AddBox(x + l / 2, y, z, 0.35f, 0.55f, w * 0.7f, COL_STRAW, false);
     } else {
-        AddBox(x, -0.12f, z, w, 0.36f, l, COL_STRAW, false);
-        AddBox(x, 0.0f, z - l / 2, w * 0.7f, 0.55f, 0.35f, COL_STRAW, false);
-        AddBox(x, 0.0f, z + l / 2, w * 0.7f, 0.55f, 0.35f, COL_STRAW, false);
+        AddBox(x, y - 0.12f, z, w, 0.36f, l, COL_STRAW, false);
+        AddBox(x, y, z - l / 2, w * 0.7f, 0.55f, 0.35f, COL_STRAW, false);
+        AddBox(x, y, z + l / 2, w * 0.7f, 0.55f, 0.35f, COL_STRAW, false);
     }
 }
 
-// The river is broken only at the far north, where a shallow ford can be waded.
+// Water fills every wet channel the terrain cuts. The river is broken only at the far north, where a
+// shallow ford can be waded over stepping stones.
 static void BuildRiver(void)
 {
-    AddWater(RIVER_X0, -WORLD_HALF, RIVER_X1, FORD_Z0);
-    AddWater(RIVER_X0, FORD_Z1, RIVER_X1, WORLD_HALF);
-    AddBox((RIVER_X0 + RIVER_X1) / 2, -0.12f, (FORD_Z0 + FORD_Z1) / 2, RIVER_X1 - RIVER_X0, 0.16f, FORD_Z1 - FORD_Z0,
-           (Color){ 104, 150, 158, 255 }, false);
+    for (int c = 0; c < ChannelCount(); c++) {
+        bool wet;
+        Rectangle r = ChannelRect(c, &wet, NULL);
+        if (wet) AddWater(r.x, fmaxf(r.y, -WORLD_HALF), r.x + r.width, fminf(r.y + r.height, WORLD_HALF));
+    }
     for (int k = 0; k < 14; k++) {
         float x = RIVER_X0 + 1.5f + Hash2(k, 3) * (RIVER_X1 - RIVER_X0 - 3), z = FORD_Z0 + 1 + Hash2(k, 9) * (FORD_Z1 - FORD_Z0 - 2);
-        AddShape(x, -0.15f, z, 0.9f + Hash2(k, 5), 0.4f, 0.8f + Hash2(k, 7), COL_STONE, false, SHAPE_BLOB);
+        AddShape(x, TerrainHeight(x, z) - 0.12f, z, 0.9f + Hash2(k, 5), 0.5f, 0.8f + Hash2(k, 7), COL_STONE, false, SHAPE_BLOB);
     }
 }
 
 static void BuildWaterways(void)
 {
     BuildRiver();
-    AddWater(-128, 87, 124, 91);
-    AddWater(120, -108, 124, 91);
-    AddWater(-128, -108, 124, -104);
-    AddWater(-128, -15, -74, -5);
-    AddWater(-75, -26, -58, 2);
 
     Bridge(0, 89, false, 8);
     Bridge(122, 9, true, 8);
     Bridge(-37, -106, false, 8);
     Bridge(-114, -10, false, 14);
 
-    AddBox(-66.5f, 0, -26.5f, 18.0f, 0.35f, 1.0f, COL_BRICK, false);
-    AddBox(-66.5f, 0, 2.5f, 18.0f, 0.35f, 1.0f, COL_BRICK, false);
-    AddBox(-57.5f, 0, -12.0f, 1.0f, 0.35f, 29.0f, COL_BRICK, false);
+    // Brick quays round the harbor basin, down into the water.
+    AddBox(-66.5f, -1.4f, -26.5f, 18.0f, 1.75f, 1.0f, COL_BRICK, false);
+    AddBox(-66.5f, -1.4f, 2.5f, 18.0f, 1.75f, 1.0f, COL_BRICK, false);
+    AddBox(-57.5f, -1.4f, -12.0f, 1.0f, 1.75f, 29.0f, COL_BRICK, false);
     Boat(-70, -20, true);
     Boat(-64, -16, true);
     Boat(-71, -3, true);

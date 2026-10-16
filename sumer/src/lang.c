@@ -32,6 +32,8 @@ static void BuildTable(void)
 const char *L(const char *en)
 {
     if (language == LANG_EN || !en || !en[0]) return en;
+    // Words meant for another player's screen go out in English; their game translates them.
+    if (G.role == NET_HOST && G.actor != G.self) return en;
     if (!tableReady) BuildTable();
     for (unsigned h = Hash(en) & (HASH_SIZE - 1); table[h]; h = (h + 1) & (HASH_SIZE - 1))
         if (strcmp(TR_PHRASES[table[h] - 1].en, en) == 0) return TR_PHRASES[table[h] - 1].tr;
@@ -58,16 +60,17 @@ void SetLanguage(int lang)
 
 void SaveLanguage(void)
 {
-    FILE *f = fopen(LANG_FILE, "w");
+    FILE *f = fopen(DataPath(LANG_FILE), "w");
     if (!f) return;
     fputs(language == LANG_TR ? "tr\n" : "en\n", f);
     fclose(f);
+    SyncStorage();
 }
 
 void LoadLanguage(void)
 {
     char buf[8] = "";
-    FILE *f = fopen(LANG_FILE, "r");
+    FILE *f = fopen(DataPath(LANG_FILE), "r");
     if (!f) return;
     if (fgets(buf, sizeof(buf), f)) SetLanguage(strncmp(buf, "tr", 2) == 0 ? LANG_TR : LANG_EN);
     fclose(f);

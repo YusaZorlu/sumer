@@ -130,8 +130,8 @@ static Vector2 Normal(Vector2 a, Vector2 b)
 static void SetSample(Sample *s, Vector2 c, Vector2 n, float half)
 {
     Vector2 l = Vector2Add(c, Vector2Scale(n, half)), r = Vector2Subtract(c, Vector2Scale(n, half));
-    s->l = (Vector3){ l.x, MeshHeight(l.x, l.y) + STRIP_LIFT, l.y };
-    s->r = (Vector3){ r.x, MeshHeight(r.x, r.y) + STRIP_LIFT, r.y };
+    s->l = (Vector3){ l.x, GroundSurface(l.x, l.y) + STRIP_LIFT, l.y };
+    s->r = (Vector3){ r.x, GroundSurface(r.x, r.y) + STRIP_LIFT, r.y };
     s->skip = InWater(c.x, c.y) || InWater(l.x, l.y) || InWater(r.x, r.y) || InsideWalls(c.x, c.y, -3.0f);
 }
 
@@ -174,7 +174,7 @@ void BuildRoads(void)
         profileCount[r] = 0;
         for (int k = 0; k < n; k++) {
             Vector3 p = RoadPoint(r, (float)k, NULL);
-            profile[profiles + k] = GroundHeight(p.x, p.z, p.y + 0.6f);
+            profile[profiles + k] = GroundHeight(p.x, p.z, fmaxf(p.y, 0.0f) + 0.6f);
         }
         profiles += n;
         profileCount[r] = n;
