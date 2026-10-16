@@ -130,7 +130,7 @@ static bool Choice(Rectangle r, const char *label, bool enabled)
     DrawRectangleRec(r, enabled ? (hover ? (Color){ 150, 110, 60, 255 } : (Color){ 112, 82, 48, 255 }) : (Color){ 60, 54, 48, 255 });
     DrawRectangleLinesEx(r, 1, (Color){ 150, 120, 80, 255 });
     Centered(label, r.x + r.width / 2, r.y + (r.height - (float)size) / 2, size, enabled ? (Color){ 240, 230, 210, 255 } : (Color){ 150, 140, 125, 255 });
-    return hover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+    return hover && MousePressed(MOUSE_BUTTON_LEFT);
 }
 
 static void TypeName(void)
@@ -141,7 +141,7 @@ static void TypeName(void)
             name[n++] = (char)c;
             name[n] = '\0';
         }
-    if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && n > 0) name[n - 1] = '\0';
+    if ((KeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && n > 0) name[n - 1] = '\0';
 }
 
 void LobbyFrame(void)

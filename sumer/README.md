@@ -151,7 +151,10 @@ fields outside. Gates: south (main road), east, west, north, plus the harbor wat
   the temple courtyard and on the ziggurat
 - Torches line the streets, gates and temple at night; guards and caravans carry torches
 - At night distant things fade into the dark; torchlit places stay visible
-- People are solid: you can't walk through anyone, and townsfolk step aside or wait when someone blocks their way
+- Townsfolk walk all over the city: along the streets from crossing to crossing, keeping to the right,
+  stopping now and then, and turning back at the gates and the quay
+- People are solid: you can't walk through anyone, and townsfolk step round you, or turn back if you
+  keep blocking their way
 
 ## Seasons and farming
 
@@ -317,8 +320,10 @@ and wolves don't.
 Arrows that land close to an animal or whistle past it count too: prey bolts, and wolves come for you
 with their whole pack (even past a wolf-pelt cloak).
 
-Boars are tough (135 health). Hurt one and it turns and charges you, goring again and again until it
-gives up after a while, you outrun it, or it is nearly dead; the rest of the sounder runs.
+Boars are tough (135 health). Hurt one and, like a wolf pack, its whole sounder turns on you: they
+charge, gore, wheel round and charge again for about 40 seconds (longer if you keep hitting them). A
+boar gives up only when it is nearly dead, when you get far away (about 80 m), or when you reach the
+city.
 
 Snakes lie hidden in tufts of long grass outside the walls; there are only a handful in the whole
 world. Come within about 3 m (less when crouching, more when running) and one rears up with a hiss as a

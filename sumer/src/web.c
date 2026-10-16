@@ -121,6 +121,97 @@ void ServerAddress(char *buf, int size, const char *query)
 #endif
 }
 
+static int presses, taps[16], tapCount;
+#if defined(__EMSCRIPTEN__)
+static Vector2 look;
+#endif
+
+// The page counts every mouse press on the game (for MousePressed) and adds up every movement of
+// the captured mouse (for MouseLook). A single movement of hundreds of pixels is a known browser
+// glitch when the mouse is captured, and is left out.
+void WatchClicks(void)
+{
+#if defined(__EMSCRIPTEN__)
+    EM_ASM({
+        Module.sumerPresses = 0;
+        Module.sumerLookX = 0;
+        Module.sumerLookY = 0;
+        Module.canvas.addEventListener('mousedown', function (e) {
+            Module.sumerPresses |= e.button === 0 ? 1 : e.button === 2 ? 2 : e.button === 1 ? 4 : 0;
+        }, true);
+        document.addEventListener('mousemove', function (e) {
+            var x = e.movementX || 0, y = e.movementY || 0;
+            if (document.pointerLockElement !== Module.canvas || Math.abs(x) > 300 || Math.abs(y) > 300) return;
+            Module.sumerLookX += x;
+            Module.sumerLookY += y;
+        }, true);
+    });
+#endif
+}
+
+// Once at the start of every frame. raylib sizes the canvas to the browser window itself, but
+// Emscripten's GLFW keeps the size the window was opened with (1280x720) and scales every mouse
+// position by the difference, so in any other window the pointer the game sees is not where the
+// mouse is. Telling GLFW the real size whenever it changes keeps the two together.
+void PageFrame(void)
+{
+#if defined(__EMSCRIPTEN__)
+    static int w, h;
+    int sw = GetScreenWidth(), sh = GetScreenHeight();
+    if (sw > 0 && sh > 0 && (sw != w || sh != h)) {
+        w = sw;
+        h = sh;
+        SetWindowSize(sw, sh);
+    }
+    // Every key pressed since the last frame, even one already let go again.
+    tapCount = 0;
+    for (int k; tapCount < (int)(sizeof(taps) / sizeof(taps[0])) && (k = GetKeyPressed()) != 0;) taps[tapCount++] = k;
+    presses = EM_ASM_INT({
+        var b = Module.sumerPresses | 0;
+        Module.sumerPresses = 0;
+        return b;
+    });
+    look.x = (float)EM_ASM_DOUBLE({
+        var x = Module.sumerLookX;
+        Module.sumerLookX = 0;
+        return x;
+    });
+    look.y = (float)EM_ASM_DOUBLE({
+        var y = Module.sumerLookY;
+        Module.sumerLookY = 0;
+        return y;
+    });
+#endif
+}
+
+// How far the captured mouse moved since the last frame. In a browser this is every movement the
+// page saw (raylib keeps only the last one of each frame, which makes the view slow and jumpy).
+Vector2 MouseLook(void)
+{
+#if defined(__EMSCRIPTEN__)
+    return look;
+#else
+    return GetMouseDelta();
+#endif
+}
+
+// A click raylib saw, or one the page saw: a quick tap on a touchpad presses and lets go of the
+// button between two frames, and raylib alone would miss it.
+bool MousePressed(int button)
+{
+    return IsMouseButtonPressed(button) || ((presses >> button) & 1);
+}
+
+// A key raylib saw go down this frame, or one pressed and let go again since the last frame: on a slow
+// page a quick tap can fall between two frames.
+bool KeyPressed(int key)
+{
+    if (IsKeyPressed(key)) return true;
+    for (int i = 0; i < tapCount; i++)
+        if (taps[i] == key) return true;
+    return false;
+}
+
 bool OnWeb(void)
 {
 #if defined(__EMSCRIPTEN__)
