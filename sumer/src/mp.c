@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define NET_VERSION   1
+#define NET_VERSION   2
 #define SNAP_EVERY    0.1f
 #define STATE_EVERY   0.066f
 #define RECORD_EVERY  15.0f
@@ -247,9 +247,11 @@ static void WriteSnapshot(Writer *w, bool slow)
     W8(w, (unsigned)G.villagerCount);
     for (int i = 0; i < G.villagerCount; i++) {
         const Villager *v = &G.villagers[i];
-        W16(w, (unsigned)Clamp(v->t * 65535.0f, 0.0f, 65535.0f));
+        W16(w, (unsigned)Clamp((v->t + 0.5f) / 2.0f * 65535.0f, 0.0f, 65535.0f));
         W8(w, (unsigned)(int)roundf(Clamp(v->side * 40.0f, -127.0f, 127.0f)) & 255u);
         W8(w, (v->dir > 0 ? 1u : 0u) | (v->moving ? 2u : 0u));
+        W8(w, v->from >= 0 ? (unsigned)v->from : 255u);
+        W8(w, v->to >= 0 ? (unsigned)v->to : 255u);
         WAngle(w, v->face);
         WVitals(w, &v->vit);
     }
@@ -424,9 +426,21 @@ static void ReadSnapshot(Reader *r)
     int villagers = (int)R8(r);
     for (int i = 0; i < villagers && !r->bad; i++) {
         Villager *v = i < G.villagerCount ? &G.villagers[i] : &(Villager){ 0 };
-        float t = (float)R16(r) / 65535.0f, side = (float)(signed char)R8(r) / 40.0f;
+        float t = (float)R16(r) / 65535.0f * 2.0f - 0.5f, side = (float)(signed char)R8(r) / 40.0f;
         unsigned bits = R8(r);
+        int from = (int)R8(r);
+        int to = (int)R8(r);
         float face = RAngle(r);
+        from = from < StreetNodeCount() ? from : -1;
+        to = to < StreetNodeCount() ? to : -1;
+        if (from != v->from || to != v->to) {
+            // On to another stretch of street: no gliding back along the old one.
+            if (from >= 0 && to >= 0) SetStreet(v, from, to);
+            v->from = from;
+            v->to = to;
+            v->t = t;
+            v->side = side;
+        }
         if (fabsf(v->t - t) > 0.15f) v->t = t;
         if (fabsf(v->side - side) > 1.5f) v->side = side;
         v->netT = t;
@@ -969,6 +983,9 @@ static void HostHello(int net, Reader *r)
         Kick(net, "The game is full: five players already.");
         return;
     }
+    // Everyone already playing hears of it; the newcomer gets a welcome of their own instead, which
+    // this news would otherwise cover up.
+    Announce("%s joined the game.", name);
 
     Peer *p = &G.peers[slot];
     *p = (Peer){ .active = true, .net = net, .health = HEALTH_MAX, .flags = PF_GROUND };
@@ -984,7 +1001,6 @@ static void HostHello(int net, Reader *r)
     SendGuest(slot, &w);
     SendRoster();
     Snapshot(slot, true);
-    Announce("%s joined the game.", name);
 }
 
 // The host's save follows within a couple of seconds.

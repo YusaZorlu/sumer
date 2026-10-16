@@ -10,8 +10,9 @@
 #define WOLF_BITE      6.0f
 #define BITE_COOLDOWN  2.0f
 #define BOAR_GORE      10.0f
-#define GORE_COOLDOWN  1.7f
-#define CHARGE_TIME    15.0f
+#define GORE_COOLDOWN  2.2f
+#define BOAR_RAGE      40.0f
+#define BOAR_SPENT     0.15f
 #define SNAKE_BITE     8.0f
 #define SNAKE_COOLDOWN 2.4f
 #define SNAKE_HISS     0.8f
@@ -298,6 +299,21 @@ static void Step(Animal *a, const AnimalDef *d, float dt)
     if (!d->flies) a->pos.y = TerrainHeight(nx, nz);
 }
 
+// A pack or a sounder keeps together: one that strays too far from the first of its group goes back to it.
+static void KeepTogether(Animal *a, const AnimalDef *d, float gap)
+{
+    for (int i = 0; i < G.animalCount; i++) {
+        const Animal *lead = &G.animals[i];
+        if (lead->type == a->type && lead->pack == a->pack && lead->active && lead->state != ST_DEAD) {
+            if (lead != a && Vector3Distance(lead->pos, a->pos) > gap) {
+                a->heading = atan2f(lead->pos.x - a->pos.x, lead->pos.z - a->pos.z);
+                a->speed = d->walk * 1.5f;
+            }
+            return;
+        }
+    }
+}
+
 static void HuntPack(const Animal *leader, int s)
 {
     for (int i = 0; i < G.animalCount; i++) {
@@ -338,16 +354,7 @@ static void UpdateWolf(Animal *a, const AnimalDef *d, float dt)
     case ST_CALM:
     case ST_ALERT:
         Wander(a, d, dt);
-        for (int i = 0; i < G.animalCount; i++) {
-            const Animal *lead = &G.animals[i];
-            if (lead->type == AN_WOLF && lead->pack == a->pack && lead->active && lead->state != ST_DEAD) {
-                if (lead != a && Vector3Distance(lead->pos, a->pos) > 12.0f) {
-                    a->heading = atan2f(lead->pos.x - a->pos.x, lead->pos.z - a->pos.z);
-                    a->speed = d->walk * 1.5f;
-                }
-                break;
-            }
-        }
+        KeepTogether(a, d, 12.0f);
         for (int s = 0; s < MAX_PLAYERS; s++) {
             if (!PlayerAwake(s)) continue;
             const Peer *p = &G.peers[s];
@@ -404,33 +411,57 @@ static void UpdateWolf(Animal *a, const AnimalDef *d, float dt)
     Step(a, d, dt);
 }
 
-// A wounded boar charges whoever hurt it, gores, and charges again until it gives up or nearly dies.
+// A boar that was hurt charges whoever hurt it: it gores, wheels away and charges again, and keeps at
+// it until its rage cools, it is nearly dead, or the one it hunts gets away (far off or into the city).
 static void UpdateCharge(Animal *a, const AnimalDef *d, float dt)
 {
     int s = a->target;
-    Vector3 to = Vector3Subtract(PlayerAt(s), a->pos);
+    Vector3 at = PlayerAt(s), to = Vector3Subtract(at, a->pos);
     to.y = 0;
     float dist = Vector3Length(to);
 
     a->timer -= dt;
     a->bite -= dt;
-    if (a->timer <= 0 || dist > 45.0f || !PlayerAwake(s) || (float)a->hp < 0.2f * (float)d->hp) {
+    if (a->timer <= 0 || dist > 80.0f || !PlayerAwake(s) || InsideWalls(at.x, at.z, -2.0f) || (float)a->hp < BOAR_SPENT * (float)d->hp) {
         a->state = ST_FLEE;
         a->timer = 6.0f;
         a->awareness = 1.2f;
         return;
     }
     a->heading = atan2f(to.x, to.z);
-    if (dist > 1.5f) {
-        a->speed = d->run * 1.05f;
+    if (a->bite > GORE_COOLDOWN - 0.8f) {
+        // Just gored: it runs on past and wheels round for the next charge.
+        a->heading += 2.2f;
+        a->speed = d->run * 0.6f;
+    } else if (dist > 1.5f) {
+        a->speed = d->run * 1.12f;
     } else {
         a->speed = 0;
-        if (a->bite <= 0 && fabsf(PlayerAt(s).y - a->pos.y) < 1.5f) {
+        if (a->bite <= 0 && fabsf(at.y - a->pos.y) < 1.5f) {
             HurtSlot(s, BOAR_GORE);
             a->bite = GORE_COOLDOWN;
         }
     }
     Step(a, d, dt);
+}
+
+// Like a wolf pack, the whole sounder takes up a boar's fight: every boar of it nearby that is not
+// nearly dead charges the one who hurt it. Returns how many charge.
+static int RallySounder(const Animal *a, int s)
+{
+    int n = 0;
+    for (int i = 0; i < G.animalCount; i++) {
+        Animal *m = &G.animals[i];
+        if (!m->active || m->type != AN_BOAR || m->pack != a->pack || m->state == ST_DEAD || Vector3Distance(m->pos, a->pos) > 40.0f ||
+            (float)m->hp < BOAR_SPENT * (float)DEFS[AN_BOAR].hp)
+            continue;
+        if (m->state != ST_HUNT) m->bite = fmaxf(m->bite, 0.5f);
+        m->state = ST_HUNT;
+        m->target = s;
+        m->timer = BOAR_RAGE;
+        n++;
+    }
+    return n;
 }
 
 // Lies hidden in its clump of grass. Someone too close makes it rear up and hiss, then strike.
@@ -593,6 +624,7 @@ void UpdateWildlife(float dt)
         switch (a->state) {
         case ST_CALM:
             Wander(a, d, dt);
+            if (a->type == AN_BOAR) KeepTogether(a, d, 10.0f);
             if (a->awareness >= ALERT_LEVEL) {
                 a->state = ST_ALERT;
                 a->speed = 0;
@@ -732,13 +764,10 @@ static void HitAnimal(Animal *a, int damage)
         Kill(a);
         if (a->type == AN_SNAKE) Say("You killed the snake.");
         else Say("%s down! Walk up to it and press E to take the carcass.", AnimalName(a->type));
-    } else if (a->type == AN_BOAR && (float)a->hp >= 0.2f * (float)DEFS[AN_BOAR].hp) {
-        if (a->state != ST_HUNT || a->target != s) Say("The boar turns on you and charges!");
-        a->state = ST_HUNT;
-        a->target = s;
-        a->timer = CHARGE_TIME;
-        a->bite = fmaxf(a->bite, 0.5f);
-        StartleMates(a);
+    } else if (a->type == AN_BOAR && (float)a->hp >= BOAR_SPENT * (float)DEFS[AN_BOAR].hp) {
+        bool fresh = a->state != ST_HUNT || a->target != s;
+        int n = RallySounder(a, s);
+        if (fresh) Say(n > 1 ? "The boars turn on you and charge!" : "The boar turns on you and charges!");
     } else if (a->type == AN_SNAKE) {
         bool near = XZDist(a->pos, PlayerAt(s)) < 3.0f;
         a->state = near ? ST_HUNT : ST_FLEE;

@@ -178,8 +178,22 @@ typedef struct {
 enum { MARK_NONE, MARK_WARN, MARK_PARRIED, MARK_HIT };
 
 typedef enum { NPC_CIVILIAN, NPC_GUARD, NPC_CLERIC, NPC_VILLAGER, NPC_TRAVELLER } NpcKind;
-// Walks the straight lane a-b, or the whole of road 'road' when it is 0 or more.
-typedef struct { Vector3 a, b; float t, dir, speed; Color robe; NpcKind kind; float face, side; bool moving, templePost; Vitals vit; int road; float netT, netSide; } Villager;
+// Walks the straight lane a-b, or the whole of road 'road' when it is 0 or more. A townsperson who
+// walks the city's streets goes from crossing 'from' to crossing 'to' (a and b are their places),
+// may stand a while ('wait') and turns back when someone has blocked the way too long ('stuck').
+typedef struct {
+    Vector3 a, b;
+    float t, dir, speed;
+    Color robe;
+    NpcKind kind;
+    float face, side;
+    bool moving, templePost;
+    Vitals vit;
+    int road;
+    float netT, netSide;
+    int from, to;
+    float wait, stuck;
+} Villager;
 typedef struct { Vector3 home, pos, netPos; float face, timer, speed, respawnDay; bool moving; int camp; Vitals vit; } Raider;
 typedef struct { Vector3 wall, base, n; float top; } Ladder;
 
@@ -567,6 +581,9 @@ void AdvanceHours(float h);
 void DrawVillage(void);
 Vector3 VillagerPos(const Villager *v);
 Vector3 VillagerLanePos(const Villager *v);
+int StreetNodeCount(void);
+Vector3 StreetNode(int n);
+void SetStreet(Villager *v, int from, int to);
 Vector3 TraderPos(const Trader *t);
 void DrawPersonBody(Vector3 pos, float facing, Look look);
 void UpdateCombat(float dt);
@@ -696,6 +713,11 @@ bool StorageReady(void);
 void SyncStorage(void);
 void WantPointer(bool captured);
 bool PointerCaptured(void);
+void WatchClicks(void);
+void PageFrame(void);
+bool MousePressed(int button);
+bool KeyPressed(int key);
+Vector2 MouseLook(void);
 const char *PageParam(const char *key);
 void ServerAddress(char *buf, int size, const char *query);
 bool OnWeb(void);

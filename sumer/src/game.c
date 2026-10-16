@@ -84,7 +84,7 @@ void PassHours(float h)
 static void UpdateSleep(float dt)
 {
     if (G.waitBed && G.panel == PANEL_NONE &&
-        (IsKeyPressed(KEY_E) || IsKeyPressed(KEY_SPACE) || IsKeyDown(KEY_W) || IsKeyDown(KEY_A) || IsKeyDown(KEY_S) || IsKeyDown(KEY_D))) {
+        (KeyPressed(KEY_E) || KeyPressed(KEY_SPACE) || IsKeyDown(KEY_W) || IsKeyDown(KEY_A) || IsKeyDown(KEY_S) || IsKeyDown(KEY_D))) {
         G.waitBed = false;
         Say("You get up.");
     }
@@ -312,7 +312,7 @@ void SaveNow(void)
 static bool HandleWindow(void)
 {
     bool alt = IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT);
-    if (IsKeyPressed(KEY_F11) || (alt && IsKeyPressed(KEY_ENTER))) ToggleBorderlessWindowed();
+    if (KeyPressed(KEY_F11) || (alt && KeyPressed(KEY_ENTER))) ToggleBorderlessWindowed();
 
     bool focused = IsWindowFocused(), paused = false;
     if (!focused && G.wasFocused && G.panel == PANEL_NONE) {
@@ -336,16 +336,16 @@ static bool HandleWindow(void)
 // 'paused': the Esc that released the mouse already opened the pause menu; it does not close it again.
 static void HandleMenus(bool paused)
 {
-    if (IsKeyPressed(KEY_ESCAPE) && !paused) {
+    if (KeyPressed(KEY_ESCAPE) && !paused) {
         SetPanel(G.panel == PANEL_NONE ? PANEL_PAUSE : PANEL_NONE);
-    } else if (IsKeyPressed(KEY_H) && (G.panel == PANEL_NONE || G.panel == PANEL_PAUSE || G.panel == PANEL_HELP)) {
+    } else if (KeyPressed(KEY_H) && (G.panel == PANEL_NONE || G.panel == PANEL_PAUSE || G.panel == PANEL_HELP)) {
         SetPanel(G.panel == PANEL_HELP ? PANEL_NONE : PANEL_HELP);
-    } else if (IsKeyPressed(KEY_TAB) || IsKeyPressed(KEY_I)) {
+    } else if (KeyPressed(KEY_TAB) || KeyPressed(KEY_I)) {
         if (G.panel == PANEL_NONE) SetPanel(PANEL_BAG);
         else if (G.panel != PANEL_PAUSE && G.panel != PANEL_HELP) SetPanel(PANEL_NONE);
     }
-    if (G.panel == PANEL_PAUSE && IsKeyPressed(KEY_Q)) G.quit = true;
-    if (IsKeyPressed(KEY_F5) && !G.sleeping) SaveNow();
+    if (G.panel == PANEL_PAUSE && KeyPressed(KEY_Q)) G.quit = true;
+    if (KeyPressed(KEY_F5) && !G.sleeping) SaveNow();
     if (G.panel == PANEL_TRADE && G.traders[G.trader].away) {
         SetPanel(PANEL_NONE);
         Say("The %s is packing up to leave.", L(G.traders[G.trader].name));
@@ -353,7 +353,7 @@ static void HandleMenus(bool paused)
         SetPanel(PANEL_NONE);
         Say("The %s won't trade with you now.", L(G.traders[G.trader].name));
     }
-    if (G.panel == PANEL_NONE && !G.cursorLocked && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+    if (G.panel == PANEL_NONE && !G.cursorLocked && MousePressed(MOUSE_BUTTON_LEFT)) {
         DisableCursor();
         WantPointer(true);
         G.cursorLocked = true;
@@ -445,15 +445,15 @@ void GameUpdate(void)
     FindTarget(play);
 
     if (play) {
-        if (IsKeyPressed(KEY_E)) Interact(false);
-        if (IsKeyPressed(KEY_F)) Interact(true);
-        if (IsKeyPressed(KEY_R)) RefillQuiver();
-        if (IsKeyPressed(KEY_ONE)) SetEquip(EQ_BOW);
-        if (IsKeyPressed(KEY_TWO)) SetEquip(EQ_MELEE);
-        if (IsKeyPressed(KEY_THREE)) SetEquip(EQ_NONE);
-        if (IsKeyPressed(KEY_FOUR)) SetEquip(EQ_MACE);
-        if (IsKeyPressed(KEY_M)) G.mapZoom = (G.mapZoom + 1) % 3;
-        if (IsKeyPressed(KEY_Z)) {
+        if (KeyPressed(KEY_E)) Interact(false);
+        if (KeyPressed(KEY_F)) Interact(true);
+        if (KeyPressed(KEY_R)) RefillQuiver();
+        if (KeyPressed(KEY_ONE)) SetEquip(EQ_BOW);
+        if (KeyPressed(KEY_TWO)) SetEquip(EQ_MELEE);
+        if (KeyPressed(KEY_THREE)) SetEquip(EQ_NONE);
+        if (KeyPressed(KEY_FOUR)) SetEquip(EQ_MACE);
+        if (KeyPressed(KEY_M)) G.mapZoom = (G.mapZoom + 1) % 3;
+        if (KeyPressed(KEY_Z)) {
             G.arrowCam = !G.arrowCam;
             Say(G.arrowCam ? "Arrow camera on: the view follows each shot (Z to turn off)." : "Arrow camera off.");
         }

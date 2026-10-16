@@ -263,8 +263,154 @@ static void BuildMarket(void)
 int AddNpc(NpcKind kind, Vector3 a, Vector3 b, float speed, Color robe, float face)
 {
     if (G.villagerCount >= MAX_VILLAGERS) return -1;
-    G.villagers[G.villagerCount] = (Villager){ a, b, speed > 0 ? RandF(0, 1) : 0.0f, 1.0f, speed, robe, kind, face, 0.0f, false, false, { .hp = 0 }, -1, 0.0f, 0.0f };
+    G.villagers[G.villagerCount] = (Villager){ a, b, speed > 0 ? RandF(0, 1) : 0.0f, 1.0f, speed, robe, kind, face, 0.0f, false, false,
+                                               { .hp = 0 }, -1, 0.0f, 0.0f, -1, -1, 0.0f, 0.0f };
     return G.villagerCount++;
+}
+
+// The city's streets as crossings and the stretches between them: the main street from the temple
+// gate to the south gate, the east-west street from gate to gate, the street south of it, the street
+// past the west side of the temple precinct, the little street in the west and the harbor quay.
+static const float STREET_NODES[][2] = {
+    { 0, -3 }, { 0, 9 }, { 0, 39 }, { 0, 72 }, { -37, 9 }, { -54, 9 }, { -86, 9 }, { 35, 9 }, { 65, 9 }, { 86, 9 },
+    { -37, -35 }, { -37, -74 }, { -45, 39 }, { -76, 39 }, { 45, 39 }, { 76, 39 }, { -60, 26 }, { -84, 26 }, { -54.5f, -18 },
+};
+static const int STREET_EDGES[][2] = {
+    { 0, 1 }, { 1, 2 }, { 2, 3 }, { 1, 4 }, { 4, 5 }, { 5, 6 }, { 1, 7 }, { 7, 8 }, { 8, 9 }, { 4, 10 }, { 10, 11 },
+    { 2, 12 }, { 12, 13 }, { 2, 14 }, { 14, 15 }, { 16, 17 }, { 5, 18 }, { 16, 5 },
+};
+#define STREET_NODE_COUNT COUNT(STREET_NODES)
+#define STREET_EDGE_COUNT COUNT(STREET_EDGES)
+
+int StreetNodeCount(void)
+{
+    return STREET_NODE_COUNT;
+}
+
+Vector3 StreetNode(int n)
+{
+    if (n < 0 || n >= STREET_NODE_COUNT) n = 0;
+    float x = STREET_NODES[n][0], z = STREET_NODES[n][1];
+    return (Vector3){ x, GroundHeight(x, z, 1.0f), z };
+}
+
+// Puts a townsperson on the stretch from crossing 'from' to crossing 'to'.
+void SetStreet(Villager *v, int from, int to)
+{
+    v->from = from;
+    v->to = to;
+    v->a = StreetNode(from);
+    v->b = StreetNode(to);
+}
+
+static int Neighbours(int n, int *out)
+{
+    int k = 0;
+    for (int e = 0; e < STREET_EDGE_COUNT; e++) {
+        if (STREET_EDGES[e][0] == n) out[k++] = STREET_EDGES[e][1];
+        else if (STREET_EDGES[e][1] == n) out[k++] = STREET_EDGES[e][0];
+    }
+    return k;
+}
+
+// How far a walker may stray from the middle of each street and stay clear of walls, houses, stalls
+// and water: [0] to the right of the street as listed (walking from its first crossing to its
+// second), [1] to the left. Measured once the whole city stands; the player houses go up last.
+static float streetRoom[STREET_EDGE_COUNT][2];
+static bool roomMeasured;
+
+// Whether the stretch a-b passes within m of the box, seen from above.
+static bool Passes(float ax, float az, float bx, float bz, const Box *box, float m)
+{
+    float o[2] = { ax, az }, d[2] = { bx - ax, bz - az }, lo = 0.0f, hi = 1.0f;
+    float mn[2] = { box->pos.x - box->size.x / 2 - m, box->pos.z - box->size.z / 2 - m };
+    float mx[2] = { box->pos.x + box->size.x / 2 + m, box->pos.z + box->size.z / 2 + m };
+    for (int k = 0; k < 2; k++) {
+        if (fabsf(d[k]) < 1e-6f) {
+            if (o[k] < mn[k] || o[k] > mx[k]) return false;
+            continue;
+        }
+        float t0 = (mn[k] - o[k]) / d[k], t1 = (mx[k] - o[k]) / d[k];
+        lo = fmaxf(lo, fminf(t0, t1));
+        hi = fminf(hi, fmaxf(t0, t1));
+    }
+    return lo <= hi;
+}
+
+static void MeasureStreets(void)
+{
+    static int near[512];
+    for (int e = 0; e < STREET_EDGE_COUNT; e++) {
+        float ax = STREET_NODES[STREET_EDGES[e][0]][0], az = STREET_NODES[STREET_EDGES[e][0]][1];
+        float bx = STREET_NODES[STREET_EDGES[e][1]][0], bz = STREET_NODES[STREET_EDGES[e][1]][1];
+        float dx = bx - ax, dz = bz - az, len = sqrtf(dx * dx + dz * dz);
+        int n = 0, steps = (int)ceilf(len / 0.5f);
+        for (int i = 0; i < G.boxCount && n < COUNT(near); i++) {
+            const Box *b = &G.boxes[i];
+            if (b->solid && !b->water && Passes(ax, az, bx, bz, b, 3.0f)) near[n++] = i;
+        }
+        for (int s = 0; s < 2; s++) {
+            float sign = s ? 1.0f : -1.0f, room = 0.0f;
+            for (int o = 1; o <= 8; o++) {
+                bool clear = true;
+                for (int j = 0; j <= steps && clear; j++) {
+                    float x = ax + dx * (float)j / (float)steps + dz / len * 0.25f * (float)o * sign;
+                    float z = az + dz * (float)j / (float)steps - dx / len * 0.25f * (float)o * sign;
+                    float ground = TerrainHeight(x, z);
+                    clear = !InWater(x, z);
+                    for (int k = 0; k < n && clear; k++) {
+                        const Box *b = &G.boxes[near[k]];
+                        clear = !(fabsf(x - b->pos.x) <= b->size.x / 2 + 0.35f && fabsf(z - b->pos.z) <= b->size.z / 2 + 0.35f &&
+                                  b->pos.y + b->size.y / 2 > ground + 0.6f);
+                    }
+                }
+                if (!clear) break;
+                room = 0.25f * (float)o;
+            }
+            streetRoom[e][s] = room;
+        }
+    }
+    roomMeasured = true;
+}
+
+// The room on a walker's right and on its left along its stretch of street.
+static void RoomOf(const Villager *v, float *right, float *left)
+{
+    if (!roomMeasured) MeasureStreets();
+    *right = *left = 0.0f;
+    for (int e = 0; e < STREET_EDGE_COUNT; e++) {
+        bool along = STREET_EDGES[e][0] == v->from && STREET_EDGES[e][1] == v->to;
+        if (!along && !(STREET_EDGES[e][1] == v->from && STREET_EDGES[e][0] == v->to)) continue;
+        *right = streetRoom[e][along ? 0 : 1];
+        *left = streetRoom[e][along ? 1 : 0];
+        return;
+    }
+}
+
+// At a crossing: on along another street, seldom back the way it came. A dead end (a gate, the
+// quay, the end of a lane) is a place to stand a while before turning back.
+static void NextStreet(Villager *v)
+{
+    Vector3 at = VillagerLanePos(v);
+    int around[8], n = Neighbours(v->to, around), ways[8], m = 0;
+    for (int k = 0; k < n; k++)
+        if (around[k] != v->from) ways[m++] = around[k];
+    int next = m > 0 && GetRandomValue(0, 9) > 0 ? ways[GetRandomValue(0, m - 1)] : v->from;
+    SetStreet(v, v->to, next);
+    // It goes on from where it stands, measured along and across the new street, so turning a
+    // corner never moves it in one jump.
+    float dx = v->b.x - v->a.x, dz = v->b.z - v->a.z, len = fmaxf(sqrtf(dx * dx + dz * dz), 0.1f);
+    float ox = at.x - v->a.x, oz = at.z - v->a.z;
+    v->t = (ox * dx + oz * dz) / (len * len);
+    v->side = (ox * dz - oz * dx) / len;
+    if (m == 0) v->wait = RandF(4.0f, 12.0f);
+    else if (GetRandomValue(0, 3) == 0) v->wait = RandF(2.0f, 7.0f);
+}
+
+static void AddWalker(int from, int to, float speed, Color robe)
+{
+    int i = AddNpc(NPC_CIVILIAN, StreetNode(from), StreetNode(to), speed, robe, 0);
+    if (i >= 0) SetStreet(&G.villagers[i], from, to);
 }
 
 static void AddVillager(float ax, float az, float bx, float bz, float speed, Color robe)
@@ -325,36 +471,75 @@ Vector3 VillagerLanePos(const Villager *v)
     return (Vector3){ p.x + dz / len * v->side, p.y, p.z - dx / len * v->side };
 }
 
-// Walks the lane; blocked by someone ahead it waits and steps aside, then drifts back.
+// Turns toward a heading over a moment instead of all at once.
+static float TurnToward(float face, float want, float k)
+{
+    return face + atan2f(sinf(want - face), cosf(want - face)) * fminf(1.0f, k);
+}
+
+// Walks the lane or the streets. Someone ahead: it steps aside to get past, and if the way stays
+// blocked it turns back. On a road or a street it keeps to the right, so people pass each other,
+// and on a street it keeps within the room the street leaves between its walls.
 static void WalkVillager(Villager *v, int i, float dt)
 {
     const int self = OWNER_VILLAGER + i;
-    float len = LaneLength(v);
+    bool street = v->from >= 0;
+    float len = LaneLength(v), right = 0.0f, left = 0.0f;
     Villager next = *v;
 
     v->moving = false;
     if (v->speed <= 0 || v->vit.override) return;
+    if (v->wait > 0) {
+        v->wait -= dt;
+        return;
+    }
+    if (street) RoomOf(v, &right, &left);
     next.t += v->dir * v->speed * dt / len;
-    if (next.t > 1) { next.t = 1; next.dir = -1; }
-    if (next.t < 0) { next.t = 0; next.dir = 1; }
+    if (street && next.t >= 1.0f) {
+        NextStreet(v);
+        return;
+    }
+    if (!street && next.t > 1) { next.t = 1; next.dir = -1; }
+    if (!street && next.t < 0) { next.t = 0; next.dir = 1; }
 
     Vector3 cur = VillagerPos(v), to = VillagerPos(&next);
     if (BodyAhead(cur, to, 0.35f, self)) {
-        Villager aside = *v;
-        float room = v->road >= 0 ? 2.2f : 1.3f;
-        aside.side = Clamp(v->side - v->dir * 1.2f * dt, -room, room);
-        Vector3 sp = VillagerPos(&aside);
-        if (!SolidAt(sp.x, sp.z, 0.3f) && !BodyAt(sp, 0.35f, self)) v->side = aside.side;
+        // A step to one side, or else to the other.
+        float lo = street ? -right : v->road >= 0 ? -2.2f : -1.3f, hi = street ? left : -lo;
+        float way = street ? -1.0f : -v->dir;
+        for (int k = 0; k < 2; k++, way = -way) {
+            Villager aside = *v;
+            aside.side = Clamp(v->side + way * 1.4f * dt, lo, hi);
+            Vector3 sp = VillagerPos(&aside);
+            if (aside.side == v->side || BodyAt(sp, 0.35f, self) || (!street && SolidAt(sp.x, sp.z, 0.3f))) continue;
+            v->side = aside.side;
+            break;
+        }
+        v->stuck += dt;
+        if (v->stuck > 2.5f) {
+            // Blocked too long: turn round and go another way.
+            v->stuck = 0;
+            if (street) {
+                SetStreet(v, v->to, v->from);
+                v->t = 1.0f - v->t;
+                v->side = -v->side;
+            } else {
+                v->dir = -v->dir;
+            }
+        }
         return;
     }
+    v->stuck = 0;
     *v = next;
     v->moving = true;
-    if (to.x != cur.x || to.z != cur.z) v->face = atan2f(to.x - cur.x, to.z - cur.z);
-    // On a road the way back is to the right-hand side of the direction of travel.
-    float home = v->road >= 0 ? -1.0f * v->dir : 0.0f;
+    if (to.x != cur.x || to.z != cur.z) v->face = TurnToward(v->face, atan2f(to.x - cur.x, to.z - cur.z), dt * 8.0f);
+    // On a road or a street the way back is to the right-hand side of the direction of travel, as
+    // near the middle as a narrow street needs. Out of a street's room (just round a corner) it
+    // steps back in briskly.
+    float home = v->road >= 0 ? -1.0f * v->dir : street ? -fminf(1.0f, right) : 0.0f;
     if (v->side != home) {
         Villager back = *v;
-        float step = 0.6f * dt;
+        float step = (street && (v->side < -right || v->side > left) ? 1.5f : 0.6f) * dt;
         back.side = fabsf(v->side - home) <= step ? home : v->side - copysignf(step, v->side - home);
         if (!BodyAt(VillagerPos(&back), 0.35f, self)) v->side = back.side;
     }
@@ -367,18 +552,18 @@ void BuildVillage(void)
     BuildPen();
     BuildMarket();
 
+    // Townsfolk wander the streets; one sweeps the temple's inner court, one its outer court.
+    static const struct { int from, to; float speed; Color robe; } walkers[] = {
+        { 1, 2, 1.1f, { 200, 190, 160, 255 } }, { 2, 1, 1.3f, { 150, 110, 80, 255 } },  { 4, 1, 1.2f, { 180, 170, 140, 255 } },
+        { 7, 8, 1.0f, { 160, 120, 90, 255 } },  { 16, 17, 0.9f, { 170, 150, 110, 255 } }, { 12, 13, 1.0f, { 190, 175, 150, 255 } },
+        { 14, 15, 1.0f, { 168, 148, 118, 255 } }, { 5, 18, 0.8f, { 120, 140, 150, 255 } }, { 10, 11, 1.1f, { 176, 160, 120, 255 } },
+        { 3, 2, 1.0f, { 186, 150, 120, 255 } }, { 9, 8, 1.15f, { 140, 120, 100, 255 } }, { 6, 5, 0.95f, { 210, 196, 170, 255 } },
+    };
     G.villagerCount = 0;
-    AddVillager(-3.5f, -11, -3.5f, 74, 1.1f, (Color){ 200, 190, 160, 255 });
-    AddVillager(3.5f, 74, 3.5f, -11, 1.3f, (Color){ 150, 110, 80, 255 });
-    AddVillager(-92, 8, 92, 8, 1.2f, (Color){ 180, 170, 140, 255 });
-    AddVillager(60, 10, -60, 10, 1.0f, (Color){ 160, 120, 90, 255 });
+    roomMeasured = false;
+    for (int k = 0; k < COUNT(walkers); k++) AddWalker(walkers[k].from, walkers[k].to, walkers[k].speed, walkers[k].robe);
     AddVillager(-3, ZIG_Z + 2, 3, ZIG_Z + 2, 0.7f, (Color){ 230, 225, 210, 255 });
-    AddVillager(-92, 26, -59, 26, 0.9f, (Color){ 170, 150, 110, 255 });
-    AddVillager(-70, 39, -8, 39, 1.0f, (Color){ 190, 175, 150, 255 });
-    AddVillager(10, 39, 92, 39, 1.0f, (Color){ 168, 148, 118, 255 });
     AddVillager(-14, -9, 14, -9, 0.6f, (Color){ 236, 232, 222, 255 });
-    AddVillager(-56, -22, -56, 1, 0.8f, (Color){ 120, 140, 150, 255 });
-    AddVillager(-37, -82, -37, 2, 1.1f, (Color){ 176, 160, 120, 255 });
     for (int i = 0; i < CityFarmCount(); i++) {
         Vector3 c = CityFarmSpot(i);
         AddVillager(c.x - 3.5f, c.z, c.x + 7.5f, c.z, 0.45f, (Color){ 204, 194, 164, 255 });
@@ -704,7 +889,8 @@ void DrawVillage(void)
     for (int i = 0; i < G.villagerCount; i++) {
         const Villager *v = &G.villagers[i];
         Vector3 pos = VillagerPos(v);
-        float stride = v->moving ? v->t * LaneLength(v) * 3.0f : 0.0f;
+        // The legs swing with the time walked, so a new stretch of street does not jolt them.
+        float stride = v->moving ? (float)GetTime() * v->speed * 3.0f + (float)i : 0.0f;
         float face = v->vit.override ? v->vit.face : v->face;
         if (XZDist(pos, G.cam.position) > 200.0f) continue;
         if (v->vit.override && v->vit.hostile > 0) stride = (float)GetTime() * 8.0f;

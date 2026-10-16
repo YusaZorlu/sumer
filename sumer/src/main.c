@@ -15,6 +15,7 @@ static void Frame(void)
 {
     static bool ready;
 
+    PageFrame();
     if (!ready) {
         if (!StorageReady()) {
             BeginDrawing();
@@ -51,6 +52,7 @@ int main(void)
     SetExitKey(KEY_NULL);
     rlSetClipPlanes(0.1, 1200.0);
     MountStorage();
+    WatchClicks();
     emscripten_set_main_loop(Frame, 0, 1);
     return 0;
 }

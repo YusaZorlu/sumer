@@ -23,7 +23,7 @@ static float Boost(void)
 static void UpdateLook(Player *p, float dt, bool input)
 {
     if (input && G.cursorLocked && PointerCaptured()) {
-        Vector2 md = GetMouseDelta();
+        Vector2 md = MouseLook();
         float sens = p->aiming ? 0.0018f : 0.003f;
         if (G.followArrow >= 0 && fabsf(md.x) + fabsf(md.y) > 6.0f) G.followArrow = -1;
         p->yaw -= md.x * sens;
@@ -39,7 +39,7 @@ static void UpdateLook(Player *p, float dt, bool input)
         if (G.firstPerson && wheel < 0) G.firstPerson = false;
         else if (!G.firstPerson && wheel > 0 && p->dist <= 3.0f) G.firstPerson = true;
         else if (!G.firstPerson) p->dist = Clamp(p->dist - wheel * 1.2f, 3.0f, 22.0f);
-        if (IsKeyPressed(KEY_P)) G.firstPerson = !G.firstPerson;
+        if (KeyPressed(KEY_P)) G.firstPerson = !G.firstPerson;
     }
     p->pitch = Clamp(p->pitch, G.firstPerson ? -1.3f : -0.45f, 1.35f);
 }
@@ -68,8 +68,10 @@ static void HandleBow(Player *p, float dt, bool input)
 {
     bool held = input && G.equip == EQ_BOW && G.cursorLocked && IsMouseButtonDown(MOUSE_BUTTON_LEFT);
 
+    // The ignored click is over once the button is up and the frame that saw it press has passed: a
+    // quick tap is already up in the frame that sees it, and must not strike then either.
     if (G.ignoreClick) {
-        if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT)) G.ignoreClick = false;
+        if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !MousePressed(MOUSE_BUTTON_LEFT)) G.ignoreClick = false;
         held = false;
     }
 
@@ -201,15 +203,15 @@ void UpdatePlayer(float dt, bool input)
     if (G.swingCool > 0) G.swingCool -= dt;
     if (G.parryT > 0) G.parryT -= dt;
     if (G.parryCool > 0) G.parryCool -= dt;
-    bool strike = G.cursorLocked && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !G.ignoreClick;
-    bool parry = (G.cursorLocked && IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) || IsKeyPressed(KEY_Q);
+    bool strike = G.cursorLocked && MousePressed(MOUSE_BUTTON_LEFT) && !G.ignoreClick;
+    bool parry = (G.cursorLocked && MousePressed(MOUSE_BUTTON_RIGHT)) || KeyPressed(KEY_Q);
     bool armed = G.equip == EQ_MELEE || G.equip == EQ_MACE, mace = G.equip == EQ_MACE;
     if (input && armed && G.parryCool <= 0 && G.parryT <= 0 && G.swingT <= 0 && parry) {
         G.parryT = PARRY_TIME;
         G.parryCool = PARRY_COOL;
         p->facing = p->yaw + PI;
     }
-    if (input && armed && G.swingCool <= 0 && G.parryT <= 0 && (strike || IsKeyPressed(KEY_V))) {
+    if (input && armed && G.swingCool <= 0 && G.parryT <= 0 && (strike || KeyPressed(KEY_V))) {
         G.swingT = mace ? MACE_TIME : SWING_TIME;
         G.swingCool = (mace ? MACE_COOL : SWING_COOL) / Boost();
         MeleeStrike();
@@ -224,8 +226,8 @@ void UpdatePlayer(float dt, bool input)
         if (IsKeyDown(KEY_D)) move = Vector3Add(move, right);
         if (IsKeyDown(KEY_A)) move = Vector3Subtract(move, right);
 
-        if (IsKeyPressed(KEY_C)) p->crouching = !p->crouching;
-        if (IsKeyPressed(KEY_SPACE)) {
+        if (KeyPressed(KEY_C)) p->crouching = !p->crouching;
+        if (KeyPressed(KEY_SPACE)) {
             if (p->crouching) p->crouching = false;
             else if (p->grounded) {
                 p->vy = JUMP_SPEED;

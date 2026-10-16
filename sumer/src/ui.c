@@ -102,7 +102,7 @@ static bool Button(Rectangle r, const char *label, bool enabled, int key)
     DrawRectangleRec(r, enabled ? (hover ? (Color){ 150, 110, 60, 255 } : (Color){ 112, 82, 48, 255 }) : (Color){ 60, 54, 48, 255 });
     DrawRectangleLinesEx(r, 1, C_EDGE);
     CenterText(label, r.x + r.width / 2, r.y + (r.height - 18) / 2, 18, enabled ? C_TEXT : C_DIM);
-    return (hover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) || (enabled && key && IsKeyPressed(key));
+    return (hover && MousePressed(MOUSE_BUTTON_LEFT)) || (enabled && key && KeyPressed(key));
 }
 
 static int SlotKey(int i)
@@ -154,10 +154,10 @@ static int SlotWidget(Rectangle r, Slot s, bool locked, int index)
     } else {
         CenterText("empty", r.x + r.width / 2, r.y + r.height / 2 - 7, 14, (Color){ 100, 88, 74, 255 });
     }
-    if (index >= 0 && IsKeyPressed(SlotKey(index))) return CLICK_LEFT;
+    if (index >= 0 && KeyPressed(SlotKey(index))) return CLICK_LEFT;
     if (!hover) return CLICK_NONE;
-    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) return CLICK_LEFT;
-    if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) || IsKeyPressed(KEY_X)) return CLICK_RIGHT;
+    if (MousePressed(MOUSE_BUTTON_LEFT)) return CLICK_LEFT;
+    if (MousePressed(MOUSE_BUTTON_RIGHT) || KeyPressed(KEY_X)) return CLICK_RIGHT;
     return CLICK_NONE;
 }
 
@@ -474,8 +474,8 @@ static void DrawHelpPanel(void)
         "Roads on the map lead east to the hunters' village and south-west to the herders' village; travellers walk them, "
         "and wolves leave you alone in company. Only the shepherd sells sheepskin and sheep.",
         "Herbs grow in green meadows, most of all across the river: chew one from your baskets to heal fast. Snakes hide "
-        "in long grass; a hiss means back off (crouch to creep by). A hurt boar charges. Arrows landing close send prey "
-        "running and bring wolves down on you.",
+        "in long grass; a hiss means back off (crouch to creep by). Hurt a boar and its whole sounder charges. Arrows "
+        "landing close send prey running and bring wolves down on you.",
         "Playing together (in the browser): each player has a house in their own color. The world never pauses, and the "
         "night passes when everyone lies in bed. The farm, the coop and the eggs are shared.",
     };
