@@ -43,6 +43,16 @@ The title screen asks for your name, then:
   minute, when a night passes, when someone leaves, and on F5. Keep the host's tab open and in front
   while others play (browsers slow down hidden tabs). "New world" beside it (click twice) erases the
   hosted world so the next game starts fresh.
+- **Rules when you host**, the two switches under Host:
+  - **PvP** (on unless you switch it off): whether players can hurt each other with blows and
+    arrows. A player who starts a fight inside the city's canals is wanted by the guards; hitting
+    back, or hitting someone already wanted, is no crime.
+  - **Combat mode** (off unless you switch it on, and only with PvP): everyone fights with the best
+    of everything (bronze sickle-sword, the war mace, the best bow with bronze arrowheads, bronze
+    armor) and arrows never run out. The guards stay out of fights between players, and a player
+    brought down comes to at home with full health. Your own gear is untouched: it is what your
+    record keeps, and what you have again in a game without combat mode.
+  The rules show in everyone's Esc menu and when they join.
 - **Join a game**: joins the game hosted in the same room. Join again under the same name and your
   things and your house are waiting.
 
@@ -59,9 +69,10 @@ Playing together:
 - The world never stops: the Esc menu only takes your hands off the keys, and time can't be
   fast-forwarded (T).
 - The night passes when every player lies in bed (E at your bed; E, Space or a step gets you up).
-  Someone brought down comes to at home at once, with 30% health.
+  Someone brought down comes to at home at once, with 30% health, and the message says who did it
+  (a player by name).
 - Wolves hunt whoever is alone outside the walls; another player close by counts as company. Guards go
-  after whoever attacked someone, raiders after whoever comes near.
+  after whoever attacked someone in the city's lands, raiders after whoever comes near.
 - A carcass, a tree's wood, a plot or the eggs go to whoever gets there first.
 - Names float over the other players' heads, with their health when they are hurt; the map shows them
   as dots in their colors.
@@ -202,8 +213,10 @@ fishing (1.5), cutting reeds and gathering herbs (1) the least. Heavy work (2 fo
 when you are too hungry for it.
 
 Health comes back on its own while your food is at 20% or more and nothing is attacking you. If you are
-brought down you wake at home the next morning with 30% health and the same food, without your
-carcasses (pelts are kept).
+brought down you wake at home the next morning with 30% health and the same food, and you lose your
+carcasses and everything you gained that day that you had not put in your storage at home: dates,
+ore, wood, bought goods and the rest. What you carried when the day began, and anything you took out
+of storage, is kept (pelts too). The message says what brought you down and what you lost.
 
 Herbs grow in green places: the river meadows, the pastures around the herders, the hunters' glade,
 and above all the west bank (look for low sage-green clumps with purple, yellow or white flowers).
@@ -241,7 +254,8 @@ seed, so it is never stored.
   1.4 seconds) sweeps a wide arc and strikes every animal and every foe in front of you, which helps
   against a wolf pack or a band of raiders. A bystander is only hit if the blow was aimed at them. You
   can parry with it too.
-- Bow damage: 20 / 28 / 40 by bow, +10 with bronze arrowheads.
+- Bow damage: 20 / 28 / 40 by bow, +10 with bronze arrowheads. Arrows strike where the crosshair
+  points, near or far, and over the shoulder too: the archer allows for the arrow's drop.
 - Parry: before a person strikes, a yellow mark shows over their head. Press right mouse or Q with
   your melee weapon in hand while facing them: the mark turns green, the blow does nothing, and they
   are open for a moment (your next hit does a quarter more). If it lands, the mark turns red. There
@@ -254,11 +268,24 @@ Everyone has a health bar. People are tough: a townsperson takes about 9 club bl
 (armored, 320 health) about 35 club blows or 13 with the bronze sickle-sword. An unaware target takes
 half again as much damage.
 
-Nobody attacks you unless you attack first. If you hurt someone who wasn't fighting you and others see
-it, guards and the braver townsfolk come for you, the rest run, and the guards stay after you for two
-minutes. Traders won't deal with you while you are wanted. If no one else sees, only the victim
-reacts. At night people see less far, unless you stand in torchlight. At dawn everyone is back and
-grudges are forgotten.
+Nobody attacks you unless you attack first. What happens next depends on where you are:
+
+- **In the city's lands** (everything inside the ring of canals): if others see you hurt someone who
+  wasn't fighting you, guards and the braver townsfolk come for you, the rest run, and the guards
+  want you for two minutes. Traders won't deal with you while you are wanted.
+- **In a village**: hit one of its people and the whole village turns on you and fights you for two
+  minutes. The city's guards never hear of it.
+- **Anywhere else** (the roads, the fields past the canals): whoever saw it fights or runs, but no one
+  tells the city's guards.
+
+If no one else sees, only the victim reacts. At night people see less far, unless you stand in
+torchlight. At dawn everyone is back and grudges are forgotten.
+
+Nobody chases you far from home. The city's guards keep to the city's lands and to about 40 m from
+their posts, caravan guards stay within about 14 m of their caravan, village folk around their
+village and townsfolk near where they were. Run far enough and they let you go, still angry, and walk
+back. People who chase you, or walk home after a fight, jump the canals as you do, and go round the
+harbor basin or over its bridge.
 
 Search a dead body with E. Townsfolk carry a little food, clerics bread and dates, workers a few of
 what they gather, guards a good weapon (the sickle-sword if yours is worse) and arrows.

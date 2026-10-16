@@ -46,13 +46,13 @@ static void UpdateLook(Player *p, float dt, bool input)
 
 const char *EquipName(int eq)
 {
-    return eq == EQ_BOW ? L(BOW_NAMES[G.bow]) : eq == EQ_MELEE ? WeaponName(G.weapon) : eq == EQ_MACE ? MaceName() : L("Bare hands");
+    return eq == EQ_BOW ? L(BOW_NAMES[UseBow()]) : eq == EQ_MELEE ? WeaponName(UseWeapon()) : eq == EQ_MACE ? MaceName() : L("Bare hands");
 }
 
 void SetEquip(int eq)
 {
     if (G.equip == eq) return;
-    if (eq == EQ_MACE && !G.hasMace) {
+    if (eq == EQ_MACE && !UseMace()) {
         Say("You have no war mace. The smith in the craft quarter makes one.");
         return;
     }
@@ -76,7 +76,7 @@ static void HandleBow(Player *p, float dt, bool input)
     }
 
     if (held) {
-        if (!p->aiming && G.quiver == 0) {
+        if (!p->aiming && G.quiver == 0 && !G.combat) {
             Say("Quiver empty. Press R to refill from your baskets, or restock at home.");
             G.ignoreClick = true;
             return;
@@ -86,13 +86,13 @@ static void HandleBow(Player *p, float dt, bool input)
         return;
     }
 
-    if (p->aiming && input && p->draw > 0.15f && G.quiver > 0) {
+    if (p->aiming && input && p->draw > 0.15f && (G.quiver > 0 || G.combat)) {
         Vector3 right = { cosf(p->yaw), 0, -sinf(p->yaw) };
         Vector3 fwd = { -sinf(p->yaw), 0, -cosf(p->yaw) };
         float chest = p->crouching ? 1.12f : 1.5f;
         Vector3 from = { p->pos.x, p->pos.y + chest, p->pos.z };
         from = Vector3Add(from, Vector3Add(Vector3Scale(right, -0.2f), Vector3Scale(fwd, 0.7f)));
-        G.quiver--;
+        if (!G.combat) G.quiver--;
         int shot = ShootArrow(from, AimPoint(), p->draw);
         if (G.arrowCam && shot >= 0) {
             G.followArrow = shot;
@@ -366,7 +366,7 @@ static void DrawWeapon(const Player *p)
         rlTranslatef(0.32f, 0, 0.1f);
         rlRotatef(angle, 1, 0, 0);
     }
-    switch (G.weapon) {
+    switch (UseWeapon()) {
     case 0:
         WPart(0, 0, 0.35f, 0.06f, 0.06f, 0.7f, COL_WOOD);
         WPart(0, 0, 0.72f, 0.13f, 0.13f, 0.22f, COL_PALM_TRUNK);
@@ -433,14 +433,14 @@ static void DrawArmor(const Player *p)
     rlPushMatrix();
     rlTranslatef(p->pos.x, p->pos.y - drop, p->pos.z);
     rlRotatef(p->facing * RAD2DEG, 0, 1, 0);
-    if (G.armor == ARMOR_WOLF) {
+    if (UseArmor() == ARMOR_WOLF) {
         const Color fur = { 120, 114, 104, 255 }, dark = { 80, 76, 70, 255 };
         WPart(0, 1.2f, -0.19f, 0.56f, 0.9f, 0.08f, fur);
         WPart(0, 1.62f, -0.05f, 0.58f, 0.14f, 0.36f, fur);
         WPart(0, 1.98f, -0.04f, 0.36f, 0.14f, 0.36f, dark);
         WPart(-0.1f, 2.07f, 0.05f, 0.07f, 0.1f, 0.06f, dark);
         WPart(0.1f, 2.07f, 0.05f, 0.07f, 0.1f, 0.06f, dark);
-    } else if (G.armor == ARMOR_LEATHER) {
+    } else if (UseArmor() == ARMOR_LEATHER) {
         const Color hide = { 128, 88, 56, 255 }, strap = { 84, 56, 36, 255 };
         WPart(0, 1.36f, 0, 0.5f, 0.44f, 0.3f, hide);
         WPart(-0.29f, 1.52f, 0, 0.16f, 0.14f, 0.2f, hide);

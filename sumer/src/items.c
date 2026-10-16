@@ -370,3 +370,28 @@ bool OfferApply(const Offer *o)
     }
     return true;
 }
+
+int UseBow(void)
+{
+    return G.combat ? 2 : G.bow;
+}
+
+int UseWeapon(void)
+{
+    return G.combat ? 2 : G.weapon;
+}
+
+int UseArmor(void)
+{
+    return G.combat ? ARMOR_BRONZE : G.armor;
+}
+
+bool UseMace(void)
+{
+    return G.combat || G.hasMace;
+}
+
+bool UseArrowheads(void)
+{
+    return G.combat || (G.tools & TOOL_ARROWHEADS);
+}

@@ -173,6 +173,9 @@ typedef struct {
     int foe, target;
     bool dead, override, looted, used;
     unsigned char mark;
+    // A jump over a canal under way (the host's alone): 'jumpDur' runs while it lasts.
+    float jumpT, jumpDur;
+    Vector3 jumpFrom, jumpTo;
 } Vitals;
 
 enum { MARK_NONE, MARK_WARN, MARK_PARRIED, MARK_HIT };
@@ -298,6 +301,8 @@ enum {
 };
 #define REQ_ARGS 12
 enum { WARN_WOLF, WARN_SNAKE, WARN_KINDS };
+// What hurt a player last, so whoever is brought down hears by whom: BY_PLAYER + slot for a player.
+enum { BY_NONE, BY_GUARD, BY_CARAVAN, BY_TOWNSFOLK, BY_VILLAGERS, BY_RAIDER, BY_BARBARIAN, BY_WOLF, BY_BOAR, BY_SNAKE, BY_PLAYER };
 
 typedef struct {
     Box boxes[MAX_BOXES];
@@ -367,6 +372,9 @@ typedef struct {
     bool arrowCam;
     float food, hungerNag;
     float health, hurtT, safeT;
+    // How much of each thing in the baskets the player had when the day began (or took out of
+    // storage since): the rest was gathered today and is lost if they are brought down.
+    int safe[IT_COUNT], safeDay, hurtBy;
 
     int day;
     float hour, daylight;
@@ -391,6 +399,9 @@ typedef struct {
     PlayerRecord records[MAX_RECORDS];
     int recordCount;
     bool waitBed;
+    // The host's rules for a shared game: players can hurt each other ('pvp'), and in combat mode
+    // everyone fights with the best of everything and the guards leave player fights alone.
+    bool pvp, combat;
 } Game;
 
 extern Game G;
@@ -398,6 +409,12 @@ extern const ItemDef ITEMS[IT_COUNT];
 extern const char *const BOW_NAMES[3];
 const char *ArmorName(int armor);
 float ArmorReduction(int armor);
+// The gear a player fights with: their own, or the best of everything in combat mode (items.c).
+int UseBow(void);
+int UseWeapon(void);
+int UseArmor(void);
+bool UseMace(void);
+bool UseArrowheads(void);
 
 float RandF(float lo, float hi);
 float Hash2(int a, int b);
@@ -480,9 +497,13 @@ enum { VIL_HUNTERS, VIL_HERDERS, VILLAGES };
 void BuildVillages(void);
 Vector3 VillageCenter(int v);
 const char *VillageName(int v);
+int VillageAt(Vector3 p);
 Rectangle FoldArea(void);
 
 bool InsideWalls(float x, float z, float margin);
+bool InCityLands(float x, float z);
+int BridgeCount(void);
+void BridgeEnds(int i, Vector3 *a, Vector3 *b);
 void BuildCity(void);
 void BuildCityHouses(void);
 void BuildTemple(void);
@@ -602,6 +623,10 @@ int FighterCount(void);
 bool FighterInfo(int i, Vector3 *pos, float *hp, float *maxHp, const char **name, bool *hostile, bool *dead);
 int FighterMark(int i);
 bool BodyLootable(int i);
+void HitPlayer(int s, float dmg, Vector3 from, bool melee);
+int PlayerOnSegment(Vector3 a, Vector3 b, int skip);
+int PlayersInArc(Vector3 chest, Vector3 fwd, float range, float minDot, int skip, int *out, int max);
+void ForgetFights(int slot);
 void RespawnPeople(void);
 void BuildRaiders(void);
 void UpdateRaiders(float dt);
@@ -702,8 +727,9 @@ void GameInit(void);
 void GameUpdate(void);
 void GameDraw(void);
 void StartSleep(void);
-void HurtPlayer(float dmg);
+void HurtPlayer(float dmg, int by);
 void WakeAfterNight(float hours, bool rained, bool dawn);
+void TrackGoods(void);
 void PassHours(float h);
 
 // Browser storage, pointer capture and the page's address (web.c); plain files and no-ops natively.
@@ -739,7 +765,7 @@ float NearestAnyone(Vector3 p);
 float PlayerStance(int s);
 void UpdatePlayerSafety(float dt);
 bool Warn(int s, int kind, float quiet);
-void HurtSlot(int s, float dmg);
+void HurtSlot(int s, float dmg, int by);
 void HitMark(void);
 void ShowImpact(Vector3 at);
 void SayTo(int s, const char *fmt, ...) PRINTF_LIKE(2, 3);
@@ -760,7 +786,7 @@ const Arrow *NetArrows(void);
 void DrawNetArrows(void);
 void LocalSayV(const char *fmt, va_list ap);
 void NetSayV(int slot, const char *fmt, va_list ap);
-void NetHurt(int slot, float dmg);
+void NetHurt(int slot, float dmg, int by);
 void NetHitMark(int slot);
 void NetImpact(int slot, Vector3 at);
 void NetParried(int slot);
@@ -778,6 +804,8 @@ const char *NetFailure(void);
 const char *NetRoom(void);
 void NetLeave(void);
 void NetFrame(float dt);
+void NetRules(bool pvp, bool combat);
+const char *RulesText(void);
 
 // Save files and the records the host keeps for each player (save.c).
 void W8(Writer *w, unsigned v);

@@ -195,14 +195,15 @@ static void DrawBagPanel(void)
     Text("Food", x0, y, 18, C_TEXT);
     FoodBar(x0 + lw, y + 3, 320.0f - lw);
     Text(TextFormat(L("%d/%d"), (int)G.food, (int)FOOD_MAX), x0 + 330, y, 18, C_DIM);
-    Text(TextFormat(L("Quiver %d/%d    arrow speed %d m/s"), G.quiver, G.quiverMax, (int)BowSpeed()), x0 + 420, y, 18, C_TEXT);
+    if (G.combat) Text(TextFormat(L("Unlimited arrows    arrow speed %d m/s"), (int)BowSpeed()), x0 + 420, y, 18, C_TEXT);
+    else Text(TextFormat(L("Quiver %d/%d    arrow speed %d m/s"), G.quiver, G.quiverMax, (int)BowSpeed()), x0 + 420, y, 18, C_TEXT);
     y += 30;
 
     static const int eqs[4] = { EQ_BOW, EQ_MELEE, EQ_MACE, EQ_NONE };
     Text("In hand", x0, y + 8, 18, C_TEXT);
     for (int k = 0; k < 4; k++) {
         Rectangle b = { x0 + 90 + 176.0f * (float)k, y, 168, 32 };
-        bool owned = eqs[k] != EQ_MACE || G.hasMace;
+        bool owned = eqs[k] != EQ_MACE || UseMace();
         const char *label = owned ? EquipName(eqs[k]) : TextFormat(L("(%s)"), MaceName());
         if (G.equip == eqs[k]) DrawRectangleLinesEx((Rectangle){ b.x - 3, b.y - 3, b.width + 6, b.height + 6 }, 2, C_GOLD);
         if (Button(b, label, owned && G.equip != eqs[k], 0)) SetEquip(eqs[k]);
@@ -211,16 +212,17 @@ static void DrawBagPanel(void)
     static const int armors[4] = { ARMOR_BRONZE, ARMOR_LEATHER, ARMOR_WOLF, ARMOR_NONE };
     static const char *const shortName[4] = { "Bronze", "Leather", "Wolf cloak", "No armor" };
     Text("Armor", x0, y + 8, 18, C_TEXT);
+    // In combat mode everyone wears bronze.
     for (int k = 0; k < 4; k++) {
         Rectangle b = { x0 + 90 + 146.0f * (float)k, y, 138, 32 };
-        bool owned = armors[k] == ARMOR_NONE || (G.armorOwned & (1 << armors[k]));
-        if (G.armor == armors[k]) DrawRectangleLinesEx((Rectangle){ b.x - 3, b.y - 3, b.width + 6, b.height + 6 }, 2, C_GOLD);
-        if (Button(b, owned ? shortName[k] : TextFormat(L("(%s)"), L(shortName[k])), owned && G.armor != armors[k], 0)) {
+        bool owned = armors[k] == ARMOR_NONE || (G.armorOwned & (1 << armors[k])) || G.combat;
+        if (UseArmor() == armors[k]) DrawRectangleLinesEx((Rectangle){ b.x - 3, b.y - 3, b.width + 6, b.height + 6 }, 2, C_GOLD);
+        if (Button(b, owned ? shortName[k] : TextFormat(L("(%s)"), L(shortName[k])), owned && UseArmor() != armors[k] && !G.combat, 0)) {
             G.armor = armors[k];
             Say(G.armor == ARMOR_NONE ? "You take off your armor." : "You put on the %s.", ArmorName(G.armor));
         }
     }
-    Text(TextFormat(L("-%d%% damage"), (int)(ArmorReduction(G.armor) * 100)), x0 + 690, y + 8, 16, C_DIM);
+    Text(TextFormat(L("-%d%% damage"), (int)(ArmorReduction(UseArmor()) * 100)), x0 + 690, y + 8, 16, C_DIM);
     y += 44;
     Text(TextFormat(L("Coop: %d hens, feed %d, %d eggs waiting, water %.1f days    Farm water %.1f days"), G.henCount, (int)G.coopFeed,
                     G.coopEggs, G.coopWater, G.farmWater), x0, y, 18, C_TEXT);
@@ -247,8 +249,12 @@ static void DrawStoragePanel(void)
     }
     for (int i = 0; i < STORE_SLOTS; i++) {
         Rectangle s = { sx + (float)(i % 6) * (sw + gap), y0 + (float)(i / 6) * (shh + gap), sw, shh };
-        if (SlotWidget(s, G.store[i], false, -1) == CLICK_LEFT && G.store[i].item != IT_NONE)
-            if (MoveStack(&G.store[i], G.bag, G.bagSlots) == 0) Say("No room in your baskets.");
+        if (SlotWidget(s, G.store[i], false, -1) == CLICK_LEFT && G.store[i].item != IT_NONE) {
+            int item = G.store[i].item, moved = MoveStack(&G.store[i], G.bag, G.bagSlots);
+            // Out of storage, it is the player's own: not lost if they are brought down today.
+            G.safe[item] += moved;
+            if (moved == 0) Say("No room in your baskets.");
+        }
     }
 
     float y = r.y + r.height - 50;
@@ -330,6 +336,7 @@ static void DrawNetPausePanel(void)
         SetLanguage(Language() == LANG_TR ? LANG_EN : LANG_TR);
         SaveLanguage();
     }
+    CenterText(RulesText(), r.x + r.width / 2, r.y + 314, 15, C_GOLD);
     y = r.y + r.height - 130;
     if (Button((Rectangle){ bx, y, bw, 40 }, "Resume (Esc)", true, 0)) SetPanel(PANEL_NONE);
     if (Button((Rectangle){ bx + bw + gap, y, bw, 40 }, host ? "Save (F5)" : "Hand in my things (F5)", true, 0)) SaveNow();
@@ -467,7 +474,8 @@ static void DrawHelpPanel(void)
         "Home: quern, trough, oven, storage, bed. The workbench sews leather armor or a wolf-pelt cloak. The smith makes "
         "bronze armor (5 bronze, 3 sheepskin, 3 cowhide) and sells a war mace (key 4) that strikes everything in front of "
         "you. Tin comes with the caravans. Picking dates is free; all other gathering costs food, mining the most, then "
-        "woodcutting. Health returns while food is at 20% or more.",
+        "woodcutting. Health returns while food is at 20% or more. Brought down, you lose what you gathered that day unless "
+        "it is in your storage.",
         "Ziggurat: market in the base. The priest at the top blesses you for a day: +20% running and attack speed. "
         "Guards fight raiders who follow you. Raiders camp south and north of the city; barbarians twice as strong camp "
         "across the river. The ferry west of the city crosses the river for a fare. The far north ford is wolf country.",
@@ -477,7 +485,8 @@ static void DrawHelpPanel(void)
         "in long grass; a hiss means back off (crouch to creep by). Hurt a boar and its whole sounder charges. Arrows "
         "landing close send prey running and bring wolves down on you.",
         "Playing together (in the browser): each player has a house in their own color. The world never pauses, and the "
-        "night passes when everyone lies in bed. The farm, the coop and the eggs are shared.",
+        "night passes when everyone lies in bed. The farm, the coop and the eggs are shared. The host decides whether players "
+        "can hurt each other (PvP) and can turn on combat mode.",
     };
     const int nk = (int)(sizeof(keys) / sizeof(keys[0])), nt = (int)(sizeof(tips) / sizeof(tips[0]));
     Rectangle r = PanelRect(fminf(1200.0f, (float)GetScreenWidth() - 20.0f), fminf(690.0f, (float)GetScreenHeight() - 16.0f));
@@ -490,7 +499,7 @@ static void DrawHelpPanel(void)
         Text(keys[i][1], x0 + 126, y0 + 23.0f * (float)i, 16, C_TEXT);
     }
     float ty = y0;
-    for (int i = 0; i < nt; i++) ty += Paragraph(tips[i], x1, ty, r.x + r.width - 24 - x1, 15, 19) + 7;
+    for (int i = 0; i < nt; i++) ty += Paragraph(tips[i], x1, ty, r.x + r.width - 24 - x1, 15, 18) + 5;
     Text("H or Esc: close", r.x + r.width - 170, r.y + r.height - 30, 16, C_DIM);
 }
 
@@ -587,10 +596,11 @@ static void DrawStatus(void)
     DrawRectangle(bx, 101, 200, 14, Fade(BLACK, 0.5f));
     DrawRectangle(bx, 101, (int)(200 * Clamp(G.health, 0, HEALTH_MAX) / HEALTH_MAX), 14, G.health < 35 ? C_BAD : C_GOOD);
     DrawRectangleLines(bx, 101, 200, 14, Fade(BLACK, 0.6f));
-    Text(TextFormat(L("Arrows %d/%d   +%d carried"), G.quiver, G.quiverMax, BagCount(IT_ARROWS)), 24, 124, 18, C_TEXT);
+    if (G.combat) Text("Arrows: unlimited (combat mode)", 24, 124, 18, C_TEXT);
+    else Text(TextFormat(L("Arrows %d/%d   +%d carried"), G.quiver, G.quiverMax, BagCount(IT_ARROWS)), 24, 124, 18, C_TEXT);
     Text(TextFormat(L("In hand: %s%s"), EquipName(G.equip), G.player.crouching ? L("  |  crouching") : ""), 24, 146, 18,
          G.player.crouching ? C_GOOD : C_TEXT);
-    Text(TextFormat(L("Armor: %s"), ArmorName(G.armor)), 24, 168, 18, C_TEXT);
+    Text(TextFormat(L("Armor: %s"), ArmorName(UseArmor())), 24, 168, 18, C_TEXT);
     if (me->wanted > 0) Text(TextFormat(L("Wanted by the guards  %d:%02d"), (int)me->wanted / 60, (int)me->wanted % 60), 24, 190, 18, C_BAD);
     else if (wolves) Text("Wolves are hunting you!", 24, 190, 18, C_BAD);
     else if (beast) Text("A wild beast is attacking you!", 24, 190, 18, C_BAD);

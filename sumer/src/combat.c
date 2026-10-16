@@ -24,9 +24,16 @@ static const RoleDef ROLES[ROLE_COUNT] = {
 #define PARRY_STUN   0.9f
 #define RIPOSTE      1.25f
 #define FOE_DAMAGE   1.8f
-#define GUARD_LEASH  60.0f
+#define WANTED_TIME  120.0f
+#define PVP_SCALE    0.5f
+#define PROVOKED     60.0f
+#define VILLAGE_RAGE 120.0f
 
 enum { LOOT_CIVILIAN, LOOT_GUARD, LOOT_CLERIC, LOOT_TRADER, LOOT_WORKER, LOOT_MERCHANT, LOOT_RAIDER, LOOT_BARBARIAN };
+
+// Whose side someone is on: the city's guards keep its peace, caravan guards their caravan, village
+// folk stand together for their village.
+typedef enum { FK_TOWN, FK_CITY_GUARD, FK_CARAVAN, FK_VILLAGER, FK_TRAVELLER, FK_RAIDER } FighterKind;
 
 typedef struct {
     Vitals *v;
@@ -35,21 +42,26 @@ typedef struct {
     float homeFace;
     int owner, loot, lootArg;
     const char *name;
+    FighterKind kind;
+    int village;
 } Fighter;
 
 static Fighter fighters[MAX_FIGHTERS];
 static int fighterCount;
 static float darkness[MAX_PLAYERS];
+// struck[a][b]: seconds since player a last hurt player b, counting down from PROVOKED; whoever
+// hits back within that time is defending themselves, not starting a fight.
+static float struck[MAX_PLAYERS][MAX_PLAYERS];
 
 static const char *const JOB_NAMES[] = { "Woodcutter", "Miner", "Potter", "Kiln worker", "Smith", "Fisherman", "Fisherman", "Farmer" };
 
-static void Add(Vitals *v, Role role, Vector3 home, float face, int owner, int loot, int arg, const char *name)
+static void Add(Vitals *v, Role role, Vector3 home, float face, int owner, int loot, int arg, const char *name, FighterKind kind)
 {
     if (fighterCount >= MAX_FIGHTERS) return;
     if (!v->used) {
         *v = (Vitals){ .hp = ROLES[role].maxHp, .target = -1, .used = true };
     }
-    fighters[fighterCount++] = (Fighter){ v, role, home, face, owner, loot, arg, name };
+    fighters[fighterCount++] = (Fighter){ v, role, home, face, owner, loot, arg, name, kind, kind == FK_VILLAGER ? VillageAt(home) : -1 };
 }
 
 static bool IsRaider(Role r)
@@ -68,41 +80,68 @@ void CollectFighters(void)
         int loot = r == ROLE_GUARD ? LOOT_GUARD : r == ROLE_CLERIC ? LOOT_CLERIC : LOOT_CIVILIAN;
         const char *name = r == ROLE_GUARD ? "Guard" : r == ROLE_CLERIC ? "Cleric"
                          : v->kind == NPC_TRAVELLER ? "Traveller" : v->kind == NPC_VILLAGER ? "Villager" : "Townsperson";
-        Add(&v->vit, r, VillagerLanePos(v), v->face, OWNER_VILLAGER + i, loot, 0, name);
+        FighterKind kind = v->kind == NPC_GUARD ? FK_CITY_GUARD : v->kind == NPC_VILLAGER ? FK_VILLAGER : v->kind == NPC_TRAVELLER ? FK_TRAVELLER : FK_TOWN;
+        Add(&v->vit, r, VillagerLanePos(v), v->face, OWNER_VILLAGER + i, loot, 0, name, kind);
     }
     for (int i = 0; i < G.workerCount; i++) {
         Worker *w = &G.workers[i];
         if (w->job == JOB_BOAT || (!w->visible && !w->vit.override)) continue;
-        Add(&w->vit, ROLE_WORKER, WorkerScriptPos(w), w->facing, OWNER_WORKER + i, LOOT_WORKER, (int)w->job, JOB_NAMES[w->job]);
+        Add(&w->vit, ROLE_WORKER, WorkerScriptPos(w), w->facing, OWNER_WORKER + i, LOOT_WORKER, (int)w->job, JOB_NAMES[w->job], FK_TOWN);
     }
     for (int i = 0; i < TR_COUNT; i++) {
         Trader *t = &G.traders[i];
-        if (!t->roaming) Add(&t->vit, ROLE_MERCHANT, t->pos, t->facing, OWNER_TRADER + i, LOOT_TRADER, i, t->name);
+        if (!t->roaming) Add(&t->vit, ROLE_MERCHANT, t->pos, t->facing, OWNER_TRADER + i, LOOT_TRADER, i, t->name, VillageAt(t->pos) >= 0 ? FK_VILLAGER : FK_TOWN);
     }
     for (int c = 0; c < MAX_CARAVANS; c++) {
         Caravan *cv = &G.caravans[c];
         Vector3 p;
         float f;
         if (!CaravanMemberScript(c, 0, &p, &f)) continue;
-        Add(&cv->vit[0], ROLE_MERCHANT, p, f, CARAVAN_OWNER(c, 0), LOOT_MERCHANT, 0, G.traders[cv->trader].name);
+        Add(&cv->vit[0], ROLE_MERCHANT, p, f, CARAVAN_OWNER(c, 0), LOOT_MERCHANT, 0, G.traders[cv->trader].name, FK_CARAVAN);
         for (int g = 0; g < CARAVAN_GUARDS; g++) {
             CaravanMemberScript(c, 3 + g, &p, &f);
-            Add(&cv->vit[1 + g], ROLE_GUARD, p, f, CARAVAN_OWNER(c, 3 + g), LOOT_GUARD, 0, "Caravan guard");
+            Add(&cv->vit[1 + g], ROLE_GUARD, p, f, CARAVAN_OWNER(c, 3 + g), LOOT_GUARD, 0, "Caravan guard", FK_CARAVAN);
         }
     }
     for (int i = 0; i < MAX_RAIDERS; i++) {
         Raider *r = &G.raiders[i];
         bool west = r->camp >= EAST_CAMPS;
         Add(&r->vit, west ? ROLE_BARBARIAN : ROLE_RAIDER, r->pos, r->face, OWNER_RAIDER + i, west ? LOOT_BARBARIAN : LOOT_RAIDER, i,
-            west ? "Barbarian" : "Raider");
+            west ? "Barbarian" : "Raider", FK_RAIDER);
     }
 }
 
-// Only some townsfolk dare to fight; the rest run.
+// Only some townsfolk dare to fight; the rest run. Village folk all stand and fight.
 static bool Fights(const Fighter *f)
 {
-    if (f->role == ROLE_CIVILIAN) return Hash2(f->owner, 7) < 0.35f;
+    if (f->role == ROLE_CIVILIAN) return f->kind == FK_VILLAGER || Hash2(f->owner, 7) < 0.35f;
     return ROLES[f->role].fights;
+}
+
+// How far from home someone goes after a foe: the city's guards stay in the city's lands and near
+// their posts, caravan guards by their caravan, village folk around their village.
+static bool InReach(const Fighter *f, Vector3 p)
+{
+    float d = XZDist(p, f->home);
+    switch (f->kind) {
+    case FK_CITY_GUARD: return d < 40.0f && InCityLands(p.x, p.z);
+    case FK_CARAVAN: return d < 14.0f;
+    case FK_VILLAGER: return d < 45.0f;
+    case FK_RAIDER: return true;
+    default: return d < 30.0f;
+    }
+}
+
+// Who a player brought down by this fighter was beaten by.
+static int Cause(const Fighter *f)
+{
+    switch (f->kind) {
+    case FK_CITY_GUARD: return BY_GUARD;
+    case FK_CARAVAN: return BY_CARAVAN;
+    case FK_VILLAGER: return BY_VILLAGERS;
+    case FK_RAIDER: return f->role == ROLE_BARBARIAN ? BY_BARBARIAN : BY_RAIDER;
+    default: return BY_TOWNSFOLK;
+    }
 }
 
 static Vector3 FPos(const Fighter *f)
@@ -120,25 +159,129 @@ static bool BlockedAt(float x, float z, float y)
     return false;
 }
 
-// Heads for the goal, trying side steps around walls and people; true once within 'stop'.
+// Whether the stretch a-b crosses the rectangle, seen from above.
+static bool Crosses(Vector3 a, Vector3 b, Rectangle r)
+{
+    float o[2] = { a.x, a.z }, d[2] = { b.x - a.x, b.z - a.z }, lo = 0.0f, hi = 1.0f;
+    float mn[2] = { r.x, r.y }, mx[2] = { r.x + r.width, r.y + r.height };
+    for (int k = 0; k < 2; k++) {
+        if (fabsf(d[k]) < 1e-6f) {
+            if (o[k] < mn[k] || o[k] > mx[k]) return false;
+            continue;
+        }
+        float t0 = (mn[k] - o[k]) / d[k], t1 = (mx[k] - o[k]) / d[k];
+        lo = fmaxf(lo, fminf(t0, t1));
+        hi = fminf(hi, fmaxf(t0, t1));
+    }
+    return lo <= hi;
+}
+
+// The way past water too wide to jump (the harbor, the river): over a bridge or round a corner of
+// the water, whichever is shorter. A way round of more than 150 m is not taken.
+static Vector3 AroundWater(Vector3 at, Vector3 goal)
+{
+    for (int c = 0; c < ChannelCount(); c++) {
+        bool wet;
+        Rectangle r = ChannelRect(c, &wet, NULL);
+        if (!wet || fminf(r.width, r.height) <= 6.0f) continue;
+        Rectangle e = { r.x - 0.6f, r.y - 0.6f, r.width + 1.2f, r.height + 1.2f };
+        if (!Crosses(at, goal, e)) continue;
+
+        // A way point the goal can be seen from beats one that leads only to more water.
+        Vector3 best = goal;
+        float cost = 1e9f, length = 0.0f;
+        for (int i = 0; i < BridgeCount(); i++) {
+            Vector3 a, b;
+            BridgeEnds(i, &a, &b);
+            Vector3 mid = Vector3Lerp(a, b, 0.5f);
+            if (mid.x < e.x || mid.x > e.x + e.width || mid.z < e.y || mid.z > e.y + e.height) continue;
+            float span = XZDist(a, b);
+            // On the bridge or at one end: over to whichever end is nearer the goal.
+            if (XZDist(at, a) + XZDist(at, b) < span + 3.0f) return XZDist(a, goal) < XZDist(b, goal) ? a : b;
+            for (int k = 0; k < 2; k++) {
+                Vector3 near = k ? b : a, far = k ? a : b;
+                if (Crosses(at, near, e)) continue;
+                float l2 = XZDist(at, near) + span + XZDist(far, goal);
+                if (l2 < cost) { cost = length = l2; best = near; }
+            }
+        }
+        for (int k = 0; k < 4; k++) {
+            Vector3 corner = { (k & 1) ? r.x + r.width + 2.0f : r.x - 2.0f, at.y, (k & 2) ? r.y + r.height + 2.0f : r.y - 2.0f };
+            if (XZDist(at, corner) < 1.5f || Crosses(at, corner, e) || InWater(corner.x, corner.z) || SolidAt(corner.x, corner.z, 0.5f)) continue;
+            float l2 = XZDist(at, corner) + XZDist(corner, goal), c2 = l2 + (Crosses(corner, goal, e) ? 500.0f : 0.0f);
+            if (c2 < cost) { cost = c2; length = l2; best = corner; }
+        }
+        return length - XZDist(at, goal) < 150.0f ? best : goal;
+    }
+    return goal;
+}
+
+// Water just ahead, narrow enough to jump (a canal, as a player jumps it): starts the jump.
+static bool JumpWater(Vitals *v, float angle)
+{
+    float dx = sinf(angle), dz = cosf(angle);
+    bool wet = false;
+    for (float d = 0.25f; d <= 6.0f; d += 0.25f) {
+        float x = v->at.x + dx * d, z = v->at.z + dz * d;
+        if (InWater(x, z)) {
+            wet = true;
+            continue;
+        }
+        if (!wet) {
+            if (d > 1.0f) return false;
+            continue;
+        }
+        float lx = x + dx * 0.8f, lz = z + dz * 0.8f, ly = GroundHeight(lx, lz, v->at.y + 1.0f);
+        if (InWater(lx, lz) || BlockedAt(lx, lz, ly) || fabsf(ly - v->at.y) > 1.5f) return false;
+        v->jumpFrom = v->at;
+        v->jumpTo = (Vector3){ lx, ly, lz };
+        v->jumpT = 0;
+        v->jumpDur = 0.3f + 0.08f * (d + 0.8f);
+        v->face = angle;
+        return true;
+    }
+    return false;
+}
+
+// Heads for the goal, trying side steps around walls and people, jumping canals and finding a way
+// round wider water; true once within 'stop'.
 static bool StepToward(Vitals *v, int owner, Vector3 goal, float speed, float dt, float stop)
 {
     static const float tries[5] = { 0.0f, 0.7f, -0.7f, 1.4f, -1.4f };
-    float dx = goal.x - v->at.x, dz = goal.z - v->at.z, d = sqrtf(dx * dx + dz * dz);
+    if (v->jumpDur > 0) {
+        v->jumpT += dt;
+        float k = fminf(1.0f, v->jumpT / v->jumpDur);
+        v->at = Vector3Lerp(v->jumpFrom, v->jumpTo, k);
+        v->at.y += 3.6f * k * (1.0f - k);
+        if (k >= 1.0f) v->jumpDur = 0;
+        return false;
+    }
+    float dx = goal.x - v->at.x, dz = goal.z - v->at.z, d = sqrtf(dx * dx + dz * dz), left = d;
     if (d <= stop + 0.05f) return true;
+    Vector3 way = AroundWater(v->at, goal);
+    if (way.x != goal.x || way.z != goal.z) {
+        dx = way.x - v->at.x;
+        dz = way.z - v->at.z;
+        d = fmaxf(sqrtf(dx * dx + dz * dz), stop + 0.1f);
+    }
 
     float base = atan2f(dx, dz), step = fminf(speed * dt, d - stop);
     for (int k = 0; k < 5; k++) {
         float a = base + tries[k], nx = v->at.x + sinf(a) * step, nz = v->at.z + cosf(a) * step;
         Vector3 next = { nx, v->at.y, nz };
-        if (BlockedAt(nx, nz, v->at.y) || BodyAhead(v->at, next, 0.35f, owner)) continue;
+        if (BlockedAt(nx, nz, v->at.y)) {
+            if (k == 0 && JumpWater(v, a)) return false;
+            continue;
+        }
+        if (BodyAhead(v->at, next, 0.35f, owner)) continue;
         v->at.x = nx;
         v->at.z = nz;
         v->at.y = GroundHeight(nx, nz, v->at.y + 0.5f);
         v->face = a;
         return false;
     }
-    return false;
+    // Every way blocked: within a step or two of the goal is close enough.
+    return left < stop + 1.5f;
 }
 
 // How far a fighter sees player s: less in the dark, unless torches light the player up.
@@ -181,7 +324,7 @@ static void Strike(const Fighter *f, int s)
         SpawnBurst((Vector3){ (v->at.x + pp.x) / 2, pp.y + 1.3f, (v->at.z + pp.z) / 2 }, (Color){ 255, 230, 150, 255 }, 8, 2.5f);
     } else {
         v->mark = MARK_HIT;
-        HurtSlot(s, r->damage);
+        HurtSlot(s, r->damage, Cause(f));
     }
 }
 
@@ -263,7 +406,7 @@ static const Fighter *SpotRaider(const Fighter *g, Vector3 pos)
         if (!IsRaider(t->role) || t->v->dead || !t->v->override) continue;
         Vector3 p = FPos(t);
         float d = XZDist(p, pos);
-        if (d < bestD && fabsf(p.y - pos.y) < 6.0f && XZDist(p, g->home) < GUARD_LEASH) {
+        if (d < bestD && fabsf(p.y - pos.y) < 6.0f && InReach(g, p)) {
             best = t;
             bestD = d;
         }
@@ -280,21 +423,22 @@ static const Fighter *CurrentFoe(const Fighter *f, Vector3 pos, float dt)
     if (v->foeT > 0) {
         v->foeT -= dt;
         foe = FindFoe(v->foe);
-        if (foe && (XZDist(FPos(foe), pos) > 25.0f || (f->role == ROLE_GUARD && XZDist(FPos(foe), f->home) > GUARD_LEASH))) foe = NULL;
+        if (foe && (XZDist(FPos(foe), pos) > 25.0f || (f->role == ROLE_GUARD && !InReach(f, FPos(foe))))) foe = NULL;
     }
     if (!foe && f->role == ROLE_GUARD) foe = SpotRaider(f, pos);
     v->foeT = foe ? fmaxf(v->foeT, 2.0f) : 0.0f;
     return foe;
 }
 
-// The player this fighter goes for on sight: raiders anyone up and about, guards someone wanted.
+// The player this fighter goes for on sight: raiders anyone up and about, the city's guards someone
+// wanted within the city's lands.
 static int SpotPlayer(const Fighter *f, Vector3 pos)
 {
     int best = -1;
     float bestD = 1e9f;
-    if (!IsRaider(f->role) && f->role != ROLE_GUARD) return -1;
+    if (!IsRaider(f->role) && f->kind != FK_CITY_GUARD) return -1;
     for (int s = 0; s < MAX_PLAYERS; s++) {
-        if (!PlayerAwake(s) || (f->role == ROLE_GUARD && G.peers[s].wanted <= 0)) continue;
+        if (!PlayerAwake(s) || (f->kind == FK_CITY_GUARD && (G.peers[s].wanted <= 0 || !InReach(f, G.peers[s].pos)))) continue;
         Vector3 p = G.peers[s].pos;
         float d = XZDist(pos, p);
         if (d < SightOf(f->role, s) && fabsf(pos.y - p.y) < 6.0f && d < bestD) {
@@ -308,6 +452,9 @@ static int SpotPlayer(const Fighter *f, Vector3 pos)
 void UpdateCombat(float dt)
 {
     CollectFighters();
+    for (int a = 0; a < MAX_PLAYERS; a++)
+        for (int b = 0; b < MAX_PLAYERS; b++)
+            if (struck[a][b] > 0) struck[a][b] -= dt;
     for (int s = 0; s < MAX_PLAYERS; s++)
         darkness[s] = PlayerIn(s) ? G.night * (1.0f - Clamp(TorchLightAt(G.peers[s].pos) * 1.6f, 0.0f, 1.0f)) : 0.0f;
 
@@ -335,8 +482,10 @@ void UpdateCombat(float dt)
         float dist = t >= 0 ? XZDist(pos, G.peers[t].pos) : 1e9f;
         bool sees = t >= 0 && dist < SightOf(f->role, t) && fabsf(pos.y - G.peers[t].pos.y) < 6.0f;
         const Fighter *foe = CurrentFoe(f, pos, dt);
-        if (v->hostile > 0 && t < 0) v->hostile -= dt;
-        bool angry = v->hostile > 0 && t >= 0;
+        // Someone who got too far from home is let go, though the anger lasts its time.
+        bool reach = t >= 0 && InReach(f, G.peers[t].pos);
+        if (v->hostile > 0 && !reach) v->hostile -= dt;
+        bool angry = v->hostile > 0 && reach;
 
         if (angry || foe) {
             if (!v->override) {
@@ -358,24 +507,44 @@ void UpdateCombat(float dt)
     }
 }
 
-// Everyone who saw the acting player strike turns on them, and the guards want them.
+// The acting player struck a village's folk: the whole village turns on them for two minutes.
+static void RouseVillage(int village)
+{
+    for (int i = 0; i < fighterCount; i++) {
+        const Fighter *f = &fighters[i];
+        if (f->kind != FK_VILLAGER || f->village != village || f->v->dead) continue;
+        f->v->hostile = fmaxf(f->v->hostile, VILLAGE_RAGE);
+        f->v->target = G.actor;
+    }
+    Say("The whole village turns on you! Its people will fight you for two minutes.");
+}
+
+// Everyone who saw the acting player strike turns on them. In the city's lands the guards want them
+// too; out in the country no one tells the city, and a village stands together.
 static void RaiseAlarm(const Fighter *victim)
 {
     int s = G.actor, witnesses = 0;
-    Vector3 pp = PlayerAt(s);
+    Vector3 pp = PlayerAt(s), at = FPos(victim);
+    bool city = InCityLands(at.x, at.z);
 
+    if (victim->kind == FK_VILLAGER && victim->village >= 0) {
+        RouseVillage(victim->village);
+        return;
+    }
     for (int i = 0; i < fighterCount; i++) {
         const Fighter *f = &fighters[i];
-        if (f == victim || f->v->dead || IsRaider(f->role)) continue;
+        if (f == victim || f->v->dead || IsRaider(f->role) || (f->kind == FK_CITY_GUARD && !city)) continue;
         Vector3 p = FPos(f);
         if (XZDist(p, pp) > SightOf(f->role, s) || fabsf(p.y - pp.y) > 6.0f) continue;
         f->v->hostile = fmaxf(f->v->hostile, Fights(f) ? 45.0f : 20.0f);
         f->v->target = s;
         witnesses++;
     }
-    if (witnesses) {
-        if (PlayerIn(s)) G.peers[s].wanted = 120.0f;
+    if (witnesses && city) {
+        if (PlayerIn(s)) G.peers[s].wanted = WANTED_TIME;
         Say(witnesses > 1 ? "%d people saw you attack. Guards will hunt you!" : "%d person saw you attack. Guards will hunt you!", witnesses);
+    } else if (witnesses) {
+        Say(witnesses > 1 ? "%d people saw you attack. Out here no one will tell the city's guards." : "%d person saw you attack. Out here no one will tell the city's guards.", witnesses);
     } else {
         Say("No one else saw that.");
     }
@@ -538,6 +707,84 @@ void CalmPeople(int slot)
     }
     for (int i = 0; i < MAX_RAIDERS; i++)
         if (G.raiders[i].vit.target == slot) G.raiders[i].vit.hostile = 0;
+}
+
+// Players who can be hurt by another player's blow or arrow: up and about, not lying in bed.
+static bool Hittable(int s, int skip)
+{
+    return s != skip && PlayerAwake(s) && !(G.peers[s].flags & PF_BED);
+}
+
+int PlayerOnSegment(Vector3 a, Vector3 b, int skip)
+{
+    for (int s = 0; s < MAX_PLAYERS; s++) {
+        if (!Hittable(s, skip)) continue;
+        Vector3 p = G.peers[s].pos;
+        if (SegmentHit(a, b, (Vector3){ p.x, p.y + 0.7f, p.z }, 0.42f) || SegmentHit(a, b, (Vector3){ p.x, p.y + 1.45f, p.z }, 0.38f)) return s;
+    }
+    return -1;
+}
+
+// Players within reach in front, nearest first.
+int PlayersInArc(Vector3 chest, Vector3 fwd, float range, float minDot, int skip, int *out, int max)
+{
+    float dist[MAX_PLAYERS];
+    int n = 0;
+    for (int s = 0; s < MAX_PLAYERS && n < max; s++) {
+        if (!Hittable(s, skip)) continue;
+        Vector3 p = G.peers[s].pos, d = { p.x - chest.x, 0, p.z - chest.z };
+        float len = Vector3Length(d);
+        if (len - PLAYER_RADIUS > range || fabsf(p.y + 1.0f - chest.y) > 1.6f) continue;
+        if (len > 0.3f && Vector3DotProduct(Vector3Scale(d, 1.0f / len), fwd) < minDot) continue;
+        int k = n++;
+        while (k > 0 && dist[k - 1] > len) {
+            out[k] = out[k - 1];
+            dist[k] = dist[k - 1];
+            k--;
+        }
+        out[k] = s;
+        dist[k] = len;
+    }
+    return n;
+}
+
+// The acting player's blow or arrow reaches player s, if the host's game allows players to fight.
+// A raised weapon turns a blow aside. Whoever starts a fight in the city's lands is wanted by the
+// guards, unless the game is in combat mode; hitting back, or hitting someone wanted, is no crime.
+void HitPlayer(int s, float dmg, Vector3 from, bool melee)
+{
+    int a = G.actor;
+    if (!G.pvp || !Hittable(s, a) || !PlayerIn(a)) return;
+    Vector3 sp = G.peers[s].pos;
+    if (melee && PlayerParries(s, from)) {
+        if (s == G.self) {
+            G.parryT = 0;
+            G.parryCool = 0;
+        } else {
+            NetParried(s);
+        }
+        SpawnBurst((Vector3){ (from.x + sp.x) / 2, sp.y + 1.3f, (from.z + sp.z) / 2 }, (Color){ 255, 230, 150, 255 }, 8, 2.5f);
+        Say("%s turned your blow aside!", G.peers[s].name);
+        return;
+    }
+    bool provoked = G.peers[s].wanted > 0 || struck[s][a] > 0, fresh = struck[a][s] <= 0;
+    struck[a][s] = PROVOKED;
+    // The warning first: a blow that brings them down leaves its own message.
+    if (fresh && !provoked) SayTo(s, "%s attacks you!", G.peers[a].name);
+    HurtSlot(s, dmg * PVP_SCALE, BY_PLAYER + a);
+    HitMark();
+    SpawnBurst((Vector3){ sp.x, sp.y + 1.2f, sp.z }, (Color){ 170, 30, 30, 255 }, 10, 2.2f);
+    if (!G.combat && !provoked && InCityLands(G.peers[a].pos.x, G.peers[a].pos.z)) {
+        if (G.peers[a].wanted <= 0) Say("You attacked %s in the city. Guards will hunt you!", G.peers[s].name);
+        G.peers[a].wanted = WANTED_TIME;
+    }
+}
+
+// A player brought down (or gone): old fights with them are over.
+void ForgetFights(int slot)
+{
+    if (slot < 0 || slot >= MAX_PLAYERS) return;
+    for (int k = 0; k < MAX_PLAYERS; k++) struck[slot][k] = struck[k][slot] = 0;
 }
 
 bool BodyLootable(int i)

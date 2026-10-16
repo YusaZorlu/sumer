@@ -8,7 +8,7 @@
 #define NAME_FILE "sumer.name"
 
 static enum { LOBBY_MENU, LOBBY_CONNECT } stage;
-static bool open, loaded, autoDone, confirmNew;
+static bool open, loaded, autoDone, confirmNew, pvp = true, combat;
 static char name[NAME_LEN], room[32], note[200];
 static float connectT;
 
@@ -61,6 +61,8 @@ void OpenLobby(const char *why)
         char given[NAME_LEN];
         Keep(given, NAME_LEN, PageParam("name"));
         if (given[0]) snprintf(name, sizeof(name), "%s", given);
+        if (strcmp(PageParam("pvp"), "0") == 0) pvp = false;
+        if (strcmp(PageParam("combat"), "1") == 0) combat = true;
     }
     open = true;
     stage = LOBBY_MENU;
@@ -107,6 +109,7 @@ static void Connect(bool host)
     SaveName();
     note[0] = '\0';
     connectT = 0;
+    NetRules(pvp, combat);
     if (NetBegin(host, PlayerName(), room)) stage = LOBBY_CONNECT;
     else snprintf(note, sizeof(note), "%s", NetFailure());
 }
@@ -183,7 +186,7 @@ void LobbyFrame(void)
     DrawRectangle((int)(cx - 80), (int)(base - 140), 160, 35, (Color){ 170, 128, 88, 255 });
     DrawRectangle((int)(cx - 9), (int)(base - 60), 18, 60, (Color){ 128, 94, 64, 255 });
 
-    Rectangle panel = { cx - 360, 0, 720, 490 };
+    Rectangle panel = { cx - 360, 0, 720, 530 };
     panel.y = sh > panel.height + 16 ? (sh - panel.height) / 2 : 8;
     DrawRectangleRec(panel, (Color){ 30, 24, 20, 238 });
     DrawRectangleLinesEx(panel, 2, (Color){ 150, 120, 80, 255 });
@@ -224,6 +227,11 @@ void LobbyFrame(void)
         }
     }
     y += 62;
+    // The rules of the game this player hosts; whoever joins plays by them.
+    Label("Rules when you host:", x, y + 6, 15, dim);
+    if (Choice((Rectangle){ x + 200, y, 190, 28 }, pvp ? "PvP: on" : "PvP: off", menu)) pvp = !pvp;
+    if (Choice((Rectangle){ x + 400, y, 240, 28 }, pvp && combat ? "Combat mode: on" : "Combat mode: off", menu && pvp)) combat = !combat;
+    y += 40;
     if (Choice((Rectangle){ x, y, 250, 46 }, "Join a game", menu && named)) Connect(false);
     Label("Joins the game hosted in this room.", x + 270, y + 14, 15, dim);
     y += 70;

@@ -35,6 +35,16 @@ Vector3 VillageCenter(int v)
     return (Vector3){ x, TerrainHeight(x, z), z };
 }
 
+// The village a place belongs to (within 45 m of its middle), or -1.
+int VillageAt(Vector3 p)
+{
+    for (int v = 0; v < VILLAGES; v++) {
+        float dx = p.x - (v == VIL_HUNTERS ? HUNTERS_X : HERDERS_X), dz = p.z - (v == VIL_HUNTERS ? HUNTERS_Z : HERDERS_Z);
+        if (dx * dx + dz * dz < 45.0f * 45.0f) return v;
+    }
+    return -1;
+}
+
 const char *VillageName(int v)
 {
     return L(NAMES[v == VIL_HERDERS ? VIL_HERDERS : VIL_HUNTERS]);

@@ -261,6 +261,7 @@ void CalmFor(int slot)
 {
     CalmBeasts(slot);
     CalmPeople(slot);
+    ForgetFights(slot);
     if (slot >= 0 && slot < MAX_PLAYERS) {
         G.peers[slot].aggro = 0;
         G.peers[slot].wanted = 0;

@@ -108,7 +108,7 @@ int CarcassItem(int type)
 
 float BowSpeed(void)
 {
-    return BOW_SPEED[G.bow];
+    return BOW_SPEED[UseBow()];
 }
 
 static Vector3 Center(const Animal *a)
@@ -387,7 +387,7 @@ static void UpdateWolf(Animal *a, const AnimalDef *d, float dt)
         } else {
             a->speed = 0;
             if (a->bite <= 0) {
-                HurtSlot(s, WOLF_BITE);
+                HurtSlot(s, WOLF_BITE, BY_WOLF);
                 a->bite = BITE_COOLDOWN;
                 a->timer = 1.2f;
             }
@@ -438,7 +438,7 @@ static void UpdateCharge(Animal *a, const AnimalDef *d, float dt)
     } else {
         a->speed = 0;
         if (a->bite <= 0 && fabsf(at.y - a->pos.y) < 1.5f) {
-            HurtSlot(s, BOAR_GORE);
+            HurtSlot(s, BOAR_GORE, BY_BOAR);
             a->bite = GORE_COOLDOWN;
         }
     }
@@ -509,7 +509,7 @@ static void UpdateSnake(Animal *a, const AnimalDef *d, float dt)
         a->timer -= dt;
         a->speed = (dist > 1.1f && XZDist(a->pos, a->lair) < 3.0f) ? d->run : 0.0f;
         if (dist < 1.7f && level && a->bite <= 0) {
-            HurtSlot(s, SNAKE_BITE);
+            HurtSlot(s, SNAKE_BITE, BY_SNAKE);
             a->bite = SNAKE_COOLDOWN;
             SayTo(s, "A snake bit you!");
         }
@@ -737,9 +737,16 @@ static int SpawnArrow(int owner, Vector3 from, Vector3 vel, int damage)
 // the host flies the real one and says what it hit.
 int ShootArrow(Vector3 from, Vector3 to, float power)
 {
-    Vector3 dir = Vector3Normalize(Vector3Subtract(to, from));
-    Vector3 vel = Vector3Scale(dir, BOW_SPEED[G.bow] * (0.35f + 0.65f * power));
-    int damage = BOW_DAMAGE[G.bow] + ((G.tools & TOOL_ARROWHEADS) ? 10 : 0);
+    // The archer aims above the mark by as much as the arrow will drop on its way there, so it
+    // strikes where the crosshair points.
+    float speed = BOW_SPEED[UseBow()] * (0.35f + 0.65f * power);
+    Vector3 aim = to;
+    for (int k = 0; k < 3; k++) {
+        float t = Vector3Distance(from, aim) / speed;
+        aim.y = to.y + 0.5f * ARROW_GRAVITY * t * t;
+    }
+    Vector3 vel = Vector3Scale(Vector3Normalize(Vector3Subtract(aim, from)), speed);
+    int damage = BOW_DAMAGE[UseBow()] + (UseArrowheads() ? 10 : 0);
     if (IsClient()) NetShoot(from, vel, damage);
     return SpawnArrow(G.self, from, vel, damage);
 }
@@ -818,8 +825,12 @@ static void Spend(Arrow *ar)
 static void WatchArrow(Arrow *ar, Vector3 prev)
 {
     Animal *hit = ArrowHit(prev, ar->pos);
-    int person = PersonOnSegment(prev, ar->pos);
-    if (person >= 0 || hit) {
+    int person = PersonOnSegment(prev, ar->pos), player = G.pvp ? PlayerOnSegment(prev, ar->pos, ar->owner) : -1;
+    if (player >= 0) {
+        Vector3 pp = G.peers[player].pos;
+        ShowImpact((Vector3){ pp.x, pp.y + 1.2f, pp.z });
+        Spend(ar);
+    } else if (person >= 0 || hit) {
         Vector3 pos = hit ? Center(hit) : (Vector3){ 0 };
         float hp, maxHp;
         const char *name;
@@ -888,7 +899,14 @@ void UpdateArrows(float dt)
 
         // An unaware animal takes double damage; a near miss still sends it running (or the wolves after you).
         Animal *hit = ArrowHit(prev, ar->pos);
-        int person = PersonOnSegment(prev, ar->pos);
+        int person = PersonOnSegment(prev, ar->pos), player = G.pvp ? PlayerOnSegment(prev, ar->pos, ar->owner) : -1;
+        if (player >= 0) {
+            Vector3 pp = G.peers[player].pos;
+            HitPlayer(player, (float)ar->damage, prev, false);
+            ShowImpact((Vector3){ pp.x, pp.y + 1.2f, pp.z });
+            Spend(ar);
+            continue;
+        }
         if (!hit && person < 0)
             for (int k = 0; k < G.animalCount; k++) {
                 Animal *a = &G.animals[k];
@@ -960,6 +978,25 @@ Vector3 AimPoint(void)
         if (!a->active || a->state == ST_DEAD) continue;
         RayCollision hit = GetRayCollisionSphere(ray, Center(a), Radius(a));
         if (hit.hit && hit.distance > tmin && hit.distance < best) best = hit.distance;
+    }
+    // People and the other players too: aimed past them, the arrow (which leaves from the shoulder,
+    // not from the eye) would cross the line of sight somewhere behind them and pass them by.
+    for (int i = 0; i < FighterCount() + MAX_PLAYERS; i++) {
+        Vector3 p;
+        if (i < FighterCount()) {
+            float hp, maxHp;
+            const char *name;
+            bool hostile, dead;
+            if (!FighterInfo(i, &p, &hp, &maxHp, &name, &hostile, &dead) || dead) continue;
+        } else {
+            int s = i - FighterCount();
+            if (s == G.self || !PlayerAwake(s)) continue;
+            p = G.peers[s].pos;
+        }
+        for (int k = 0; k < 2; k++) {
+            RayCollision hit = GetRayCollisionSphere(ray, (Vector3){ p.x, p.y + (k ? 1.45f : 0.7f), p.z }, k ? 0.38f : 0.42f);
+            if (hit.hit && hit.distance > tmin && hit.distance < best) best = hit.distance;
+        }
     }
     return Vector3Add(o, Vector3Scale(dir, best));
 }
@@ -1135,7 +1172,9 @@ static void KnockBack(Animal *a, Vector3 dir, float dist)
 // is only hit when the blow was clearly aimed at them (nearest of everything in front).
 static void MaceStrike(Vector3 chest, Vector3 fwd)
 {
-    int people[16], n = PeopleInArc(chest, fwd, MACE_REACH, MACE_ARC, people, 16);
+    int people[16], n = PeopleInArc(chest, fwd, MACE_REACH, MACE_ARC, people, 16), players[MAX_PLAYERS];
+    int np = G.pvp ? PlayersInArc(chest, fwd, MACE_REACH, MACE_ARC, G.actor, players, MAX_PLAYERS) : 0;
+    for (int k = 0; k < np; k++) HitPlayer(players[k], (float)MACE_DAMAGE, chest, true);
     float nearestAnimal = 1e9f;
 
     for (int i = 0; i < G.animalCount; i++) {
@@ -1194,7 +1233,14 @@ void StrikeFor(Vector3 chest, Vector3 fwd, int equip, int weapon)
     }
     int damage = MELEE_DAMAGE[weapon < 0 ? 0 : weapon > 2 ? 2 : weapon];
     float personDist;
-    int person = PersonInFront(chest, fwd, 2.3f, &personDist);
+    int person = PersonInFront(chest, fwd, 2.3f, &personDist), player;
+    if (G.pvp && PlayersInArc(chest, fwd, 2.3f, 0.45f, G.actor, &player, 1) == 1) {
+        float d = XZDist(G.peers[player].pos, chest);
+        if ((person < 0 || d < personDist) && (!target || d < best)) {
+            HitPlayer(player, (float)damage, chest, true);
+            return;
+        }
+    }
     if (person >= 0 && (!target || personDist < best)) {
         DamagePerson(person, (float)damage);
         return;
@@ -1214,8 +1260,8 @@ void MeleeStrike(void)
     Vector3 chest = { p->pos.x, p->pos.y + 1.0f, p->pos.z };
 
     p->facing = p->yaw + PI;
-    if (IsClient()) NetStrike(chest, fwd, G.equip, G.weapon);
-    else StrikeFor(chest, fwd, G.equip, G.weapon);
+    if (IsClient()) NetStrike(chest, fwd, G.equip, UseWeapon());
+    else StrikeFor(chest, fwd, G.equip, UseWeapon());
 }
 
 void DrawArrow(const Arrow *ar)
