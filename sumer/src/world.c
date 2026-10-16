@@ -2,10 +2,12 @@
 #include "rlgl.h"
 #include <math.h>
 
-#define MAX_KEEP 96
+#define MAX_KEEP 160
+#define MAX_WATER 64
 
 static Rectangle keep[MAX_KEEP];
 static int keepCount;
+static int water[MAX_WATER], waterCount;
 
 // Long boxes are cut into sections so torchlight can fall on part of a road or wall.
 void AddBox(float x, float y0, float z, float w, float h, float d, Color c, bool solid)
@@ -47,11 +49,29 @@ void AddGlow(float x, float y0, float z, float w, float h, float d, Color c)
     G.boxes[G.boxCount++] = (Box){ { x, y0 + h / 2, z }, { w, h, d }, c, false, false, true, 0.0f, SHAPE_BOX };
 }
 
-void AddWater(float x0, float z0, float x1, float z1)
+static void WaterBox(float cx, float cz, float w, float d, int shape)
 {
     if (G.boxCount >= MAX_BOXES) return;
-    G.boxes[G.boxCount++] = (Box){ { (x0 + x1) / 2, -0.25f, (z0 + z1) / 2 }, { x1 - x0, 0.66f, z1 - z0 },
-                                   COL_WATER, true, true, false, 0.0f, SHAPE_BOX };
+    if (waterCount < MAX_WATER) water[waterCount++] = G.boxCount;
+    G.boxes[G.boxCount++] = (Box){ { cx, -0.25f, cz }, { w, 0.66f, d }, COL_WATER, true, true, false, 0.0f, (unsigned char)shape };
+}
+
+// Long water is cut into sections so each one is culled by its own distance.
+void AddWater(float x0, float z0, float x1, float z1)
+{
+    int nx = (int)ceilf((x1 - x0) / 48.0f), nz = (int)ceilf((z1 - z0) / 48.0f);
+    float sw = (x1 - x0) / (float)nx, sd = (z1 - z0) / (float)nz;
+
+    for (int i = 0; i < nx; i++)
+        for (int j = 0; j < nz; j++)
+            WaterBox(x0 + sw * ((float)i + 0.5f), z0 + sd * ((float)j + 0.5f), sw, sd, SHAPE_BOX);
+}
+
+// An oval of water over a hollow in the ground; the banks hide its edge, so the shore follows the land.
+void AddPond(float cx, float cz, float rx, float rz)
+{
+    WaterBox(cx, cz, 2.0f * rx, 2.0f * rz, SHAPE_CYL);
+    KeepOut(cx - rx, cz - rz, cx + rx, cz + rz);
 }
 
 void AddTree(float x, float z, float s, bool poplar)
@@ -74,6 +94,7 @@ void KeepOut(float x0, float z0, float x1, float z1)
     if (keepCount < MAX_KEEP) keep[keepCount++] = (Rectangle){ x0, z0, x1 - x0, z1 - z0 };
 }
 
+// Roads count as kept clear too, so nothing grows or is built on them.
 bool InKeepOut(float x, float z, float margin)
 {
     for (int i = 0; i < keepCount; i++) {
@@ -81,7 +102,7 @@ bool InKeepOut(float x, float z, float margin)
         if (x > r.x - margin && x < r.x + r.width + margin && z > r.y - margin && z < r.y + r.height + margin)
             return true;
     }
-    return false;
+    return RoadDistance(x, z) < margin + 0.5f;
 }
 
 int AddResource(float x, float z, ResKind kind)
@@ -158,10 +179,16 @@ float CeilingHeight(float x, float z, float y)
     return c;
 }
 
+// A pond is wet only inside its oval and below its banks.
 bool InWater(float x, float z)
 {
-    for (int i = 0; i < G.boxCount; i++)
-        if (G.boxes[i].water && Contains(&G.boxes[i], x, z, 0)) return true;
+    for (int k = 0; k < waterCount; k++) {
+        const Box *b = &G.boxes[water[k]];
+        if (!Contains(b, x, z, 0)) continue;
+        if (b->shape != SHAPE_CYL) return true;
+        float dx = (x - b->pos.x) / (b->size.x / 2), dz = (z - b->pos.z) / (b->size.z / 2);
+        if (dx * dx + dz * dz < 1.0f && TerrainHeight(x, z) < 0.1f) return true;
+    }
     return false;
 }
 
@@ -215,23 +242,107 @@ static void Forest(float cx, float cz, float r, int n, int resources, bool popla
     }
 }
 
+static void Tuft(float x, float z, float s, Color c)
+{
+    float y = TerrainHeight(x, z) - 0.05f;
+    AddShape(x, y, z, s * 0.45f, s * RandF(1.2f, 1.8f), s * 0.45f, c, false, SHAPE_CONE);
+    AddShape(x + s * 0.25f, y, z + s * 0.15f, s * 0.35f, s * RandF(0.8f, 1.3f), s * 0.35f, Mix(c, COL_STRAW, 0.2f), false, SHAPE_CONE);
+}
+
+// Herbs grow where the ground is green: river meadows, the pastures, the hunters' glade, the west bank.
+static void PlaceHerbs(float x0, float x1, float z0, float z1, int n)
+{
+    for (int k = 0, tries = 0; k < n && tries < n * 30; tries++) {
+        float x = RandF(x0, x1), z = RandF(z0, z1);
+        if (Fertility(x, z) < 0.5f || InsideWalls(x, z, -8.0f) || !FreeSpot(x, z, 1.2f)) continue;
+        AddResource(x, z, RES_HERB);
+        k++;
+    }
+}
+
+// Across the river: woods, flowering meadows, scattered trees and a reed-fringed pond.
+static void BuildWestBank(void)
+{
+    static const Color flowers[4] = { { 236, 200, 60, 255 }, { 240, 236, 226, 255 }, { 160, 96, 196, 255 }, { 210, 60, 50, 255 } };
+    const float x0 = -WORLD_LIMIT + 4, x1 = RIVER_X0 - 8, z0 = -WORLD_LIMIT + 4, z1 = WORLD_LIMIT - 4;
+
+    AddPond(-333, 174, 31, 27);
+    AddResource(-336, 168, RES_FISH);
+    AddResource(-324, 182, RES_FISH);
+    for (int k = 0; k < 48; k++) {
+        float a = (float)k * 2.0f * PI / 48.0f + RandF(-0.05f, 0.05f), r = RandF(0.55f, 0.95f);
+        float x = -333 + cosf(a) * 31 * r, z = 174 + sinf(a) * 27 * r;
+        if (InWater(x, z) || TerrainHeight(x, z) > 1.2f) continue;
+        if (k % 6 == 0) AddResource(x, z, RES_REEDS);
+        else
+            for (int j = 0; j < 3; j++)
+                AddBox(x + RandF(-0.6f, 0.6f), TerrainHeight(x, z) - 0.1f, z + RandF(-0.6f, 0.6f), 0.09f, RandF(1.3f, 2.4f), 0.09f, COL_REED, false);
+    }
+
+    Forest(-250, -300, 30, 24, 10, false);
+    Forest(-460, -180, 34, 26, 10, true);
+    Forest(-225, 30, 24, 18, 8, false);
+    Forest(-420, 300, 34, 26, 10, false);
+    Forest(-500, -390, 28, 18, 6, true);
+    Forest(-300, 455, 28, 20, 8, false);
+    Forest(-480, 75, 26, 18, 6, true);
+    Forest(-370, -40, 22, 16, 6, false);
+
+    for (int k = 0, tries = 0; k < 120 && tries < 900; tries++) {
+        float x = RandF(x0, x1), z = RandF(z0, z1);
+        if (!FreeSpot(x, z, 2.5f)) continue;
+        AddTree(x, z, RandF(0.8f, 1.4f), Hash2(tries, 17) < 0.35f);
+        k++;
+    }
+    for (int tries = 0; tries < 420; tries++) {
+        float x = RandF(x0, x1), z = RandF(z0, z1);
+        if (InWater(x, z) || InKeepOut(x, z, 1.0f) || SolidAt(x, z, 0.5f)) continue;
+        float s = RandF(0.5f, 1.2f);
+        Color c = Mix((Color){ 76, 118, 52, 255 }, (Color){ 102, 140, 60, 255 }, Hash2(tries, 23));
+        AddShape(x, TerrainHeight(x, z) - 0.15f, z, s * 1.2f, s * 0.9f, s * 1.1f, c, false, SHAPE_BLOB);
+    }
+    for (int tries = 0; tries < 320; tries++) {
+        float x = RandF(x0, x1), z = RandF(z0, z1);
+        if (InWater(x, z) || InKeepOut(x, z, 0.5f)) continue;
+        Color c = flowers[(int)(Hash2(tries, 31) * 3.99f)];
+        float y = TerrainHeight(x, z);
+        for (int j = 0; j < 4; j++) {
+            float fx = x + RandF(-0.7f, 0.7f), fz = z + RandF(-0.7f, 0.7f);
+            AddShape(fx, y - 0.05f, fz, 0.06f, 0.42f, 0.06f, COL_GRASS, false, SHAPE_CYL);
+            AddShape(fx, y + 0.34f, fz, 0.2f, 0.14f, 0.2f, c, false, SHAPE_BLOB);
+        }
+    }
+    for (int tries = 0; tries < 1700; tries++) {
+        float x = RandF(x0, x1), z = RandF(z0, z1);
+        if (InKeepOut(x, z, 0.5f) || InWater(x, z)) continue;
+        Tuft(x, z, RandF(0.35f, 0.7f), Mix(COL_GRASS, (Color){ 70, 126, 46, 255 }, Hash2(tries, 37)));
+    }
+    for (int tries = 0; tries < 160; tries++) {
+        float x = RandF(x0, x1), z = RandF(z0, z1);
+        if (TerrainHeight(x, z) < 13.0f || InKeepOut(x, z, 2.0f) || SolidAt(x, z, 1.0f)) continue;
+        float s = RandF(0.8f, 2.0f);
+        AddShape(x, TerrainHeight(x, z) - 0.35f * s, z, s, s * 0.9f, s * 0.8f, Mix(COL_ROCK, COL_STONE, Hash2(tries, 41)), true, SHAPE_BLOB);
+    }
+}
+
 static void BuildVegetation(void)
 {
     static const float cityPalms[][2] = { { -14, -16 }, { 14, -16 }, { -52, -29 }, { -52, 5 } };
+    const float L = WORLD_LIMIT;
 
     for (int i = 0; i < 4; i++) AddResource(cityPalms[i][0], cityPalms[i][1], RES_PALM);
-    for (int i = 0; i < 30; i++) PlacePalm(-124, -104, -330, 330);
+    for (int i = 0; i < 46; i++) PlacePalm(-124, -104, -510, 510);
     for (int i = 0; i < 8; i++) PlacePalm(-80, 100, -116, -111);
-    for (int i = 0; i < 7; i++) PlacePalm(-9, -5, 140, 340);
-    for (int i = 0; i < 7; i++) PlacePalm(5, 9, 140, 340);
+    for (int i = 0; i < 11; i++) PlacePalm(-9, -5, 140, 520);
+    for (int i = 0; i < 11; i++) PlacePalm(5, 9, 140, 520);
     for (int i = 0; i < 8; i++) PlacePalm(104, 117, -90, 80);
 
-    for (float z = -330.0f; z <= 330.0f; z += 12.0f) {
+    for (float z = -510.0f; z <= 510.0f; z += 12.0f) {
         if (fabsf(z + 10) < 8 || fabsf(z - 30) < 6 || fabsf(z + 62) < 6 || (z > FORD_Z0 - 4 && z < FORD_Z1 + 4)) continue;
         AddResource(-126.4f + RandF(-0.4f, 0.4f), z + RandF(-2, 2), RES_REEDS);
     }
-    for (int i = 0; i < 60; i++) {
-        float x = RandF(-127.5f, -121.0f), z = RandF(-335, 335);
+    for (int i = 0; i < 92; i++) {
+        float x = RandF(-127.5f, -121.0f), z = RandF(-515, 515);
         if (fabsf(z + 10) < 8 || InKeepOut(x, z, 1.0f)) continue;
         for (int k = 0; k < 3; k++)
             AddBox(x + RandF(-0.5f, 0.5f), 0, z + RandF(-0.5f, 0.5f), 0.09f, RandF(1.3f, 2.4f), 0.09f, COL_REED, false);
@@ -244,42 +355,57 @@ static void BuildVegetation(void)
     Forest(-112, 250, 16, 12, 6, true);
     Forest(300, 180, 28, 22, 8, false);
     Forest(290, -200, 26, 20, 8, false);
+    Forest(475, -45, 30, 24, 10, false);
+    Forest(395, 95, 26, 18, 8, false);
+    Forest(470, 150, 22, 14, 6, false);
+    Forest(390, -300, 30, 20, 6, false);
+    Forest(250, 430, 26, 16, 6, false);
+    Forest(-108, -400, 18, 12, 6, true);
 
-    for (int tries = 0; tries < 1500; tries++) {
-        float x = RandF(-354, 354), z = RandF(-354, 354);
+    BuildWestBank();
+
+    for (int tries = 0; tries < 2400; tries++) {
+        float x = RandF(RIVER_X1, L), z = RandF(-L, L);
         float h = TerrainHeight(x, z), f = Fertility(x, z);
         if (InsideWalls(x, z, -3.0f) || InKeepOut(x, z, 0.5f) || InWater(x, z)) continue;
         if (f < 0.35f && !(h > 1.5f && Hash2(tries, 5) < 0.5f)) continue;
-        float s = RandF(0.3f, 0.6f), y = TerrainHeight(x, z) - 0.05f;
-        Color c = Mix(COL_GRASS, COL_WHEAT_GREEN, Hash2(tries, 3));
-        AddShape(x, y, z, s * 0.45f, s * RandF(1.2f, 1.8f), s * 0.45f, c, false, SHAPE_CONE);
-        AddShape(x + s * 0.25f, y, z + s * 0.15f, s * 0.35f, s * RandF(0.8f, 1.3f), s * 0.35f, Mix(c, COL_STRAW, 0.2f), false, SHAPE_CONE);
+        Tuft(x, z, RandF(0.3f, 0.6f), Mix(COL_GRASS, COL_WHEAT_GREEN, Hash2(tries, 3)));
     }
-    for (int tries = 0; tries < 380; tries++) {
-        float x = RandF(-354, 354), z = RandF(-354, 354);
-        if (x > RIVER_X0 - 3 && x < -60) continue;
+    for (int tries = 0; tries < 700; tries++) {
+        float x = RandF(RIVER_X1, L), z = RandF(-L, L);
+        if (x < -60) continue;
         if (Fertility(x, z) > 0.35f || InsideWalls(x, z, -6.0f) || InKeepOut(x, z, 1.0f) || SolidAt(x, z, 0.5f)) continue;
         float s = RandF(0.5f, 1.1f);
         AddShape(x, TerrainHeight(x, z) - 0.15f, z, s * 1.2f, s * 0.9f, s * 1.1f, COL_SHRUB, false, SHAPE_BLOB);
     }
-    for (int tries = 0; tries < 300; tries++) {
-        float x = RandF(145, 354), z = RandF(-354, 354);
+    for (int tries = 0; tries < 700; tries++) {
+        float x = RandF(145, L), z = RandF(-L, L);
         if (TerrainHeight(x, z) < 5.0f || InKeepOut(x, z, 2.0f) || SolidAt(x, z, 1.0f)) continue;
         float s = RandF(0.8f, 2.2f);
         AddShape(x, TerrainHeight(x, z) - 0.35f * s, z, s, s * 0.9f, s * 0.8f, Mix(COL_ROCK, COL_STONE, Hash2(tries, 9)), true, SHAPE_BLOB);
     }
+
+    PlaceHerbs(-124, -100, -500, 500, 12);
+    PlaceHerbs(-125, -88, -235, -165, 3);
+    PlaceHerbs(-125, -92, 225, 275, 3);
+    PlaceHerbs(-120, -15, 330, 510, 6);
+    PlaceHerbs(370, 510, -70, 110, 6);
+    PlaceHerbs(-530, -160, -530, 530, 48);
 }
 
 void BuildWorld(void)
 {
     keepCount = 0;
+    waterCount = 0;
     BuildCity();
     BuildVillage();
     BuildJobs();
     BuildRaiders();
+    BuildVillages();
     BuildCityHouses();
     BuildVegetation();
     BuildTerrain();
+    BuildRoads();
     BuildLights();
 
     for (int i = 0; i < MAX_STARS; i++)
@@ -337,6 +463,7 @@ void DrawTerrain(void)
     Vector3 fwd = Vector3Normalize(Vector3Subtract(G.cam.target, eye));
 
     DrawGround();
+    DrawRoads();
     for (int i = 0; i < G.boxCount; i++) {
         const Box *b = &G.boxes[i];
         Vector3 v = Vector3Subtract(b->pos, eye);
@@ -350,11 +477,14 @@ void DrawTerrain(void)
         G.drawTorch = BoxLight(i);
         G.drawFog = FogAt(b->pos) * (1.0f - 0.6f * G.drawTorch);
         Vector3 base = { b->pos.x, b->pos.y - b->size.y / 2, b->pos.z };
-        int sides = d2 > 60.0f * 60.0f ? 5 : 8;
+        int sides = b->water ? 24 : d2 > 60.0f * 60.0f ? 5 : 8;
         switch (b->shape) {
         case SHAPE_CYL:  DrawShadedCylinder(base, b->size.x / 2, b->size.z / 2, b->size.y, 1.0f, sides, b->color); break;
         case SHAPE_CONE: DrawShadedCylinder(base, b->size.x / 2, b->size.z / 2, b->size.y, 0.0f, sides, b->color); break;
-        case SHAPE_BLOB: DrawShadedBlob(b->pos, Vector3Scale(b->size, 0.5f), b->color); break;
+        case SHAPE_BLOB:
+            if (d2 > 70.0f * 70.0f) DrawShadedBlobFar(b->pos, Vector3Scale(b->size, 0.5f), b->color);
+            else DrawShadedBlob(b->pos, Vector3Scale(b->size, 0.5f), b->color);
+            break;
         default:         DrawShadedBox(b->pos, b->size, b->color); break;
         }
     }
@@ -406,7 +536,7 @@ static void DrawTreeRes(int i, const Resource *r)
 {
     if (r->regrow > 0) return;
     float s = 0.8f + 0.5f * Hash2(i, 11), x = r->pos.x, y = r->pos.y, z = r->pos.z;
-    bool poplar = x < -60.0f;
+    bool poplar = WestBank(x) ? Hash2(i, 29) < 0.35f : x < -60.0f;
 
     DrawShadedCylinder((Vector3){ x, y + 0.7f, z }, 0.2f * s, 0.2f * s, 2.3f * s, 0.75f, 7, COL_PALM_TRUNK);
     if (poplar) {
@@ -458,11 +588,28 @@ static void DrawFish(int i, const Resource *r)
     }
 }
 
+// A low sage-green clump; while it can be picked it carries bright flowers, so it stands out from grass.
+static void DrawHerb(int i, const Resource *r)
+{
+    static const Color bloom[3] = { { 172, 104, 206, 255 }, { 242, 208, 64, 255 }, { 246, 244, 236, 255 } };
+    const Color leaf = { 92, 140, 84, 255 }, pale = { 128, 164, 104, 255 };
+    float x = r->pos.x, y = r->pos.y, z = r->pos.z, s = r->regrow > 0 ? 0.45f : 1.0f;
+
+    DrawShadedBlob((Vector3){ x, y + 0.16f * s, z }, (Vector3){ 0.42f * s, 0.26f * s, 0.42f * s }, leaf);
+    DrawShadedBlob((Vector3){ x + 0.22f * s, y + 0.12f * s, z - 0.16f * s }, (Vector3){ 0.26f * s, 0.2f * s, 0.26f * s }, pale);
+    if (r->regrow > 0) return;
+    for (int k = 0; k < 6; k++) {
+        float a = (float)k * 1.047f + (float)i, d = 0.14f + 0.12f * (float)(k & 1);
+        Part(x + cosf(a) * d, y + 0.44f + 0.06f * (float)(k % 3), z + sinf(a) * d, 0.1f, 0.1f, 0.1f, bloom[i % 3]);
+    }
+}
+
 void DrawResources(void)
 {
     for (int i = 0; i < G.resCount; i++) {
         const Resource *r = &G.res[i];
-        if (XZDist(r->pos, G.cam.position) > 260.0f) continue;
+        float d = XZDist(r->pos, G.cam.position);
+        if (d > 260.0f || (r->kind == RES_HERB && d > 130.0f)) continue;
         if (G.night > 0) LightFor(r->pos);
         switch (r->kind) {
         case RES_PALM:  DrawPalm(r); break;
@@ -471,6 +618,7 @@ void DrawResources(void)
         case RES_CLAY:  DrawClay(r); break;
         case RES_ORE:   DrawOre(r); break;
         case RES_FISH:  DrawFish(i, r); break;
+        case RES_HERB:  DrawHerb(i, r); break;
         default: break;
         }
     }

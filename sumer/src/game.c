@@ -13,13 +13,15 @@
 
 typedef struct { ItemId item; int amount; float regrow; int tool; const char *verb, *wait; float food; } GatherDef;
 
+// Picking dates is free; everything else costs food. Mining costs twice what woodcutting does.
 static const GatherDef GATHER[RES_KINDS] = {
-    [RES_PALM]  = { IT_DATES,  3, 24.0f, 0,         "Pick dates",      "Dates ripen again",     0.5f },
-    [RES_REEDS] = { IT_REEDS,  4, 48.0f, 0,         "Cut reeds",       "Reeds regrowing",       1.0f },
-    [RES_TREE]  = { IT_WOOD,   2, 16.0f, TOOL_AXE,  "Chop wood",       "Felled tree regrowing", 4.0f },
-    [RES_CLAY]  = { IT_CLAY,   4, 48.0f, 0,         "Dig clay",        "Clay pit refilling",    2.0f },
-    [RES_ORE]   = { IT_COPPER, 2, 10.0f, TOOL_PICK, "Mine copper ore", "Vein worked out",       7.0f },
-    [RES_FISH]  = { IT_FISH,   2, 24.0f, 0,         "Cast your net",   "Fish scattered",        1.5f },
+    [RES_PALM]  = { IT_DATES,  3, 24.0f, 0,         "Pick dates",      "Dates ripen again",      0.0f },
+    [RES_REEDS] = { IT_REEDS,  4, 48.0f, 0,         "Cut reeds",       "Reeds regrowing",        1.0f },
+    [RES_TREE]  = { IT_WOOD,   2, 16.0f, TOOL_AXE,  "Chop wood",       "Felled tree regrowing",  8.0f },
+    [RES_CLAY]  = { IT_CLAY,   4, 48.0f, 0,         "Dig clay",        "Clay pit refilling",     2.0f },
+    [RES_ORE]   = { IT_COPPER, 2, 10.0f, TOOL_PICK, "Mine copper ore", "Vein worked out",       16.0f },
+    [RES_FISH]  = { IT_FISH,   2, 24.0f, 0,         "Cast your net",   "Fish scattered",         1.5f },
+    [RES_HERB]  = { IT_HERB,   2, 36.0f, 0,         "Gather herbs",    "Herbs growing back",     1.0f },
 };
 
 Game G;
@@ -208,6 +210,12 @@ static void UpdateClock(float dt)
 
     G.safeT += dt;
     if (G.safeT > 5.0f && G.food >= REGEN_FOOD) G.health = fminf(HEALTH_MAX, G.health + 1.5f * dt);
+    // Chewed herbs keep healing for a while, even in a fight and on an empty stomach.
+    if (G.herbT > 0) {
+        G.herbT = fmaxf(0.0f, G.herbT - dt);
+        G.health = fminf(HEALTH_MAX, G.health + HERB_RATE * dt);
+    }
+    if (G.snakeWarn > 0) G.snakeWarn -= dt;
 }
 
 static void Consider(Target *best, float *score, TargetKind kind, int index, Vector3 pos, float range)
@@ -243,11 +251,12 @@ static void BuildPrompts(void)
         else if (r->regrow > 0) Fmt(G.promptE, n, "%s: about %d hours", L(g->wait), (int)ceilf(r->regrow));
         else if (!G.okE) Fmt(G.promptE, n, "Too hungry for this work. Eat first (needs %d food)", (int)g->food);
         else if (heavy) Fmt(G.promptE, n, "[E] %s (hard work: -%d food)", L(g->verb), (int)g->food);
+        else if (g->food > 0) Fmt(G.promptE, n, "[E] %s (-%g food)", L(g->verb), (double)g->food);
         else Fmt(G.promptE, n, "[E] %s", L(g->verb));
         break;
     }
     case TGT_STATION:
-        if (i == STN_STASH || i == STN_STASH2) StashPrompt(i == STN_STASH ? 0 : 1, G.promptE, n, &G.okE);
+        if (StashCamp(i) >= 0) StashPrompt(StashCamp(i), G.promptE, n, &G.okE);
         else if (i == STN_FERRY_E || i == STN_FERRY_W) FerryPrompt(i, G.promptE, G.promptF, n, &G.okE, &G.okF);
         else StationPrompt(i, G.promptE, n, &G.okE);
         if (i == STN_SMELTER) ForgePrompt(G.promptF, n, &G.okF);
@@ -296,7 +305,7 @@ static void FindTarget(bool play)
 
     if (play) {
         for (int i = 0; i < G.animalCount; i++)
-            if (G.animals[i].active && G.animals[i].state == ST_DEAD)
+            if (G.animals[i].active && G.animals[i].state == ST_DEAD && CarcassItem(G.animals[i].type) != IT_NONE)
                 Consider(&best, &score, TGT_CARCASS, i, G.animals[i].pos, 2.4f);
         for (int i = 0; i < G.resCount; i++)
             Consider(&best, &score, TGT_RES, i, G.res[i].pos, 2.4f);
@@ -363,6 +372,8 @@ static void Gather(Resource *r)
     r->regrow = g->regrow;
     Exert(g->food);
     if (g->food >= 2.0f) Say("+%d %s. Hard work: -%d food.", got, ItemName(g->item), (int)g->food);
+    else if (r->kind == RES_HERB) Say("+%d %s (-%g food). Chew herbs from your baskets (Tab) to heal faster.", got, ItemName(g->item), (double)g->food);
+    else if (g->food > 0) Say("+%d %s (-%g food)", got, ItemName(g->item), (double)g->food);
     else Say("+%d %s", got, ItemName(g->item));
 }
 
@@ -374,7 +385,7 @@ static void Interact(bool alt)
     case TGT_CARCASS: if (!alt) TakeCarcass(&G.animals[i]); break;
     case TGT_RES:     if (!alt) Gather(&G.res[i]); break;
     case TGT_STATION:
-        if (!alt && (i == STN_STASH || i == STN_STASH2)) TakeStash(i == STN_STASH ? 0 : 1);
+        if (!alt && StashCamp(i) >= 0) TakeStash(StashCamp(i));
         else if (!alt && (i == STN_FERRY_E || i == STN_FERRY_W)) TakeFerry(i);
         else if (i == STN_FERRY_E || i == STN_FERRY_W) ChangeFare();
         else if (!alt) UseStation(i);
@@ -507,6 +518,7 @@ void GameUpdate(void)
         if (IsKeyPressed(KEY_ONE)) SetEquip(EQ_BOW);
         if (IsKeyPressed(KEY_TWO)) SetEquip(EQ_MELEE);
         if (IsKeyPressed(KEY_THREE)) SetEquip(EQ_NONE);
+        if (IsKeyPressed(KEY_FOUR)) SetEquip(EQ_MACE);
         if (IsKeyPressed(KEY_M)) G.mapZoom = (G.mapZoom + 1) % 3;
         if (IsKeyPressed(KEY_Z)) {
             G.arrowCam = !G.arrowCam;

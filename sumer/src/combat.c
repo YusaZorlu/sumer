@@ -8,13 +8,15 @@ typedef struct {
     bool fights;
 } RoleDef;
 
+// Barbarians across the river are twice as strong as the raiders on the city side.
 static const RoleDef ROLES[ROLE_COUNT] = {
-    [ROLE_CIVILIAN] = { 120, 0.00f,  5, 1.35f, 1.5f, 3.8f, 24, true },
-    [ROLE_WORKER]   = { 130, 0.00f,  8, 1.35f, 1.6f, 4.0f, 24, true },
-    [ROLE_CLERIC]   = { 100, 0.00f,  0, 1.0f,  1.0f, 4.2f, 24, false },
-    [ROLE_MERCHANT] = { 110, 0.00f,  0, 1.0f,  1.0f, 4.2f, 24, false },
-    [ROLE_GUARD]    = { 320, 0.35f, 13, 1.05f, 2.3f, 5.4f, 32, true },
-    [ROLE_RAIDER]   = { 190, 0.15f, 15, 1.2f,  1.8f, 5.2f, 22, true },
+    [ROLE_CIVILIAN]  = { 120, 0.00f,  5, 1.35f, 1.5f, 3.8f, 24, true },
+    [ROLE_WORKER]    = { 130, 0.00f,  8, 1.35f, 1.6f, 4.0f, 24, true },
+    [ROLE_CLERIC]    = { 100, 0.00f,  0, 1.0f,  1.0f, 4.2f, 24, false },
+    [ROLE_MERCHANT]  = { 110, 0.00f,  0, 1.0f,  1.0f, 4.2f, 24, false },
+    [ROLE_GUARD]     = { 320, 0.35f, 13, 1.05f, 2.3f, 5.4f, 32, true },
+    [ROLE_RAIDER]    = { 260, 0.20f, 19, 1.1f,  1.9f, 5.4f, 24, true },
+    [ROLE_BARBARIAN] = { 520, 0.20f, 38, 1.1f,  2.0f, 5.4f, 26, true },
 };
 
 #define WINDUP       0.55f
@@ -24,7 +26,7 @@ static const RoleDef ROLES[ROLE_COUNT] = {
 #define FOE_DAMAGE   1.8f
 #define GUARD_LEASH  60.0f
 
-enum { LOOT_CIVILIAN, LOOT_GUARD, LOOT_CLERIC, LOOT_TRADER, LOOT_WORKER, LOOT_MERCHANT, LOOT_RAIDER };
+enum { LOOT_CIVILIAN, LOOT_GUARD, LOOT_CLERIC, LOOT_TRADER, LOOT_WORKER, LOOT_MERCHANT, LOOT_RAIDER, LOOT_BARBARIAN };
 
 typedef struct {
     Vitals *v;
@@ -50,6 +52,11 @@ static void Add(Vitals *v, Role role, Vector3 home, float face, int owner, int l
     fighters[fighterCount++] = (Fighter){ v, role, home, face, owner, loot, arg, name };
 }
 
+static bool IsRaider(Role r)
+{
+    return r == ROLE_RAIDER || r == ROLE_BARBARIAN;
+}
+
 // Rebuilt every frame after the scripted routines have moved everyone.
 static void CollectFighters(void)
 {
@@ -58,7 +65,8 @@ static void CollectFighters(void)
         Villager *v = &G.villagers[i];
         Role r = v->kind == NPC_GUARD ? ROLE_GUARD : v->kind == NPC_CLERIC ? ROLE_CLERIC : ROLE_CIVILIAN;
         int loot = r == ROLE_GUARD ? LOOT_GUARD : r == ROLE_CLERIC ? LOOT_CLERIC : LOOT_CIVILIAN;
-        const char *name = r == ROLE_GUARD ? "Guard" : r == ROLE_CLERIC ? "Cleric" : "Townsperson";
+        const char *name = r == ROLE_GUARD ? "Guard" : r == ROLE_CLERIC ? "Cleric"
+                         : v->kind == NPC_TRAVELLER ? "Traveller" : v->kind == NPC_VILLAGER ? "Villager" : "Townsperson";
         Add(&v->vit, r, VillagerLanePos(v), v->face, OWNER_VILLAGER + i, loot, 0, name);
     }
     for (int i = 0; i < G.workerCount; i++) {
@@ -75,13 +83,17 @@ static void CollectFighters(void)
         Vector3 p;
         float f;
         if (!CaravanMemberScript(c, 0, &p, &f)) continue;
-        Add(&cv->vit[0], ROLE_MERCHANT, p, f, OWNER_CARAVAN + c, LOOT_MERCHANT, 0, G.traders[cv->trader].name);
-        CaravanMemberScript(c, 3, &p, &f);
-        Add(&cv->vit[1], ROLE_GUARD, p, f, OWNER_CARAVAN + c, LOOT_GUARD, 0, "Caravan guard");
+        Add(&cv->vit[0], ROLE_MERCHANT, p, f, CARAVAN_OWNER(c, 0), LOOT_MERCHANT, 0, G.traders[cv->trader].name);
+        for (int g = 0; g < CARAVAN_GUARDS; g++) {
+            CaravanMemberScript(c, 3 + g, &p, &f);
+            Add(&cv->vit[1 + g], ROLE_GUARD, p, f, CARAVAN_OWNER(c, 3 + g), LOOT_GUARD, 0, "Caravan guard");
+        }
     }
     for (int i = 0; i < MAX_RAIDERS; i++) {
         Raider *r = &G.raiders[i];
-        Add(&r->vit, ROLE_RAIDER, r->pos, r->face, OWNER_RAIDER + i, LOOT_RAIDER, i, "Raider");
+        bool west = r->camp >= EAST_CAMPS;
+        Add(&r->vit, west ? ROLE_BARBARIAN : ROLE_RAIDER, r->pos, r->face, OWNER_RAIDER + i, west ? LOOT_BARBARIAN : LOOT_RAIDER, i,
+            west ? "Barbarian" : "Raider");
     }
 }
 
@@ -137,7 +149,7 @@ static float SightOf(Role r)
 static bool PlayerParries(Vector3 from)
 {
     const Player *p = &G.player;
-    if (G.parryT <= 0 || G.equip != EQ_MELEE) return false;
+    if (G.parryT <= 0 || (G.equip != EQ_MELEE && G.equip != EQ_MACE)) return false;
     Vector2 to = Vector2Normalize((Vector2){ from.x - p->pos.x, from.z - p->pos.z });
     return to.x * sinf(p->facing) + to.y * cosf(p->facing) > 0.25f;
 }
@@ -190,7 +202,7 @@ static void StrikeFoe(const Fighter *f, const Fighter *t)
         tv->hostile = 0;
         tv->foeT = 0;
         if (XZDist(tp, G.player.pos) > 40.0f) return;
-        if (t->role == ROLE_RAIDER) Say("A guard cut down a raider.");
+        if (IsRaider(t->role)) Say("A guard cut down a raider.");
         else Say("Raiders killed a guard.");
     }
 }
@@ -228,7 +240,7 @@ static const Fighter *FindFoe(int owner)
 {
     for (int k = 0; k < fighterCount; k++) {
         const Fighter *t = &fighters[k];
-        if (t->owner == owner && (t->role == ROLE_GUARD || t->role == ROLE_RAIDER) && !t->v->dead) return t;
+        if (t->owner == owner && (t->role == ROLE_GUARD || IsRaider(t->role)) && !t->v->dead) return t;
     }
     return NULL;
 }
@@ -241,7 +253,7 @@ static const Fighter *SpotRaider(const Fighter *g, Vector3 pos)
 
     for (int k = 0; k < fighterCount; k++) {
         const Fighter *t = &fighters[k];
-        if (t->role != ROLE_RAIDER || t->v->dead || !t->v->override) continue;
+        if (!IsRaider(t->role) || t->v->dead || !t->v->override) continue;
         Vector3 p = FPos(t);
         float d = XZDist(p, pos);
         if (d < bestD && fabsf(p.y - pos.y) < 6.0f && XZDist(p, g->home) < GUARD_LEASH) {
@@ -290,7 +302,7 @@ void UpdateCombat(float dt)
         Vector3 pos = FPos(f);
         float dist = XZDist(pos, G.player.pos);
         bool sees = dist < SightOf(f->role) && fabsf(pos.y - G.player.pos.y) < 6.0f && !G.sleeping;
-        if (sees && (f->role == ROLE_RAIDER || (f->role == ROLE_GUARD && G.wanted > 0))) v->hostile = fmaxf(v->hostile, 8.0f);
+        if (sees && (IsRaider(f->role) || (f->role == ROLE_GUARD && G.wanted > 0))) v->hostile = fmaxf(v->hostile, 8.0f);
         const Fighter *foe = CurrentFoe(f, pos, dt);
         bool angry = v->hostile > 0;
 
@@ -320,7 +332,7 @@ static void RaiseAlarm(const Fighter *victim)
 
     for (int i = 0; i < fighterCount; i++) {
         const Fighter *f = &fighters[i];
-        if (f == victim || f->v->dead || f->role == ROLE_RAIDER) continue;
+        if (f == victim || f->v->dead || IsRaider(f->role)) continue;
         Vector3 p = FPos(f);
         if (XZDist(p, G.player.pos) > SightOf(f->role) || fabsf(p.y - G.player.pos.y) > 6.0f) continue;
         f->v->hostile = fmaxf(f->v->hostile, Fights(f) ? 45.0f : 20.0f);
@@ -339,7 +351,7 @@ static void RallyRaiders(const Fighter *victim)
     Vector3 at = FPos(victim);
     for (int i = 0; i < fighterCount; i++) {
         const Fighter *f = &fighters[i];
-        if (f->role == ROLE_RAIDER && !f->v->dead && XZDist(FPos(f), at) < 35.0f) f->v->hostile = fmaxf(f->v->hostile, 25.0f);
+        if (IsRaider(f->role) && !f->v->dead && XZDist(FPos(f), at) < 35.0f) f->v->hostile = fmaxf(f->v->hostile, 25.0f);
     }
 }
 
@@ -360,7 +372,7 @@ void DamagePerson(int i, float dmg)
         v->face = f->homeFace;
     }
     v->hostile = fmaxf(v->hostile, 40.0f);
-    if (f->role == ROLE_RAIDER) RallyRaiders(f);
+    if (IsRaider(f->role)) RallyRaiders(f);
     else if (unaware) RaiseAlarm(f);
     if (v->hp <= 0) {
         v->hp = 0;
@@ -409,6 +421,38 @@ int PersonInFront(Vector3 chest, Vector3 fwd, float range, float *dist)
     return best;
 }
 
+// Everyone alive within reach in front, nearest first.
+int PeopleInArc(Vector3 chest, Vector3 fwd, float range, float minDot, int *out, int max)
+{
+    float dist[MAX_FIGHTERS];
+    int n = 0;
+
+    for (int i = 0; i < fighterCount && n < max; i++) {
+        if (fighters[i].v->dead) continue;
+        Vector3 p = FPos(&fighters[i]);
+        Vector3 d = { p.x - chest.x, 0, p.z - chest.z };
+        float len = Vector3Length(d);
+        if (len - 0.35f > range || fabsf(p.y + 1.0f - chest.y) > 1.6f) continue;
+        if (len > 0.3f && Vector3DotProduct(Vector3Scale(d, 1.0f / len), fwd) < minDot) continue;
+        int k = n++;
+        while (k > 0 && dist[k - 1] > len) {
+            out[k] = out[k - 1];
+            dist[k] = dist[k - 1];
+            k--;
+        }
+        out[k] = i;
+        dist[k] = len;
+    }
+    return n;
+}
+
+// Raiders, barbarians and anyone already fighting you: fair game for a sweeping blow.
+bool FighterIsFoe(int i)
+{
+    if (i < 0 || i >= fighterCount || fighters[i].v->dead) return false;
+    return IsRaider(fighters[i].role) || fighters[i].v->hostile > 0;
+}
+
 int FighterCount(void)
 {
     return fighterCount;
@@ -446,10 +490,13 @@ static void Take(char *log, int size, int item, int n)
 
 void LootBody(int i)
 {
-    static const int traderGoods[][2] = { { IT_ARROWS, 5 }, { IT_SEEDS, 4 }, { IT_REEDS, 4 }, { IT_COWHIDE, 1 }, { IT_BRONZE, 1 } };
+    static const int traderGoods[][2] = { { IT_ARROWS, 5 }, { IT_SEEDS, 4 }, { IT_REEDS, 4 }, { IT_COWHIDE, 1 }, { IT_BRONZE, 1 },
+                                          { IT_ARROWS, 6 }, { IT_SHEEPSKIN, 1 } };
     static const int jobGoods[][2] = { { IT_WOOD, 3 }, { IT_COPPER, 2 }, { IT_CLAY, 3 }, { IT_POT, 1 }, { IT_BRONZE, 1 },
                                        { IT_FISH, 2 }, { IT_FISH, 2 }, { IT_WHEAT, 2 } };
     static const int raiderGoods[][2] = { { IT_ARROWS, 4 }, { IT_BREAD, 1 }, { IT_COPPER, 2 }, { IT_BRONZE, 1 }, { IT_TIN, 1 }, { IT_WOOD, 3 } };
+    static const int barbarianGoods[][2] = { { IT_BRONZE, 2 }, { IT_TIN, 2 }, { IT_ARROWS, 8 }, { IT_WOLF, 2 }, { IT_COPPER, 4 },
+                                             { IT_HERB, 3 }, { IT_ROAST, 2 } };
     char log[256] = "";
 
     if (!BodyLootable(i)) return;
@@ -473,7 +520,8 @@ void LootBody(int i)
         Take(log, sizeof(log), IT_DATES, 3);
         break;
     case LOOT_TRADER:
-        if (f->lootArg < 5) Take(log, sizeof(log), traderGoods[f->lootArg][0], traderGoods[f->lootArg][1]);
+        if (f->lootArg < (int)(sizeof(traderGoods) / sizeof(traderGoods[0])))
+            Take(log, sizeof(log), traderGoods[f->lootArg][0], traderGoods[f->lootArg][1]);
         break;
     case LOOT_WORKER:
         Take(log, sizeof(log), jobGoods[f->lootArg][0], jobGoods[f->lootArg][1]);
@@ -481,6 +529,12 @@ void LootBody(int i)
     case LOOT_MERCHANT:
         Take(log, sizeof(log), IT_TIN, 1);
         Take(log, sizeof(log), IT_DATES, 3);
+        break;
+    case LOOT_BARBARIAN:
+        for (int k = 0; k < 3; k++) {
+            int pick = (int)(Hash2(f->owner * 11 + k, G.day) * 6.99f);
+            Take(log, sizeof(log), barbarianGoods[pick][0], barbarianGoods[pick][1]);
+        }
         break;
     default:
         for (int k = 0; k < 2; k++) {
@@ -500,11 +554,13 @@ void RespawnPeople(void)
     for (int i = 0; i < TR_COUNT; i++) G.traders[i].vit = (Vitals){ .used = false };
     for (int c = 0; c < MAX_CARAVANS; c++) {
         Caravan *cv = &G.caravans[c];
-        if (cv->vit[0].dead || cv->vit[1].dead) {
+        bool lost = false;
+        for (int k = 0; k <= CARAVAN_GUARDS; k++) lost = lost || cv->vit[k].dead;
+        if (lost) {
             cv->state = CV_AWAY;
             cv->timer = 40.0f;
         }
-        cv->vit[0] = cv->vit[1] = (Vitals){ .used = false };
+        for (int k = 0; k <= CARAVAN_GUARDS; k++) cv->vit[k] = (Vitals){ .used = false };
     }
     G.wanted = 0;
     G.templeAccess = false;

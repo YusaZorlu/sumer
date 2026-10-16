@@ -4,7 +4,8 @@
 #include <string.h>
 
 #define SAVE_MAGIC    0x524D5553u
-#define SAVE_VERSION  3
+#define SAVE_VERSION  4
+#define MASK_BYTES    ((MAX_ANIMALS + 7) / 8)
 #define SAVE_MAX      8192
 #define OLD_PLOTS     9
 #define OLD_HENS      6
@@ -26,7 +27,9 @@ typedef struct {
     float henBorn[MAX_HENS], henMeal[MAX_HENS];
     int regrowIndex[MAX_RES];
     float regrow[MAX_RES];
-    unsigned long long animals;
+    unsigned char animals[MASK_BYTES];
+    int animalBytes;
+    bool mace;
 } SaveData;
 
 static int slot;
@@ -144,9 +147,11 @@ bool SaveGame(void)
         WF(&w, G.henBorn[i]);
         WF(&w, G.henMeal[i]);
     }
-    unsigned long long animals = AnimalsAwaitingSpring();
-    W32(&w, (unsigned)(animals & 0xffffffffu));
-    W32(&w, (unsigned)(animals >> 32));
+    unsigned char animals[MASK_BYTES];
+    AnimalsAwaitingSpring(animals, MASK_BYTES);
+    W8(&w, MASK_BYTES);
+    for (int i = 0; i < MASK_BYTES; i++) W8(&w, animals[i]);
+    W8(&w, G.hasMace ? 1u : 0u);
 
     char tmp[64];
     snprintf(tmp, sizeof(tmp), "%s.tmp", SaveFileName(slot));
@@ -196,7 +201,7 @@ static bool Parse(Reader *r, SaveData *s)
     if (version >= 2) {
         s->equip = (int)R8(r); s->armor = (int)R8(r); s->armorOwned = (int)R8(r);
         s->temple = (int)R8(r); s->prayDay = (int)R16(r);
-        if (s->equip > EQ_MELEE || s->armor >= ARMOR_KINDS || s->armorOwned >= 1 << ARMOR_KINDS) r->bad = true;
+        if (s->equip > EQ_MACE || s->armor >= ARMOR_KINDS || s->armorOwned >= 1 << ARMOR_KINDS) r->bad = true;
         if (s->armor != ARMOR_NONE && !(s->armorOwned & (1 << s->armor))) r->bad = true;
     }
     s->farmWater = s->coopWater = WATER_DAYS;
@@ -210,12 +215,21 @@ static bool Parse(Reader *r, SaveData *s)
             s->henBorn[i] = RF(r);
             s->henMeal[i] = RF(r);
         }
-        unsigned lo = R32(r);
-        s->animals = (unsigned long long)lo | (unsigned long long)R32(r) << 32;
+        // Version 3 kept 64 animals of the smaller world's herds; that mask no longer matches anyone.
+        if (version >= 4) {
+            s->animalBytes = (int)R8(r);
+            if (s->animalBytes > MASK_BYTES) return false;
+            for (int i = 0; i < s->animalBytes; i++) s->animals[i] = (unsigned char)R8(r);
+            s->mace = R8(r) != 0;
+        } else {
+            R32(r);
+            R32(r);
+        }
         if (s->farmWater < 0 || s->farmWater > WATER_DAYS || s->coopWater < 0 || s->coopWater > WATER_DAYS) r->bad = true;
         if (s->coopDry < 0 || s->blessT < 0 || s->blessT > 24.0f) r->bad = true;
     }
 
+    if (s->equip == EQ_MACE && !s->mace) r->bad = true;
     if (r->bad || s->day < 1 || s->hour < 0 || s->hour >= 24) return false;
     if (s->bagSlots < BAG_START || s->bagSlots > BAG_MAX || s->quiverMax > QUIVER_BIG || s->quiver > s->quiverMax) return false;
     if (s->bow > 2 || s->weapon > 2 || s->hens > (s->version >= 3 ? MAX_HENS : OLD_HENS)) return false;
@@ -272,7 +286,7 @@ bool LoadGame(void)
         if (k >= 0) G.res[k].farm = true;
     }
     // Older saves index trees and pits of a smaller map, so their regrowth is dropped.
-    for (int i = 0; i < s.regrowCount && s.version >= 3; i++)
+    for (int i = 0; i < s.regrowCount && s.version >= SAVE_VERSION; i++)
         if (s.regrowIndex[i] < G.resCount) G.res[s.regrowIndex[i]].regrow = s.regrow[i];
     G.farmWater = s.farmWater;
     G.coopWater = s.coopWater;
@@ -287,9 +301,10 @@ bool LoadGame(void)
     } else {
         NewDay();
     }
-    HoldAnimalsForSpring(s.animals);
+    HoldAnimalsForSpring(s.animals, s.animalBytes);
 
     G.equip = s.equip;
+    G.hasMace = s.mace;
     G.armor = s.armor;
     G.armorOwned = s.armorOwned;
     G.templeAccess = s.temple != 0;

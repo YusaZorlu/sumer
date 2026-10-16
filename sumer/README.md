@@ -33,10 +33,10 @@ Installs raylib with Homebrew if missing (or builds it from source without Homeb
 | C | Toggle crouch: slower, much harder for animals to notice |
 | Mouse / arrow keys, wheel | Look, zoom (zoom all the way in for first person) |
 | P | First person on/off |
-| 1 / 2 / 3 | Bow / melee weapon / hands free (also buttons in Tab) |
-| Left mouse | Bow: hold to draw, release to shoot (the camera follows the arrow). Melee: strike |
+| 1 / 2 / 3 / 4 | Bow / melee weapon / hands free / war mace, once you own one (also buttons in Tab) |
+| Left mouse | Bow: hold to draw, release to shoot (the camera follows the arrow). Melee or mace: strike |
 | V | Strike with the melee weapon |
-| Right mouse or Q | Parry with the melee weapon |
+| Right mouse or Q | Parry with the melee weapon or the mace |
 | Z | Arrow camera on/off |
 | E / F | Use, talk, pick up, climb a ladder, search a body, fill or pour a bucket, open the coop / alternate action (plant a date, pick another ferry fare) |
 | R | Refill quiver from carried arrow baskets |
@@ -44,7 +44,7 @@ Installs raylib with Homebrew if missing (or builds it from source without Homeb
 | T (hold) | Fast-forward time |
 | F5 | Save |
 | F11 or Alt+Enter | Borderless fullscreen on/off |
-| M | Map zoom (whole world, x2.5, x6 around you) |
+| M | Map zoom (whole world, x2.5, x6 around you); the map shows the main roads, both villages and the camps |
 | H | Controls and tips window |
 | Esc | Pause / close a panel (pause menu: save slots, language, save, new game, save & quit) |
 
@@ -63,7 +63,7 @@ düğmesine (ya da L'ye) bas.
 The city follows the plan of Ur around 2000 BC: an oval mud-brick wall with towers, the temple precinct
 (temenos) with the ziggurat, a harbor basin fed from the Euphrates, canals around the walls, and barley
 fields outside. Gates: south (main road), east, west, north, plus the harbor water gate. The map is
-720 m across; the city is about 200 m by 170 m.
+1080 m across; the city is about 200 m by 170 m.
 
 - Home (blue lintel): bed, storage jars (a bucket is in there), quern, kneading trough, oven, workbench
 - Farm east of home: 15 plots, a water ditch along its north edge, a well west of it. Hen coop
@@ -76,16 +76,32 @@ fields outside. Gates: south (main road), east, west, north, plus the harbor wat
   Nanna on top, where the priest blesses you once a day: full health and, for 24 hours, running and
   attacking 20% faster
 - Craft quarter (west, by the harbor): potters, kiln, smelter, smith
-- Caravans walk the southern trade road and set up stalls in the temple courtyard for a while
-- Eastern hills: copper mine and woodcutters' forest; more forest along the river and in the hills
-- Gazelles south-east, onagers north-east, boars in the south-west marsh, geese on the river
-- Wolves roam everywhere outside the walls; where the packs start is different every game. A den
-  sits by the ford at the far north end
+- Caravans walk the southern trade road and set up stalls in the temple courtyard for a while; each
+  travels with two spear-armed guards
+- Main roads (drawn on the map): the southern trade road; the east road from the east gate through the
+  hills to the hunters' village; the herders' road, which leaves the trade road south of the fields and
+  crosses the downs to the herders' village; the north road from the north gate to the ford; the ferry
+  road from the west gate; and tracks along the west bank. A few travellers walk them day and night
+  (with torches after dark), and wolves leave you alone while you walk in their company
+- Hunters' village, in a basin beyond the eastern hills: hide tents, drying racks, a smoking rack, an
+  archery butt. The hunter butchers game better than your oven and trades pelts, meat, arrows, a large
+  quiver and the composite bow
+- Herders' village, on the downs south-west of the city: mud houses and a sheepfold with its flock.
+  The shepherd is the only one who sells sheepskin and sheep, and takes plant waste as fodder
+- Eastern hills: copper mine and woodcutters' forest; more forest along the river, in the hills and
+  around the hunters
+- Gazelles south-east and around the hunters' basin, onagers north-east, boars in the south-west marsh
+  and the eastern woods, geese on the river
+- Wolves roam everywhere outside the walls in packs of four on the city side, six across the river;
+  where the packs start is different every game. A den sits by the ford at the far north end
+- A few snakes lie hidden in long grass outside the walls (river meadows on both banks)
 - Two raider camps on the city side of the river: one beside the southern trade road, one to the north
 - The ferry west of the city crosses the big river for a fare (bread, fish, a pot, wood, reeds or
   dates; F picks another fare you can pay). A shallow ford at the far north end can be walked, through
   wolf country
-- The west bank is empty for now except for gazelles, onagers, boars and a wolf pack
+- The west bank is green, rolling hill country: woods, flowering meadows rich in herbs, a reed-fringed
+  pond with fish. Gazelles, onagers, boars and two wolf packs live there, and two barbarian war camps,
+  north-west and south-west
 - Ladders lead up to the wall walk at seven points around the city
 - Guards at the temple gate, the south city gate and on patrol in the east and west quarters; clerics in
   the temple courtyard and on the ziggurat
@@ -112,9 +128,9 @@ shows the season and day.
 - The fields outside the walls and the neighbours' farms follow the seasons: green in spring, ripe in
   summer, cut in fall, bare in winter.
 - Six dry days kill growing wheat (palms survive). Clear a withered plot with E for plant waste; the
-  cattle herder gives one date for each. The herder is the only one who gives dates, and only for waste.
-- Spare seeds sell to the cattle herder (6 seeds for a jug of milk); wheat sells to the herder, the
-  farmer and the caravans.
+  shepherd in the herders' village takes it as fodder (2 for a jug of milk).
+- Spare seeds sell to the cattle herder (6 seeds for a jug of milk); wheat sells to the cattle herder
+  (cowhide), the shepherd (sheepskin), the farmer and the caravans.
 - The basket weaver makes more buckets (6 reeds).
 
 ## Hens
@@ -132,14 +148,22 @@ hen's age, life left and next meal.
 
 ## Food and health
 
-Everything costs food: idling and walking little, running more, and work by how hard it is. Mining
-copper costs the most (7), then cutting wood (4), digging clay (2), smithing and forging (2-3), fishing,
-cutting reeds, grinding, sowing and picking dates the least. Heavy work (2 food or more) is refused
+Everything costs food: idling and walking little, running more, and work by how hard it is. Picking
+dates is free; all other gathering costs food, and the prompt shows how much. Mining copper costs the
+most (16), twice what cutting wood costs (8), then digging clay (2), smithing and forging (2-3), and
+fishing (1.5), cutting reeds and gathering herbs (1) the least. Heavy work (2 food or more) is refused
 when you are too hungry for it.
 
 Health comes back on its own while your food is at 20% or more and nothing is attacking you. If you are
 brought down you wake at home the next morning with 30% health and the same food, without your
 carcasses (pelts are kept).
+
+Herbs grow in green places: the river meadows, the pastures around the herders, the hunters' glade,
+and above all the west bank (look for low sage-green clumps with purple, yellow or white flowers).
+Gathering one gives 2 herbs; the plant grows back in a day and a half. Click herbs in your baskets
+(Tab) to chew one: +10 health at once, then 2.5 health a second for 20 seconds, even in a fight and on
+an empty stomach (the HUD shows "Herbs" with the seconds left). Herbs also barter: the farmer gives
+seeds, the hunter arrows, the shepherd sheepskin and the Dilmun merchant tin.
 
 ## Saving
 
@@ -149,11 +173,13 @@ when you quit, and on F5, and loads the last slot used at start. The pause menu 
 and time: "Switch to this" saves the current game and loads that slot; on an empty slot a new game
 begins there. "New game" (click twice) erases only the slot in play.
 
-Each file is under 1 KB: day and time, your position, health and food, baskets, storage, quiver, bow,
-tools, weapon, armor, temple access, blessing, farm plots and water, coop and hens, weather, hunted
-animals and regrowing resources. Saves from earlier versions still load into slot 1 (the old 3x3 farm
-keeps its rows in the wider field, old hens start a fresh life). The world itself is rebuilt from a
-fixed seed, so it is never stored.
+Each file is a few KB at most: day and time, your position, health and food, baskets, storage,
+quiver, bow, tools, weapon, war mace, armor, temple access, blessing, farm plots and water, coop and
+hens, weather, hunted animals and regrowing resources. Saves from earlier versions still load (the old
+3x3 farm keeps its rows in the wider field, old hens start a fresh life); saves from before the bigger
+map keep everything you carry and own, but forget which animals were hunted and which trees and pits
+were regrowing, since those belonged to the smaller world. The world itself is rebuilt from a fixed
+seed, so it is never stored.
 
 ## Combat
 
@@ -161,6 +187,10 @@ fixed seed, so it is never stored.
 - Animals show health bars once they notice you or are hurt. Shots at unaware animals do double damage.
 - Melee weapon: Wooden club (14), Copper mace (24), Bronze sickle-sword (38), one strike a second.
   Forge upgrades at the smelter in the craft quarter with F: 3 copper ore + 2 wood, then 3 bronze + 2 wood.
+- War mace (key 4): the smith sells one for 2 bronze, 3 copper ore and 4 wood. Each blow (30, one every
+  1.4 seconds) sweeps a wide arc and strikes every animal and every foe in front of you, which helps
+  against a wolf pack or a band of raiders. A bystander is only hit if the blow was aimed at them. You
+  can parry with it too.
 - Bow damage: 20 / 28 / 40 by bow, +10 with bronze arrowheads.
 - Parry: before a person strikes, a yellow mark shows over their head. Press right mouse or Q with
   your melee weapon in hand while facing them: the mark turns green, the blow does nothing, and they
@@ -183,13 +213,19 @@ grudges are forgotten.
 Search a dead body with E. Townsfolk carry a little food, clerics bread and dates, workers a few of
 what they gather, guards a good weapon (the sickle-sword if yours is worse) and arrows.
 
-Raiders camp south and north of the city and attack on sight. Each is stronger than a townsperson
-(190 health, light armor, heavy blows): with the starting club and no armor you lose a 1v1 even if you
-strike first; with the copper mace and leather armor you win with about half your health, more if you
-parry. Killing them is no crime. Guards (and caravan guards) attack any raider that has left its camp,
-so leading raiders back to the city brings help; the guards return to their posts afterwards. Each
-camp's chest holds bronze, tin, ore, arrows and the like; it is restocked each dawn, and dead raiders
-return the next day while you are away from the camp.
+Raiders camp south and north of the city and attack on sight. Each is much stronger than a
+townsperson (260 health, light armor, blows of 19): with the starting club you stand no chance; with the
+copper mace and leather armor you lose unless you parry well; with the bronze sickle-sword and leather
+armor you win, narrowly unless you parry. Chewing herbs mid-fight helps. Killing them is no crime. Guards (and caravan guards) attack any raider that has left its
+camp, so leading raiders back to the city brings help; the guards return to their posts afterwards.
+Each camp's chest holds bronze, tin, ore, arrows and the like; it is restocked each dawn, and dead
+raiders return the next day while you are away from the camp.
+
+Barbarians hold two war camps across the river, north-west and south-west, behind palisades with a
+lookout, a war banner and skulls on poles. They are twice as strong as the raiders (520 health, blows
+of 38) and wear horned helmets and carry bronze axes: fight them from range, parry, wear your best
+armor, or bring the war mace. No guards come out there. Their bodies and chests hold about twice the
+loot.
 
 ## Armor
 
@@ -199,33 +235,48 @@ return the next day while you are away from the camp.
 | Leather armor | Workbench at home, E: 2 cowhide + 2 sheepskin | 25% less |
 | Bronze armor | Smith: 5 bronze + 3 sheepskin + 3 cowhide | 40% less |
 
-The cattle herder trades cowhide and sheepskin; wolves give a pelt each (E on a dead wolf). New armor
-is put on when it is better than what you wear. Switch armor in Tab.
+The cattle herder in the city trades cowhide (and milk); sheepskin comes only from the shepherd in the
+herders' village. Wolves give a pelt each (E on a dead wolf). New armor is put on when it is better than
+what you wear. Switch armor in Tab.
 
 ## Jobs
 
 | Job | Where | You get |
 |---|---|---|
-| Wood | Any forest tree | 2 wood (4 with a bronze axe), costs 4 food |
+| Wood | Any forest tree | 2 wood (4 with a bronze axe), costs 8 food |
 | Clay | Clay pits on the river bank | 4 clay, costs 2 food |
-| Fishing | River bank, pier west of the city, harbor | 2 fish (grill 2 in the oven) |
-| Mining | Copper veins at the eastern mine | 2 copper ore (4 with a bronze pick), costs 7 food |
+| Fishing | River bank, pier west of the city, harbor, the west-bank pond | 2 fish (grill 2 in the oven), costs 1.5 food |
+| Mining | Copper veins at the eastern mine | 2 copper ore (4 with a bronze pick), costs 16 food |
+| Herbs | Green meadows, most of all across the river | 2 herbs, costs 1 food |
 | Pottery | Kiln, craft quarter | 3 clay + 1 wood -> 2 pots |
 | Bronze | Smelter, craft quarter | 2 copper ore + 1 tin + 2 wood -> 1 bronze |
 
-Reed beds and clay pits come back 2 days after you take from them, fishing spots and date palms after
-1 day, felled trees after 16 hours and copper veins after 10 hours.
+Reed beds and clay pits come back 2 days after you take from them, herbs after a day and a half,
+fishing spots and date palms after 1 day, felled trees after 16 hours and copper veins after 10 hours.
 
 Tin comes only from the caravans. The smith turns bronze into an axe, a pick, arrowheads (+10 damage)
 or bronze armor. Workers do these jobs from 6:00 to 18:30 and go home at night.
 
 ## Wolves and animals
 
-Wolves hunt you only when you are alone outside the walls: no worker, villager or caravan within about
-20 m. By day the job sites are safe; at night, or out in the empty steppe, a pack will chase you.
-Each bite hurts, and the pack circles between bites. Hitting a wolf turns its pack on you, even near
-people; a badly wounded wolf runs off. Run back to the city, crouch to be noticed later, or wear a
-wolf-pelt cloak. Gazelles, onagers and geese notice you less at night; boars and wolves don't.
+Wolves hunt you only when you are alone outside the walls: no worker, villager, traveller or caravan
+within about 20 m. By day the job sites and the villages are safe; at night, or out in the empty
+steppe, a pack will chase you. Packs are four strong on the city side and six across the river, and a
+wolf takes 60 damage to kill. Each bite hurts, and the pack circles between bites. Hitting a wolf turns
+its pack on you, even near people; a badly wounded wolf runs off. Run back to the city, crouch to be
+noticed later, or wear a wolf-pelt cloak. Gazelles, onagers and geese notice you less at night; boars
+and wolves don't.
+
+Arrows that land close to an animal or whistle past it count too: prey bolts, and wolves come for you
+with their whole pack (even past a wolf-pelt cloak).
+
+Boars are tough (135 health). Hurt one and it turns and charges you, goring again and again until it
+gives up after a while, you outrun it, or it is nearly dead; the rest of the sounder runs.
+
+Snakes lie hidden in tufts of long grass outside the walls; there are only a handful in the whole
+world. Come within about 3 m (less when crouching, more when running) and one rears up with a hiss as a
+warning; stay and it strikes (8 damage) every couple of seconds. Back away and it settles down again;
+an arrow landing close sends it slithering off to new grass. A dead snake gives nothing.
 
 Animals you kill stay gone until the next spring, when their herds are full again.
 
@@ -235,17 +286,19 @@ Animals you kill stay gone until the next spring, when their herds are full agai
 |---|---|
 | `src/game.h` | Shared types, constants, palette, global state |
 | `src/game.c` | Init, update loop, clock, sleep, hunger, health, gathering, interaction targets, slot switching |
-| `src/terrain.c` | Hills height field, ground mesh and colours, ray vs terrain |
+| `src/terrain.c` | Hills height field (east, the downs, the west bank), ground mesh and colours, view culling, ray vs terrain |
 | `src/city.c` | City walls, towers, wall walk and ladders, gates, harbor, river and ford, canals, bridges, seasonal fields, house generator |
 | `src/temple.c` | Temenos, ziggurat stages, rooms, stairways, gatehouse offering, shrine |
 | `src/combat.c` | Health, armor and damage for people, witnesses and alarms, chasing, guards against raiders, looting, dawn reset |
-| `src/raiders.c` | Two raider camps, their idle routine, the restocked chests |
-| `src/world.c` | Box store, collision queries, palms, reeds, forests, resources, sky and season light, culled drawing |
+| `src/raiders.c` | Two raider camps and two barbarian war camps, their idle routine, the restocked chests |
+| `src/world.c` | Box store, collision queries, water and ponds, palms, reeds, forests, west-bank greenery, herbs, resources, sky and season light, culled drawing |
+| `src/roads.c` | Main roads: their routes, terrain-following strips, walking heights for travellers, distance queries, the map overlay |
+| `src/villages.c` | The hunters' and herders' villages, the hunter's and shepherd's offers, the sheepfold flock, travellers |
 | `src/jobs.c` | Craft quarter, docks, ferry, mine, woodcutters' camp, farmhands, daylight workers, smith |
 | `src/caravan.c` | Trade-road caravans, their stalls and offers |
 | `src/farm.c` | Seasons, weather and rain, farm plots, ditch and well, buckets, coop and hens, city farms, crop stages |
 | `src/village.c` | Home stations, pen, market traders and offers, villagers, recipes, blessing |
-| `src/wildlife.c` | Animal herds and stats, awareness AI, wolf packs, spring return, arrows |
+| `src/wildlife.c` | Animal herds and stats, awareness AI, wolf packs, boar charges, snakes, reactions to arrows, spring return, arrows, melee and war-mace strikes |
 | `src/items.c` | Item table and stack sizes, baskets, storage, barter checks, armor table |
 | `src/player.c` | Movement, jumping, stairs, crouch, ladders, equipment, bow, camera |
 | `src/ui.c` | HUD, minimap, inventory, storage, trade, coop, help and pause panels |
@@ -257,8 +310,9 @@ Animals you kill stay gone until the next spring, when their herds are full agai
 | `src/lang.c` | Language setting, text lookup, the pixel font extended with the Turkish letters |
 | `src/turkish.c` | Turkish text for every English string in the game |
 
-Balance knobs: offers and recipes at the top of `village.c`, `jobs.c` and `caravan.c`; gather yields
-and food costs in `GATHER` in `game.c`; hunger rates at the top of `game.c`; growth, water, hen and
-rain numbers at the top of `farm.c` and in `game.h`; animal herds in `HERDS` and stats in `DEFS` in
-`wildlife.c`; stack sizes and food values in `ITEMS` in `items.c`; hills in `terrain.c`; health,
-armor, damage and sight for people in `ROLES` in `combat.c`.
+Balance knobs: offers and recipes at the top of `village.c`, `villages.c`, `jobs.c` and `caravan.c`;
+gather yields and food costs in `GATHER` in `game.c`; hunger rates at the top of `game.c`; herb healing
+in `game.h`; growth, water, hen and rain numbers at the top of `farm.c` and in `game.h`; animal herds in
+`HERDS`, stats in `DEFS` and boar, snake and war-mace numbers at the top of `wildlife.c`; stack sizes
+and food values in `ITEMS` in `items.c`; hills in `terrain.c`; roads in `roads.c`; health, armor,
+damage and sight for people (raiders and barbarians included) in `ROLES` in `combat.c`.

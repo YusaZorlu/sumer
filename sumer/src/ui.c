@@ -144,6 +144,8 @@ static int SlotWidget(Rectangle r, Slot s, bool locked, int index)
                     : "%s: click to eat (+%d food), right-click or X to drop", ItemName(s.item), d->food);
             else if (s.item == IT_ARROWS)
                 Fmt(hoverText, sizeof(hoverText), "Arrows: click to refill your quiver, right-click or X to drop");
+            else if (s.item == IT_HERB)
+                Fmt(hoverText, sizeof(hoverText), "Herbs: click to chew one (heals now and for %d seconds), right-click or X to drop", (int)HERB_SECONDS);
             else
                 Fmt(hoverText, sizeof(hoverText), "%s: right-click or X to drop", ItemName(s.item));
         }
@@ -178,6 +180,7 @@ static void DrawBagPanel(void)
         int click = SlotWidget(s, G.bag[i], i >= G.bagSlots, i);
         if (click == CLICK_LEFT) {
             if (G.bag[i].item == IT_ARROWS) RefillQuiver();
+            else if (G.bag[i].item == IT_HERB) UseHerb();
             else EatSlot(i);
         } else if (click == CLICK_RIGHT && G.bag[i].item != IT_NONE) {
             Say("Dropped %d %s.", G.bag[i].count, ItemName(G.bag[i].item));
@@ -193,12 +196,14 @@ static void DrawBagPanel(void)
     Text(TextFormat(L("Quiver %d/%d    arrow speed %d m/s"), G.quiver, G.quiverMax, (int)BowSpeed()), x0 + 420, y, 18, C_TEXT);
     y += 30;
 
-    static const int eqs[3] = { EQ_BOW, EQ_MELEE, EQ_NONE };
+    static const int eqs[4] = { EQ_BOW, EQ_MELEE, EQ_MACE, EQ_NONE };
     Text("In hand", x0, y + 8, 18, C_TEXT);
-    for (int k = 0; k < 3; k++) {
-        Rectangle b = { x0 + 90 + 190.0f * (float)k, y, 180, 32 };
+    for (int k = 0; k < 4; k++) {
+        Rectangle b = { x0 + 90 + 176.0f * (float)k, y, 168, 32 };
+        bool owned = eqs[k] != EQ_MACE || G.hasMace;
+        const char *label = owned ? EquipName(eqs[k]) : TextFormat(L("(%s)"), MaceName());
         if (G.equip == eqs[k]) DrawRectangleLinesEx((Rectangle){ b.x - 3, b.y - 3, b.width + 6, b.height + 6 }, 2, C_GOLD);
-        if (Button(b, EquipName(eqs[k]), G.equip != eqs[k], 0)) SetEquip(eqs[k]);
+        if (Button(b, label, owned && G.equip != eqs[k], 0)) SetEquip(eqs[k]);
     }
     y += 40;
     static const int armors[4] = { ARMOR_BRONZE, ARMOR_LEATHER, ARMOR_WOLF, ARMOR_NONE };
@@ -217,7 +222,7 @@ static void DrawBagPanel(void)
     y += 44;
     Text(TextFormat(L("Coop: %d hens, feed %d, %d eggs waiting, water %.1f days    Farm water %.1f days"), G.henCount, (int)G.coopFeed,
                     G.coopEggs, G.coopWater, G.farmWater), x0, y, 18, C_TEXT);
-    Text(hoverText[0] ? hoverText : "Click or 1-6: eat / drink / refill quiver    Right-click or X: drop    Tab: close",
+    Text(hoverText[0] ? hoverText : "Click or 1-6: eat / drink / chew herbs / refill quiver    Right-click or X: drop    Tab: close",
          x0, r.y + r.height - 34, 16, hoverText[0] ? C_GOLD : C_DIM);
 }
 
@@ -404,7 +409,7 @@ static void DrawHelpPanel(void)
     static const char *const keys[][2] = {
         { "WASD", "move" }, { "Shift", "run" }, { "Space", "jump" }, { "C", "crouch (stealth)" },
         { "Mouse", "look" }, { "Wheel", "zoom; all the way in is first person" }, { "P", "first person on/off" },
-        { "1 / 2 / 3", "bow / melee weapon / hands free" },
+        { "1 / 2 / 3", "bow / melee weapon / hands free" }, { "4", "war mace (the smith sells one)" },
         { "Left mouse", "draw and release (bow), strike (melee)" },
         { "Right mouse, Q", "parry with the melee weapon" }, { "V", "strike" },
         { "E", "use, talk, pick up, climb, search" }, { "F", "alternate action" },
@@ -418,28 +423,34 @@ static void DrawHelpPanel(void)
         "Seasons last 9 days. Wheat needs 10 days with water, so sow by summer's 8th day. Nothing grows in winter. "
         "Harvest: 4 wheat, 2 seeds. The farm and the coop each hold 6 days of water. Fill the bucket from your storeroom "
         "at the well or the river (E), then pour it into the farm ditch or at the coop. Rain fills both; 6 dry days kill "
-        "growing wheat. The cattle herder takes withered plant waste and spare seeds.",
+        "growing wheat. The shepherd takes withered plant waste, the cattle herder spare seeds.",
         "Hens live 12 seasons, eat every 3 days, and die after 6 days without food or water. E at the coop shows each hen.",
         "Home: quern, trough, oven, storage, bed. The workbench sews leather armor or a wolf-pelt cloak. The smith makes "
-        "bronze armor (5 bronze, 3 sheepskin, 3 cowhide). Tin comes with the caravans. Gathering costs food; mining and "
-        "woodcutting cost the most. Health returns while food is at 20% or more.",
+        "bronze armor (5 bronze, 3 sheepskin, 3 cowhide) and sells a war mace (key 4) that strikes everything in front of "
+        "you. Tin comes with the caravans. Picking dates is free; all other gathering costs food, mining the most, then "
+        "woodcutting. Health returns while food is at 20% or more.",
         "Ziggurat: market in the base. The priest at the top blesses you for a day: +20% running and attack speed. "
-        "Guards fight raiders who follow you. Raiders camp south and north of the city. The ferry west of the city "
-        "crosses the river for a fare. The far north ford is wolf country.",
+        "Guards fight raiders who follow you. Raiders camp south and north of the city; barbarians twice as strong camp "
+        "across the river. The ferry west of the city crosses the river for a fare. The far north ford is wolf country.",
+        "Roads on the map lead east to the hunters' village and south-west to the herders' village; travellers walk them, "
+        "and wolves leave you alone in company. Only the shepherd sells sheepskin and sheep.",
+        "Herbs grow in green meadows, most of all across the river: chew one from your baskets to heal fast. Snakes hide "
+        "in long grass; a hiss means back off (crouch to creep by). A hurt boar charges. Arrows landing close send prey "
+        "running and bring wolves down on you.",
     };
     const int nk = (int)(sizeof(keys) / sizeof(keys[0])), nt = (int)(sizeof(tips) / sizeof(tips[0]));
-    Rectangle r = PanelRect(1040, 640);
-    float x0 = r.x + 28, x1 = r.x + 500, y0 = r.y + 64;
+    Rectangle r = PanelRect(fminf(1200.0f, (float)GetScreenWidth() - 20.0f), fminf(690.0f, (float)GetScreenHeight() - 16.0f));
+    float x0 = r.x + 24, x1 = r.x + 500, y0 = r.y + 60;
 
-    Text("Controls", x0, r.y + 22, 26, C_GOLD);
-    Text("Tips", x1, r.y + 22, 26, C_GOLD);
+    Text("Controls", x0, r.y + 20, 26, C_GOLD);
+    Text("Tips", x1, r.y + 20, 26, C_GOLD);
     for (int i = 0; i < nk; i++) {
         Text(keys[i][0], x0, y0 + 23.0f * (float)i, 16, C_GOLD);
-        Text(keys[i][1], x0 + 130, y0 + 23.0f * (float)i, 16, C_TEXT);
+        Text(keys[i][1], x0 + 126, y0 + 23.0f * (float)i, 16, C_TEXT);
     }
     float ty = y0;
-    for (int i = 0; i < nt; i++) ty += Paragraph(tips[i], x1, ty, r.x + r.width - 28 - x1, 16, 21) + 10;
-    Text("H or Esc: close", r.x + r.width - 170, r.y + r.height - 32, 16, C_DIM);
+    for (int i = 0; i < nt; i++) ty += Paragraph(tips[i], x1, ty, r.x + r.width - 24 - x1, 15, 19) + 7;
+    Text("H or Esc: close", r.x + r.width - 170, r.y + r.height - 30, 16, C_DIM);
 }
 
 static void DrawAnimalBars(void)
@@ -448,7 +459,7 @@ static void DrawAnimalBars(void)
 
     for (int i = 0; i < G.animalCount; i++) {
         const Animal *a = &G.animals[i];
-        if (!a->active || a->state == ST_DEAD) continue;
+        if (!a->active || a->state == ST_DEAD || AnimalHidden(a)) continue;
         float dist = XZDist(a->pos, G.player.pos);
         int max = AnimalMaxHp(a->type);
         bool hurt = a->hp < max, aware = a->state != ST_CALM;
@@ -515,14 +526,15 @@ static void DrawStatus(void)
 {
     int hh = (int)G.hour, mm = (int)((G.hour - (float)hh) * 60.0f);
 
-    bool wolves = AnyWolfHunting();
-    bool alert = G.alone || wolves || G.wanted > 0;
+    bool wolves = AnyWolfHunting(), beast = AnyBeastAttacking();
+    bool alert = G.alone || wolves || beast || G.wanted > 0;
 
     DrawRectangle(12, 12, 360, alert ? 208 : 186, Fade(BLACK, 0.4f));
     Text(TextFormat(L("Day %d  %02d:%02d  %s"), G.day, hh, mm, L(PhaseName())), 24, 20, 22, RAYWHITE);
     Text(TextFormat(L("%s, day %d of %d"), SeasonName(Season()), SeasonDay(), SEASON_DAYS), 24, 46, 18, C_GOLD);
-    const char *status = G.blessT > 0 ? TextFormat(L("Blessed %dh"), (int)ceilf(G.blessT)) : G.raining ? L("Raining") : "";
-    Text(status, 360.0f - (float)Measure(status, 18), 46, 18, G.blessT > 0 ? C_GOOD : (Color){ 170, 200, 230, 255 });
+    const char *status = G.herbT > 0 ? TextFormat(L("Herbs %ds"), (int)ceilf(G.herbT))
+                       : G.blessT > 0 ? TextFormat(L("Blessed %dh"), (int)ceilf(G.blessT)) : G.raining ? L("Raining") : "";
+    Text(status, 360.0f - (float)Measure(status, 18), 46, 18, G.herbT > 0 || G.blessT > 0 ? C_GOOD : (Color){ 170, 200, 230, 255 });
     if (G.raining)
         for (int k = 0; k < 3; k++)
             DrawLineEx((Vector2){ 334.0f + 8.0f * (float)k, 22 }, (Vector2){ 330.0f + 8.0f * (float)k, 36 }, 2, (Color){ 170, 200, 230, 255 });
@@ -539,6 +551,7 @@ static void DrawStatus(void)
     Text(TextFormat(L("Armor: %s"), ArmorName(G.armor)), 24, 168, 18, C_TEXT);
     if (G.wanted > 0) Text(TextFormat(L("Wanted by the guards  %d:%02d"), (int)G.wanted / 60, (int)G.wanted % 60), 24, 190, 18, C_BAD);
     else if (wolves) Text("Wolves are hunting you!", 24, 190, 18, C_BAD);
+    else if (beast) Text("A wild beast is attacking you!", 24, 190, 18, C_BAD);
     else if (G.alone) Text("Alone outside the walls", 24, 190, 18, C_GOLD);
 }
 
@@ -557,15 +570,25 @@ static void DrawMinimap(int ox, int oy, int size)
         const Box *b = &G.boxes[i];
         if (!b->solid || (b->size.x * s < 1.0f && b->size.z * s < 1.0f)) continue;
         if (fabsf(b->pos.x - cx) > view + b->size.x || fabsf(b->pos.z - cz) > view + b->size.z) continue;
-        if (b->pos.y - b->size.y / 2 > TerrainHeight(b->pos.x, b->pos.z) + 0.5f) continue;
+        if (!b->water && b->pos.y - b->size.y / 2 > TerrainHeight(b->pos.x, b->pos.z) + 0.5f) continue;
         Rectangle r = { mx + (b->pos.x - b->size.x / 2) * s, mz + (b->pos.z - b->size.z / 2) * s, fmaxf(b->size.x * s, 1), fmaxf(b->size.z * s, 1) };
-        DrawRectangleRec(r, b->water ? COL_WATER : COL_MUD_DARK);
+        if (b->water && b->shape == SHAPE_CYL) DrawEllipse((int)(mx + b->pos.x * s), (int)(mz + b->pos.z * s), b->size.x * s * 0.4f, b->size.z * s * 0.4f, COL_WATER);
+        else DrawRectangleRec(r, b->water ? COL_WATER : COL_MUD_DARK);
     }
+    DrawRoadMap(mx, mz, s);
     DrawRectangleLinesEx((Rectangle){ mx + (G.home.x - 6) * s, mz + (G.home.z - 6) * s, 12 * s, 12 * s }, 2, COL_LAPIS);
+    for (int v = 0; v < VILLAGES; v++) {
+        Vector3 c = VillageCenter(v);
+        Vector2 at = { mx + c.x * s, mz + c.z * s };
+        DrawRectangleRec((Rectangle){ at.x - 4, at.y - 2, 8, 6 }, (Color){ 240, 226, 190, 255 });
+        DrawTriangle((Vector2){ at.x - 5, at.y - 2 }, (Vector2){ at.x + 5, at.y - 2 }, (Vector2){ at.x, at.y - 7 }, COL_BLANKET);
+        DrawRectangleLinesEx((Rectangle){ at.x - 4, at.y - 2, 8, 6 }, 1, Fade(BLACK, 0.6f));
+        if (zoom > 1.0f) Text(VillageName(v), at.x + 7, at.y - 6, 10, Fade(BLACK, 0.85f));
+    }
     for (int i = 0; i < G.animalCount; i++) {
         const Animal *a = &G.animals[i];
-        if (!a->active || XZDist(a->pos, G.player.pos) > 60) continue;
-        Color c = a->state == ST_DEAD ? BLACK : (a->type == AN_WOLF && a->state == ST_HUNT) ? RED : COL_BLANKET;
+        if (!a->active || AnimalHidden(a) || XZDist(a->pos, G.player.pos) > 60) continue;
+        Color c = a->state == ST_DEAD ? BLACK : a->state == ST_HUNT ? RED : COL_BLANKET;
         DrawCircleV((Vector2){ mx + a->pos.x * s, mz + a->pos.z * s }, 2, c);
     }
     for (int i = 0; i < TR_COUNT; i++) {
@@ -584,11 +607,14 @@ static void DrawMinimap(int ox, int oy, int size)
         for (int i = 0; i < G.ladderCount; i++)
             DrawRectangle((int)(mx + G.ladders[i].base.x * s) - 2, (int)(mz + G.ladders[i].base.z * s) - 2, 4, 4, COL_WOOD);
     }
+    // Raider camps as red crosses; the barbarians' across the river darker and larger.
     for (int c = 0; c < CAMPS; c++) {
         Vector3 cc = CampCenter(c);
         Vector2 camp = { mx + cc.x * s, mz + cc.z * s };
-        DrawLineEx((Vector2){ camp.x - 4, camp.y - 4 }, (Vector2){ camp.x + 4, camp.y + 4 }, 2, C_BAD);
-        DrawLineEx((Vector2){ camp.x - 4, camp.y + 4 }, (Vector2){ camp.x + 4, camp.y - 4 }, 2, C_BAD);
+        float k = c >= EAST_CAMPS ? 5.0f : 4.0f;
+        Color col = c >= EAST_CAMPS ? (Color){ 150, 20, 20, 255 } : C_BAD;
+        DrawLineEx((Vector2){ camp.x - k, camp.y - k }, (Vector2){ camp.x + k, camp.y + k }, 2.5f, col);
+        DrawLineEx((Vector2){ camp.x - k, camp.y + k }, (Vector2){ camp.x + k, camp.y - k }, 2.5f, col);
     }
     Vector3 fe = G.stations[STN_FERRY_E], fw = G.stations[STN_FERRY_W];
     DrawLineEx((Vector2){ mx + fe.x * s, mz + fe.z * s }, (Vector2){ mx + fw.x * s, mz + fw.z * s }, 2, C_GOLD);

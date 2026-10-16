@@ -124,40 +124,50 @@ void DrawShadedCylinder(Vector3 base, float rx, float rz, float h, float topScal
 }
 
 enum { BLOB_SLICES = 8, BLOB_STACKS = 5 };
-static float blobCt[BLOB_SLICES + 1], blobSt[BLOB_SLICES + 1], blobCp[BLOB_STACKS + 1], blobSp[BLOB_STACKS + 1];
-static float blobShade[BLOB_STACKS][BLOB_SLICES];
+
+// A blob at two levels of detail: the full one, and a coarser one for things far away.
+typedef struct {
+    int slices, stacks;
+    float ct[BLOB_SLICES + 1], st[BLOB_SLICES + 1], cp[BLOB_STACKS + 1], sp[BLOB_STACKS + 1];
+    float shade[BLOB_STACKS][BLOB_SLICES];
+} BlobMesh;
+
+static BlobMesh blobs[2] = { { .slices = BLOB_SLICES, .stacks = BLOB_STACKS }, { .slices = 6, .stacks = 3 } };
 static bool blobReady;
 
 static void BlobTables(void)
 {
-    for (int i = 0; i <= BLOB_SLICES; i++) {
-        blobCt[i] = cosf(2.0f * PI * (float)i / BLOB_SLICES);
-        blobSt[i] = sinf(2.0f * PI * (float)i / BLOB_SLICES);
-    }
-    for (int j = 0; j <= BLOB_STACKS; j++) {
-        blobCp[j] = cosf(-PI / 2 + PI * (float)j / BLOB_STACKS);
-        blobSp[j] = sinf(-PI / 2 + PI * (float)j / BLOB_STACKS);
-    }
-    for (int j = 0; j < BLOB_STACKS; j++) {
-        float pm = -PI / 2 + PI * ((float)j + 0.5f) / BLOB_STACKS;
-        for (int i = 0; i < BLOB_SLICES; i++) {
-            float tm = 2.0f * PI * ((float)i + 0.5f) / BLOB_SLICES;
-            blobShade[j][i] = NormalShade(cosf(pm) * cosf(tm), sinf(pm), cosf(pm) * sinf(tm));
+    for (int m = 0; m < 2; m++) {
+        BlobMesh *b = &blobs[m];
+        for (int i = 0; i <= b->slices; i++) {
+            b->ct[i] = cosf(2.0f * PI * (float)i / (float)b->slices);
+            b->st[i] = sinf(2.0f * PI * (float)i / (float)b->slices);
+        }
+        for (int j = 0; j <= b->stacks; j++) {
+            b->cp[j] = cosf(-PI / 2 + PI * (float)j / (float)b->stacks);
+            b->sp[j] = sinf(-PI / 2 + PI * (float)j / (float)b->stacks);
+        }
+        for (int j = 0; j < b->stacks; j++) {
+            float pm = -PI / 2 + PI * ((float)j + 0.5f) / (float)b->stacks;
+            for (int i = 0; i < b->slices; i++) {
+                float tm = 2.0f * PI * ((float)i + 0.5f) / (float)b->slices;
+                b->shade[j][i] = NormalShade(cosf(pm) * cosf(tm), sinf(pm), cosf(pm) * sinf(tm));
+            }
         }
     }
     blobReady = true;
 }
 
-void DrawShadedBlob(Vector3 c, Vector3 r, Color col)
+static void BlobQuads(const BlobMesh *b, Vector3 c, Vector3 r, Color col)
 {
     if (!blobReady) BlobTables();
-    rlCheckRenderBatchLimit(BLOB_SLICES * BLOB_STACKS * 4);
+    rlCheckRenderBatchLimit(b->slices * b->stacks * 4);
     rlBegin(RL_QUADS);
-    for (int j = 0; j < BLOB_STACKS; j++) {
-        float cp0 = blobCp[j], sp0 = blobSp[j], cp1 = blobCp[j + 1], sp1 = blobSp[j + 1];
-        for (int i = 0; i < BLOB_SLICES; i++) {
-            float ct0 = blobCt[i], st0 = blobSt[i], ct1 = blobCt[i + 1], st1 = blobSt[i + 1];
-            SetColor(Lit(col, blobShade[j][i]));
+    for (int j = 0; j < b->stacks; j++) {
+        float cp0 = b->cp[j], sp0 = b->sp[j], cp1 = b->cp[j + 1], sp1 = b->sp[j + 1];
+        for (int i = 0; i < b->slices; i++) {
+            float ct0 = b->ct[i], st0 = b->st[i], ct1 = b->ct[i + 1], st1 = b->st[i + 1];
+            SetColor(Lit(col, b->shade[j][i]));
             rlVertex3f(c.x + r.x * cp0 * ct0, c.y + r.y * sp0, c.z + r.z * cp0 * st0);
             rlVertex3f(c.x + r.x * cp1 * ct0, c.y + r.y * sp1, c.z + r.z * cp1 * st0);
             rlVertex3f(c.x + r.x * cp1 * ct1, c.y + r.y * sp1, c.z + r.z * cp1 * st1);
@@ -165,6 +175,16 @@ void DrawShadedBlob(Vector3 c, Vector3 r, Color col)
         }
     }
     rlEnd();
+}
+
+void DrawShadedBlob(Vector3 c, Vector3 r, Color col)
+{
+    BlobQuads(&blobs[0], c, r, col);
+}
+
+void DrawShadedBlobFar(Vector3 c, Vector3 r, Color col)
+{
+    BlobQuads(&blobs[1], c, r, col);
 }
 
 static void Limb(float x, float y0, float z, float r, float h, Color c)

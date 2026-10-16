@@ -9,6 +9,8 @@
 #define DRAW_TIME     0.85f
 #define SWING_TIME    0.45f
 #define SWING_COOL    1.0f
+#define MACE_TIME     0.55f
+#define MACE_COOL     1.4f
 #define BLESS_BOOST   1.2f
 #define PARRY_TIME    0.45f
 #define PARRY_COOL    0.9f
@@ -44,12 +46,16 @@ static void UpdateLook(Player *p, float dt, bool input)
 
 const char *EquipName(int eq)
 {
-    return eq == EQ_BOW ? L(BOW_NAMES[G.bow]) : eq == EQ_MELEE ? WeaponName(G.weapon) : L("Bare hands");
+    return eq == EQ_BOW ? L(BOW_NAMES[G.bow]) : eq == EQ_MELEE ? WeaponName(G.weapon) : eq == EQ_MACE ? MaceName() : L("Bare hands");
 }
 
 void SetEquip(int eq)
 {
     if (G.equip == eq) return;
+    if (eq == EQ_MACE && !G.hasMace) {
+        Say("You have no war mace. The smith in the craft quarter makes one.");
+        return;
+    }
     G.equip = eq;
     G.player.aiming = false;
     G.player.draw = 0;
@@ -197,14 +203,15 @@ void UpdatePlayer(float dt, bool input)
     if (G.parryCool > 0) G.parryCool -= dt;
     bool strike = G.cursorLocked && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !G.ignoreClick;
     bool parry = (G.cursorLocked && IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) || IsKeyPressed(KEY_Q);
-    if (input && G.equip == EQ_MELEE && G.parryCool <= 0 && G.parryT <= 0 && G.swingT <= 0 && parry) {
+    bool armed = G.equip == EQ_MELEE || G.equip == EQ_MACE, mace = G.equip == EQ_MACE;
+    if (input && armed && G.parryCool <= 0 && G.parryT <= 0 && G.swingT <= 0 && parry) {
         G.parryT = PARRY_TIME;
         G.parryCool = PARRY_COOL;
         p->facing = p->yaw + PI;
     }
-    if (input && G.equip == EQ_MELEE && G.swingCool <= 0 && G.parryT <= 0 && (strike || IsKeyPressed(KEY_V))) {
-        G.swingT = SWING_TIME;
-        G.swingCool = SWING_COOL / Boost();
+    if (input && armed && G.swingCool <= 0 && G.parryT <= 0 && (strike || IsKeyPressed(KEY_V))) {
+        G.swingT = mace ? MACE_TIME : SWING_TIME;
+        G.swingCool = (mace ? MACE_COOL : SWING_COOL) / Boost();
         MeleeStrike();
     }
 
@@ -313,6 +320,8 @@ void FollowCamera(float dt)
     for (int i = 0; i < G.boxCount; i++) {
         const Box *b = &G.boxes[i];
         if (b->size.y < 1.0f || b->water) continue;
+        float reach = dist + (b->size.x + b->size.z) * 0.5f;
+        if (fabsf(b->pos.x - target.x) > reach || fabsf(b->pos.z - target.z) > reach) continue;
         BoundingBox bb = { Vector3Subtract(b->pos, Vector3Scale(b->size, 0.5f)),
                            Vector3Add(b->pos, Vector3Scale(b->size, 0.5f)) };
         RayCollision hit = GetRayCollisionBox(ray, bb);
@@ -373,6 +382,34 @@ static void DrawWeapon(const Player *p)
     rlPopMatrix();
 }
 
+// Rests on the shoulder; a strike sweeps it flat across the front from one side to the other.
+static void DrawMace(const Player *p)
+{
+    float k = Clamp(G.swingT / MACE_TIME, 0.0f, 1.0f);
+    float shoulder = p->crouching ? 1.04f : 1.42f;
+
+    rlPushMatrix();
+    rlTranslatef(p->pos.x, p->pos.y + shoulder, p->pos.z);
+    rlRotatef(p->facing * RAD2DEG, 0, 1, 0);
+    if (G.parryT > 0) {
+        rlTranslatef(0.3f, 0.12f, 0.38f);
+        rlRotatef(-75.0f, 0, 1, 0);
+        rlRotatef(-25.0f, 1, 0, 0);
+    } else if (G.swingT > 0) {
+        rlTranslatef(0, -0.15f, 0.15f);
+        rlRotatef(Lerp(-80.0f, 80.0f, k), 0, 1, 0);
+        rlRotatef(-6.0f, 1, 0, 0);
+    } else {
+        rlTranslatef(0.32f, 0, 0.1f);
+        rlRotatef(-35.0f, 1, 0, 0);
+    }
+    WPart(0, 0, 0.45f, 0.06f, 0.06f, 0.95f, COL_WOOD);
+    DrawShadedBlob((Vector3){ 0, 0, 0.98f }, (Vector3){ 0.17f, 0.17f, 0.2f }, (Color){ 120, 112, 100, 255 });
+    WPart(0, 0, 0.98f, 0.4f, 0.05f, 0.05f, COL_BRONZE);
+    WPart(0, 0, 0.98f, 0.05f, 0.4f, 0.05f, COL_BRONZE);
+    rlPopMatrix();
+}
+
 static void DrawHeldBow(const Player *p)
 {
     float shoulder = p->crouching ? 0.92f : 1.3f;
@@ -421,6 +458,7 @@ void DrawPlayer(void)
     DrawHuman(p->pos, p->facing, p->stride, look, p->crouching, p->aiming, p->draw);
     DrawArmor(p);
     if (G.climb == 0 && G.equip == EQ_MELEE) DrawWeapon(p);
+    if (G.climb == 0 && G.equip == EQ_MACE) DrawMace(p);
     if (G.climb == 0 && G.equip == EQ_BOW && !p->aiming) DrawHeldBow(p);
     G.drawTorch = G.drawFog = 0;
 }

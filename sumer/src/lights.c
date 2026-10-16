@@ -7,10 +7,12 @@
 #define LIGHT_MAX     0.95f
 
 static int fireCount;
-static Vector3 fires[16];
+static Vector3 fires[24];
+static float flicker = 1.0f;
 
 void AddTorch(float x, float y, float z, bool pole)
 {
+    if (G.torchCount == 0) fireCount = 0;
     if (G.torchCount >= MAX_TORCHES) return;
     if (pole) {
         AddShape(x, y, z, 0.14f, 1.9f, 0.14f, COL_WOOD, true, SHAPE_CYL);
@@ -22,16 +24,22 @@ void AddTorch(float x, float y, float z, bool pole)
     }
 }
 
-static void AddFire(float x, float y, float z)
+// A fire lights its surroundings like a torch but draws no flame of its own.
+void AddFireLight(float x, float y, float z)
 {
+    if (G.torchCount == 0) fireCount = 0;
     if (G.torchCount >= MAX_TORCHES) return;
     G.torches[G.torchCount++] = (Vector3){ x, y, z };
-    if (fireCount < 16) fires[fireCount++] = (Vector3){ x, y, z };
+    if (fireCount < (int)(sizeof(fires) / sizeof(fires[0]))) fires[fireCount++] = (Vector3){ x, y, z };
+}
+
+static void AddFire(float x, float y, float z)
+{
+    AddFireLight(x, y, z);
 }
 
 static void PlaceTorches(void)
 {
-    fireCount = 0;
     static const float poles[][2] = {
         { -4.2f, 0 }, { 4.2f, 0 }, { -4.2f, 18 }, { 4.2f, 18 }, { -4.2f, 34 }, { 4.2f, 34 }, { -4.2f, 50 }, { 4.2f, 50 },
         { -66, 6.3f }, { -48, 11.7f }, { -26, 6.3f }, { 26, 11.7f }, { 48, 6.3f }, { 66, 11.7f }, { -84, 11.7f }, { 84, 6.3f },
@@ -112,29 +120,36 @@ static void AddDyn(Vector3 p)
     if (G.dynCount < MAX_DYN_LIGHTS) G.dynLights[G.dynCount++] = p;
 }
 
+// Hand torches far from the camera light nothing anyone could see.
+static void AddDynNear(Vector3 pos, float face)
+{
+    if (XZDist(pos, G.cam.position) < 220.0f) AddDyn(HandPos(pos, face));
+}
+
 void UpdateLights(void)
 {
+    float t = (float)GetTime();
+    flicker = 0.92f + 0.08f * sinf(t * 9.0f) * sinf(t * 5.3f + 1.0f);
     G.night = Clamp((0.75f - G.daylight) / 0.6f, 0.0f, 1.0f);
     G.dynCount = 0;
     if (G.night < 0.3f) return;
 
     for (int i = 0; i < G.villagerCount; i++) {
         const Villager *v = &G.villagers[i];
-        if (v->kind == NPC_GUARD) AddDyn(HandPos(VillagerPos(v), v->face));
+        if ((v->kind == NPC_GUARD || v->kind == NPC_TRAVELLER) && !v->vit.dead) AddDynNear(VillagerPos(v), v->vit.override ? v->vit.face : v->face);
     }
     for (int c = 0; c < MAX_CARAVANS; c++) {
-        for (int k = 0; k < 4; k += 3) {
+        for (int k = 0; k < 3 + CARAVAN_GUARDS; k++) {
             Vector3 p;
             float f;
-            if (CaravanMember(c, k, &p, &f)) AddDyn(HandPos(p, f));
+            if ((k == 0 || k >= 3) && CaravanMember(c, k, &p, &f)) AddDynNear(p, f);
         }
     }
 }
 
 static float Flicker(void)
 {
-    float t = (float)GetTime();
-    return 0.92f + 0.08f * sinf(t * 9.0f) * sinf(t * 5.3f + 1.0f);
+    return flicker;
 }
 
 static float Dynamic(Vector3 p, float radius)
@@ -176,13 +191,15 @@ float BoxLight(int i)
     return fminf(sum * 0.8f, LIGHT_MAX) * G.night;
 }
 
+// Hand torches only reach tiles near the camera; farther out the night fog hides them anyway.
 float TileLight(int i, int j)
 {
     if (G.night <= 0) return 0.0f;
     float sum = G.tileTorch[i][j] * Flicker();
     if (G.dynCount > 0) {
         float x = -WORLD_HALF + ((float)i + 0.5f) * TILE_SIZE, z = -WORLD_HALF + ((float)j + 0.5f) * TILE_SIZE;
-        sum += Dynamic((Vector3){ x, G.heights[i][j], z }, 2.0f);
+        float dx = x - G.cam.position.x, dz = z - G.cam.position.z;
+        if (dx * dx + dz * dz < 170.0f * 170.0f) sum += Dynamic((Vector3){ x, G.heights[i][j], z }, 2.0f);
     }
     return fminf(sum * 0.8f, LIGHT_MAX) * G.night;
 }

@@ -11,6 +11,7 @@ static const Offer SMITH[] = {
     { IT_BRONZE, 3, IT_REEDS, 6, OUT_TOOL, TOOL_ARROWHEADS, 1, 0, 0 },
     { IT_COPPER, 4, IT_NONE,  0, OUT_ITEM, IT_ARROWS,       6, 0, 0 },
     { IT_BRONZE, 5, IT_SHEEPSKIN, 3, OUT_ARMOR, ARMOR_BRONZE, 1, IT_COWHIDE, 3 },
+    { IT_BRONZE, 2, IT_COPPER, 3, OUT_MACE, 0, 1, IT_WOOD, 4 },
 };
 
 #define EAST 30.0f
@@ -177,7 +178,8 @@ void TakeFerry(int s)
     AdvanceHours(0.5f);
     G.sleeping = G.slept = true;
     G.sleepT = 1.1f;
-    Say(s == STN_FERRY_E ? "The ferryman poles you across to the empty west bank." : "The ferryman brings you back to the city side.");
+    Say(s == STN_FERRY_E ? "The ferryman poles you across to the wild west bank. Barbarians camp out there."
+                         : "The ferryman brings you back to the city side.");
 }
 
 static void FerryBoat(float x)

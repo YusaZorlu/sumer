@@ -7,12 +7,26 @@
 #define PER_CAMP (MAX_RAIDERS / CAMPS)
 
 static const float HOMES[PER_CAMP][2] = { { -4.5f, 2.5f }, { 3.5f, 3.0f }, { 5.0f, -3.5f }, { -2.5f, -5.0f } };
-static const float CAMP_POS[CAMPS][2] = { { 34, 210 }, { 30, -240 } };
+// Raiders south and north of the city; barbarians, twice as strong, north-west and south-west across the river.
+static const float CAMP_POS[CAMPS][2] = { { 34, 210 }, { 30, -240 }, { -360, -230 }, { -380, 250 } };
+static const int STASHES[CAMPS] = { STN_STASH, STN_STASH2, STN_STASH3, STN_STASH4 };
 
 Vector3 CampCenter(int camp)
 {
     float x = CAMP_POS[camp][0], z = CAMP_POS[camp][1];
     return (Vector3){ x, TerrainHeight(x, z), z };
+}
+
+int StashCamp(int station)
+{
+    for (int c = 0; c < CAMPS; c++)
+        if (STASHES[c] == station) return c;
+    return -1;
+}
+
+static bool West(int camp)
+{
+    return camp >= EAST_CAMPS;
 }
 
 static float Ground(float x, float z)
@@ -28,19 +42,53 @@ static void Tent(float x, float z, float w, float d, Color c)
     AddShape(x + 0.12f, y + 2.3f, z - 0.05f, 0.1f, 0.6f, 0.1f, COL_WOOD, false, SHAPE_CYL);
 }
 
+// The barbarians' chests hold about twice as much as the raiders'.
 static void Restock(int camp)
 {
     static const int pool[][3] = {
         { IT_BRONZE, 1, 3 }, { IT_TIN, 1, 2 }, { IT_COPPER, 3, 6 }, { IT_ARROWS, 6, 10 },
         { IT_WOLF, 1, 2 }, { IT_BREAD, 2, 4 }, { IT_COWHIDE, 1, 2 }, { IT_WOOD, 4, 8 },
+        { IT_ROAST, 2, 3 }, { IT_HERB, 3, 5 },
     };
+    int kinds = West(camp) ? 10 : 8, more = West(camp) ? 2 : 1;
     for (int k = 0; k < 4; k++) {
-        int pick = (int)(Hash2(G.day * 5 + k, 77 + camp) * 7.99f);
+        int pick = (int)(Hash2(G.day * 5 + k, 77 + camp) * ((float)kinds - 0.01f));
         if (k == 0) pick = Hash2(G.day, 3 + camp) < 0.5f ? 0 : 1;
         int n = pool[pick][1] + (int)(Hash2(G.day, k + 11 + camp) * (float)(pool[pick][2] - pool[pick][1] + 1) * 0.999f);
+        n *= more;
         if (n > ITEMS[pool[pick][0]].stack) n = ITEMS[pool[pick][0]].stack;
         G.stash[camp][k] = (Slot){ pool[pick][0], n };
     }
+}
+
+// The barbarians' camps are bigger: two more tents, a lookout platform, a war banner and skulls on poles.
+static void BuildWarCamp(float cx, float cz)
+{
+    const Color dark = { 84, 60, 46, 255 }, banner = { 150, 40, 34, 255 }, bone = { 226, 220, 200, 255 };
+
+    Tent(cx - 7.0f, cz + 7.5f, 3.0f, 3.2f, dark);
+    Tent(cx + 7.5f, cz + 6.5f, 3.2f, 3.0f, dark);
+
+    float lx = cx + 7.5f, lz = cz - 6.5f, ly = Ground(lx, lz);
+    for (int k = 0; k < 4; k++)
+        AddShape(lx + ((k & 1) ? 1.0f : -1.0f), Ground(lx, lz) - 0.1f, lz + ((k & 2) ? 1.0f : -1.0f), 0.18f, 3.3f, 0.18f, COL_PALM_TRUNK, true, SHAPE_CYL);
+    AddBox(lx, ly + 3.1f, lz, 2.5f, 0.15f, 2.5f, COL_WOOD, false);
+    AddBox(lx, ly + 3.25f, lz - 1.2f, 2.5f, 0.7f, 0.1f, COL_WOOD, false);
+    AddBox(lx, ly + 3.25f, lz + 1.2f, 2.5f, 0.7f, 0.1f, COL_WOOD, false);
+    AddBox(lx - 1.2f, ly + 3.25f, lz, 0.1f, 0.7f, 2.5f, COL_WOOD, false);
+    AddBox(lx + 1.2f, ly + 3.25f, lz, 0.1f, 0.7f, 2.5f, COL_WOOD, false);
+
+    float bx = cx - 2.5f, bz = cz + 2.0f, by = Ground(bx, bz);
+    AddShape(bx, by - 0.1f, bz, 0.12f, 4.6f, 0.12f, COL_WOOD, true, SHAPE_CYL);
+    AddBox(bx + 0.55f, by + 3.6f, bz, 1.0f, 0.9f, 0.05f, banner, false);
+    AddBox(bx + 0.55f, by + 3.65f, bz, 0.4f, 0.4f, 0.07f, COL_LINEN, false);
+
+    for (int s = -1; s <= 1; s += 2)
+        for (int e = -1; e <= 1; e += 2) {
+            float px = cx + 1.6f * (float)s, pz = cz + 11.6f * (float)e;
+            AddShape(px, Ground(px, pz) - 0.1f, pz, 0.1f, 2.1f, 0.1f, COL_WOOD, true, SHAPE_CYL);
+            AddShape(px, Ground(px, pz) + 2.05f, pz, 0.32f, 0.36f, 0.34f, bone, false, SHAPE_BLOB);
+        }
 }
 
 static void BuildCamp(int camp)
@@ -68,7 +116,7 @@ static void BuildCamp(int camp)
     }
 
     float sx = cx + 2.4f, sz = cz - 7.0f, sy = Ground(sx, sz);
-    G.stations[camp == 0 ? STN_STASH : STN_STASH2] = (Vector3){ sx, sy, sz + 1.1f };
+    G.stations[STASHES[camp]] = (Vector3){ sx, sy, sz + 1.1f };
     AddBox(sx, sy, sz, 1.4f, 0.7f, 0.9f, COL_WOOD, true);
     AddBox(sx, sy + 0.7f, sz, 1.5f, 0.12f, 1.0f, COL_PALM_TRUNK, false);
     AddBox(sx, sy + 0.25f, sz + 0.46f, 0.2f, 0.2f, 0.04f, COL_BRONZE, false);
@@ -87,6 +135,7 @@ static void BuildCamp(int camp)
         AddShape(px, Ground(px, pz) - 0.1f, pz, 0.24f, 1.5f + 0.3f * Hash2(k, 4), 0.24f, COL_PALM_TRUNK, true, SHAPE_CYL);
         AddShape(px, Ground(px, pz) + 1.35f + 0.3f * Hash2(k, 4), pz, 0.24f, 0.3f, 0.24f, COL_PALM_TRUNK, false, SHAPE_CONE);
     }
+    if (West(camp)) BuildWarCamp(cx, cz);
     KeepOut(cx - 12, cz - 12, cx + 12, cz + 12);
 
     for (int k = 0; k < PER_CAMP; k++) {
@@ -180,8 +229,14 @@ void DrawRaiders(void)
         float f = r->vit.override ? r->vit.face : r->face;
         if (XZDist(p, G.cam.position) > 220.0f) continue;
 
+        // Barbarians wear dark red and black, a horned helmet, and swing a bronze axe.
+        bool west = West(r->camp);
         Look look = { (Color){ 150, 102, 70, 255 }, (Color){ 96, 72, 48, 255 }, (i & 1) ? (Color){ 150, 102, 70, 255 } : (Color){ 112, 88, 60, 255 },
                       (Color){ 30, 24, 20, 255 } };
+        if (west) {
+            look.cloth = (Color){ 112, 40, 34, 255 };
+            look.top = (i & 1) ? (Color){ 150, 102, 70, 255 } : (Color){ 58, 44, 38, 255 };
+        }
         LightFor(p);
         if (r->vit.dead) {
             DrawPersonBody(p, f, look);
@@ -199,13 +254,24 @@ void DrawRaiders(void)
         rlRotatef(f * RAD2DEG, 0, 1, 0);
         rlTranslatef(0.3f, 0, 0.1f);
         rlRotatef(angle, 1, 0, 0);
-        DrawShadedBox((Vector3){ 0, 0, 0.42f }, (Vector3){ 0.05f, 0.05f, 0.85f }, COL_WOOD);
-        DrawShadedBox((Vector3){ 0, 0.1f, 0.8f }, (Vector3){ 0.04f, 0.3f, 0.2f }, COL_STONE);
+        if (west) {
+            DrawShadedBox((Vector3){ 0, 0, 0.5f }, (Vector3){ 0.06f, 0.06f, 1.0f }, COL_WOOD);
+            DrawShadedBox((Vector3){ 0, 0.14f, 0.92f }, (Vector3){ 0.04f, 0.42f, 0.28f }, COL_BRONZE);
+        } else {
+            DrawShadedBox((Vector3){ 0, 0, 0.42f }, (Vector3){ 0.05f, 0.05f, 0.85f }, COL_WOOD);
+            DrawShadedBox((Vector3){ 0, 0.1f, 0.8f }, (Vector3){ 0.04f, 0.3f, 0.2f }, COL_STONE);
+        }
         rlPopMatrix();
         rlPushMatrix();
         rlTranslatef(p.x, p.y, p.z);
         rlRotatef(f * RAD2DEG, 0, 1, 0);
-        DrawShadedBox((Vector3){ 0, (sitting ? 1.52f : 1.9f) + 0.06f, -0.02f }, (Vector3){ 0.34f, 0.1f, 0.34f }, (Color){ 128, 122, 112, 255 });
+        float head = (sitting ? 1.52f : 1.9f) + 0.06f;
+        DrawShadedBox((Vector3){ 0, head, -0.02f }, (Vector3){ 0.34f, 0.1f, 0.34f }, west ? COL_BRONZE : (Color){ 128, 122, 112, 255 });
+        if (west)
+            for (int s = -1; s <= 1; s += 2) {
+                DrawShadedBox((Vector3){ 0.22f * (float)s, head + 0.06f, -0.02f }, (Vector3){ 0.12f, 0.06f, 0.06f }, COL_LINEN);
+                DrawShadedBox((Vector3){ 0.28f * (float)s, head + 0.18f, -0.02f }, (Vector3){ 0.05f, 0.2f, 0.05f }, COL_LINEN);
+            }
         rlPopMatrix();
     }
     G.drawTorch = G.drawFog = 0;
