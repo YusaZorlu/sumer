@@ -206,7 +206,9 @@ void UpdatePlayer(float dt, bool input)
     bool strike = G.cursorLocked && MousePressed(MOUSE_BUTTON_LEFT) && !G.ignoreClick;
     bool parry = (G.cursorLocked && MousePressed(MOUSE_BUTTON_RIGHT)) || KeyPressed(KEY_Q);
     bool armed = G.equip == EQ_MELEE || G.equip == EQ_MACE, mace = G.equip == EQ_MACE;
-    if (input && armed && G.parryCool <= 0 && G.parryT <= 0 && G.swingT <= 0 && parry) {
+    // The war mace is too heavy to parry with; only the melee weapon turns blows aside.
+    if (input && mace && parry) Say("The war mace is too heavy to parry with. Parry with your melee weapon (2).");
+    if (input && G.equip == EQ_MELEE && G.parryCool <= 0 && G.parryT <= 0 && G.swingT <= 0 && parry) {
         G.parryT = PARRY_TIME;
         G.parryCool = PARRY_COOL;
         p->facing = p->yaw + PI;
@@ -227,7 +229,7 @@ void UpdatePlayer(float dt, bool input)
         if (IsKeyDown(KEY_A)) move = Vector3Subtract(move, right);
 
         if (KeyPressed(KEY_C)) p->crouching = !p->crouching;
-        if (KeyPressed(KEY_SPACE)) {
+        if (KeyPressed(KEY_SPACE) && !p->aiming) {
             if (p->crouching) p->crouching = false;
             else if (p->grounded) {
                 p->vy = JUMP_SPEED;
@@ -236,6 +238,8 @@ void UpdatePlayer(float dt, bool input)
         }
     }
 
+    // A drawn bow holds the archer where they stand.
+    if (p->aiming) move = (Vector3){ 0 };
     p->moving = Vector3Length(move) > 0.01f;
     if (p->moving || p->aiming) G.followArrow = -1;
     bool hungry = G.food <= 0.0f;
@@ -245,7 +249,6 @@ void UpdatePlayer(float dt, bool input)
     float speed = hungry ? HUNGRY_SPEED : WALK_SPEED;
     if (p->crouching) speed = CROUCH_SPEED;
     else if (p->running) speed = RUN_SPEED * Boost();
-    if (p->aiming) speed = fminf(speed, p->crouching ? 1.6f : 2.4f);
 
     if (p->moving) {
         move = Vector3Normalize(move);

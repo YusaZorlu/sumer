@@ -18,7 +18,7 @@ static const GatherDef GATHER[RES_KINDS] = {
     [RES_TREE]  = { IT_WOOD,   2, 16.0f, TOOL_AXE,  "Chop wood",       "Felled tree regrowing",  8.0f },
     [RES_CLAY]  = { IT_CLAY,   4, 48.0f, 0,         "Dig clay",        "Clay pit refilling",     2.0f },
     [RES_ORE]   = { IT_COPPER, 2, 10.0f, TOOL_PICK, "Mine copper ore", "Vein worked out",       16.0f },
-    [RES_FISH]  = { IT_FISH,   2, 24.0f, 0,         "Cast your net",   "Fish scattered",         1.5f },
+    [RES_FISH]  = { IT_FISH,   2, 24.0f, TOOL_NET,  "Cast your net",   "Fish scattered",         1.5f },
     [RES_HERB]  = { IT_HERB,   2, 36.0f, 0,         "Gather herbs",    "Herbs growing back",     1.0f },
 };
 
@@ -318,6 +318,14 @@ bool ServeRequest(int slot, int kind, const int *args, int n, int *res, int *nre
         return FighterInfo(i, &pos, &hp, &maxHp, &name, &hostile, &dead) && XZDist(pos, by) < REACH && ClaimBody(i);
     }
     case RQ_COLLAPSE:
+        // Brought down by another player: a kill for them, a death for this one.
+        if (n >= 1 && a >= BY_PLAYER && a < BY_PLAYER + MAX_PLAYERS && a - BY_PLAYER != slot && PlayerIn(a - BY_PLAYER) && PlayerIn(slot)) {
+            G.peers[a - BY_PLAYER].kills++;
+            G.peers[slot].deaths++;
+            // Everyone hears of it but the one brought down, whose own message lists what they lost.
+            for (int s = 0; s < MAX_PLAYERS; s++)
+                if (s != slot && PlayerIn(s)) SayTo(s, "%s brought down %s.", G.peers[a - BY_PLAYER].name, G.peers[slot].name);
+        }
         CalmFor(slot);
         return true;
     default:

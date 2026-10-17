@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define NET_VERSION   3
+#define NET_VERSION   4
 #define SNAP_EVERY    0.1f
 #define STATE_EVERY   0.066f
 #define RECORD_EVERY  15.0f
@@ -148,7 +148,7 @@ bool IsClient(void)
 static void WVitals(Writer *w, const Vitals *v)
 {
     unsigned flags = (v->used ? 1u : 0u) | (v->dead ? 2u : 0u) | (v->override ? 4u : 0u) | (v->looted ? 8u : 0u) |
-                     (v->hostile > 0 ? 16u : 0u) | ((unsigned)(v->mark & 3) << 5);
+                     (v->hostile > 0 ? 16u : 0u) | ((unsigned)(v->mark & 3) << 5) | (v->drawing ? 128u : 0u);
     W8(w, flags);
     if (!v->used) return;
     W16(w, (unsigned)Clamp(v->hp * 4.0f, 0.0f, 65535.0f));
@@ -184,6 +184,7 @@ static void RVitals(Reader *r, Vitals *v)
     v->looted = (flags & 8u) != 0;
     v->hostile = (flags & 16u) ? 1.0f : 0.0f;
     v->mark = (unsigned char)((flags >> 5) & 3u);
+    v->drawing = (flags & 128u) != 0;
     v->swing = (float)R8(r) / 200.0f;
     v->windup = (float)R8(r) / 200.0f;
     v->markT = (float)R8(r) / 200.0f;
@@ -226,6 +227,8 @@ static void WriteSnapshot(Writer *w, bool slow)
         W8(w, (unsigned)p->equip); W8(w, (unsigned)p->weapon); W8(w, (unsigned)p->bow); W8(w, (unsigned)p->armor);
         W16(w, (unsigned)Clamp(p->wanted, 0.0f, 65000.0f));
         W8(w, p->alone ? 1u : 0u);
+        W8(w, (unsigned)(p->kills < 255 ? p->kills : 255));
+        W8(w, (unsigned)(p->deaths < 255 ? p->deaths : 255));
     }
 
     W8(w, (unsigned)G.animalCount);
@@ -367,6 +370,10 @@ static void ReadSnapshot(Reader *r)
         int flags = (int)R16(r), equip = (int)R8(r), weapon = (int)R8(r), bow = (int)R8(r), armor = (int)R8(r);
         float wanted = (float)R16(r);
         bool alone = R8(r) != 0;
+        int kills = (int)R8(r);
+        int deaths = (int)R8(r);
+        p->kills = kills;
+        p->deaths = deaths;
         if (s == G.self) {
             p->wanted = wanted;
             p->alone = alone;
@@ -1130,6 +1137,14 @@ void NetRules(bool pvp, bool combat)
 {
     rulePvp = pvp;
     ruleCombat = pvp && combat;
+}
+
+// A player's kills and deaths at other players' hands, and the ratio: "K/D 3/1 (3.0)".
+const char *KillDeath(int s)
+{
+    const Peer *p = &G.peers[s];
+    float ratio = p->deaths > 0 ? (float)p->kills / (float)p->deaths : (float)p->kills;
+    return TextFormat("K/D %d/%d (%.1f)", p->kills, p->deaths, ratio);
 }
 
 // The game's rules in a line.

@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define SAVE_MAGIC    0x524D5553u
-#define SAVE_VERSION  4
+#define SAVE_VERSION  5
 #define MASK_BYTES    ((MAX_ANIMALS + 7) / 8)
 #define SAVE_MAX      8192
 #define OLD_PLOTS     9

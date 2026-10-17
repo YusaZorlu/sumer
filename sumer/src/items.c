@@ -235,12 +235,12 @@ const char *OfferOutput(const Offer *o)
     case OUT_BOW:    Fmt(buf, sizeof(buf), "%s", L(BOW_NAMES[o->out])); break;
     case OUT_QUIVER: Fmt(buf, sizeof(buf), "Large quiver (%d arrows)", QUIVER_BIG); break;
     case OUT_TOOL:
-        Fmt(buf, sizeof(buf), "%s", L(o->out == TOOL_AXE ? "Bronze axe (double wood)"
-                                      : o->out == TOOL_PICK ? "Bronze pick (double ore)" : "Bronze arrowheads (+10 damage)"));
+        Fmt(buf, sizeof(buf), "%s", L(o->out == TOOL_AXE ? "Bronze axe (double wood)" : o->out == TOOL_PICK ? "Bronze pick (double ore)"
+                                      : o->out == TOOL_NET ? "Fine fishing net (double fish)" : "Bronze arrowheads (+10 damage)"));
         break;
     case OUT_WEAPON: Fmt(buf, sizeof(buf), "%s", WeaponName(o->out)); break;
     case OUT_ARMOR:  Fmt(buf, sizeof(buf), "%s", ArmorName(o->out)); break;
-    case OUT_MACE:   Fmt(buf, sizeof(buf), "%s (hits all in front, key 4)", MaceName()); break;
+    case OUT_MACE:   Fmt(buf, sizeof(buf), "%s (hits all in front, key 3)", MaceName()); break;
     }
     return buf;
 }

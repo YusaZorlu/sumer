@@ -213,8 +213,9 @@ static void Collapse(void)
     }
     G.climb = 0;
     G.waitBed = false;
+    int by = G.hurtBy;
     G.hurtBy = BY_NONE;
-    Act(RQ_COLLAPSE, NULL, 0);
+    Act(RQ_COLLAPSE, &by, 1);
     if (!Online()) {
         CalmBeasts(-1);
         for (int i = 0; i < MAX_RAIDERS; i++) G.raiders[i].vit.hostile = 0;
@@ -491,8 +492,8 @@ void GameUpdate(void)
         if (KeyPressed(KEY_R)) RefillQuiver();
         if (KeyPressed(KEY_ONE)) SetEquip(EQ_BOW);
         if (KeyPressed(KEY_TWO)) SetEquip(EQ_MELEE);
-        if (KeyPressed(KEY_THREE)) SetEquip(EQ_NONE);
-        if (KeyPressed(KEY_FOUR)) SetEquip(EQ_MACE);
+        if (KeyPressed(KEY_THREE)) SetEquip(EQ_MACE);
+        if (KeyPressed(KEY_FOUR)) SetEquip(EQ_NONE);
         if (KeyPressed(KEY_M)) G.mapZoom = (G.mapZoom + 1) % 3;
         if (KeyPressed(KEY_Z)) {
             G.arrowCam = !G.arrowCam;

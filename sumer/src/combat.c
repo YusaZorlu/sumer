@@ -26,6 +26,8 @@ static const RoleDef ROLES[ROLE_COUNT] = {
 #define FOE_DAMAGE   1.8f
 #define WANTED_TIME  120.0f
 #define PVP_SCALE    0.5f
+#define BOW_REST     1.6f
+#define BOW_RANGE    34.0f
 #define PROVOKED     60.0f
 #define VILLAGE_RAGE 120.0f
 
@@ -43,8 +45,13 @@ typedef struct {
     int owner, loot, lootArg;
     const char *name;
     FighterKind kind;
-    int village;
+    int village, bow;
 } Fighter;
+
+// The bows other people shoot: a village guard's hunting bow, a gate guard's composite bow, a
+// barbarian's war bow.
+static const float NPC_BOW_SPEED[4] = { 0, 40, 52, 62 };
+static const float NPC_BOW_DAMAGE[4] = { 0, 16, 22, 30 };
 
 static Fighter fighters[MAX_FIGHTERS];
 static int fighterCount;
@@ -61,7 +68,7 @@ static void Add(Vitals *v, Role role, Vector3 home, float face, int owner, int l
     if (!v->used) {
         *v = (Vitals){ .hp = ROLES[role].maxHp, .target = -1, .used = true };
     }
-    fighters[fighterCount++] = (Fighter){ v, role, home, face, owner, loot, arg, name, kind, kind == FK_VILLAGER ? VillageAt(home) : -1 };
+    fighters[fighterCount++] = (Fighter){ v, role, home, face, owner, loot, arg, name, kind, kind == FK_VILLAGER ? VillageAt(home) : -1, 0 };
 }
 
 static bool IsRaider(Role r)
@@ -76,12 +83,14 @@ void CollectFighters(void)
     fighterCount = 0;
     for (int i = 0; i < G.villagerCount; i++) {
         Villager *v = &G.villagers[i];
-        Role r = v->kind == NPC_GUARD ? ROLE_GUARD : v->kind == NPC_CLERIC ? ROLE_CLERIC : ROLE_CIVILIAN;
+        bool warden = v->kind == NPC_WARDEN;
+        Role r = v->kind == NPC_GUARD || warden ? ROLE_GUARD : v->kind == NPC_CLERIC ? ROLE_CLERIC : ROLE_CIVILIAN;
         int loot = r == ROLE_GUARD ? LOOT_GUARD : r == ROLE_CLERIC ? LOOT_CLERIC : LOOT_CIVILIAN;
-        const char *name = r == ROLE_GUARD ? "Guard" : r == ROLE_CLERIC ? "Cleric"
+        const char *name = warden ? "Village guard" : r == ROLE_GUARD ? "Guard" : r == ROLE_CLERIC ? "Cleric"
                          : v->kind == NPC_TRAVELLER ? "Traveller" : v->kind == NPC_VILLAGER ? "Villager" : "Townsperson";
-        FighterKind kind = v->kind == NPC_GUARD ? FK_CITY_GUARD : v->kind == NPC_VILLAGER ? FK_VILLAGER : v->kind == NPC_TRAVELLER ? FK_TRAVELLER : FK_TOWN;
+        FighterKind kind = v->kind == NPC_GUARD ? FK_CITY_GUARD : v->kind == NPC_VILLAGER || warden ? FK_VILLAGER : v->kind == NPC_TRAVELLER ? FK_TRAVELLER : FK_TOWN;
         Add(&v->vit, r, VillagerLanePos(v), v->face, OWNER_VILLAGER + i, loot, 0, name, kind);
+        if (fighterCount > 0 && fighters[fighterCount - 1].v == &v->vit) fighters[fighterCount - 1].bow = v->bow;
     }
     for (int i = 0; i < G.workerCount; i++) {
         Worker *w = &G.workers[i];
@@ -107,7 +116,8 @@ void CollectFighters(void)
         Raider *r = &G.raiders[i];
         bool west = r->camp >= EAST_CAMPS;
         Add(&r->vit, west ? ROLE_BARBARIAN : ROLE_RAIDER, r->pos, r->face, OWNER_RAIDER + i, west ? LOOT_BARBARIAN : LOOT_RAIDER, i,
-            west ? "Barbarian" : "Raider", FK_RAIDER);
+            RaiderBowman(i) ? "Barbarian bowman" : west ? "Barbarian" : "Raider", FK_RAIDER);
+        if (fighterCount > 0 && fighters[fighterCount - 1].v == &r->vit) fighters[fighterCount - 1].bow = RaiderBowman(i) ? 3 : 0;
     }
 }
 
@@ -294,7 +304,7 @@ static float SightOf(Role r, int s)
 static bool PlayerParries(int s, Vector3 from)
 {
     const Peer *p = &G.peers[s];
-    if (!(p->flags & PF_PARRY) || (p->equip != EQ_MELEE && p->equip != EQ_MACE)) return false;
+    if (!(p->flags & PF_PARRY) || p->equip != EQ_MELEE) return false;
     Vector2 to = Vector2Normalize((Vector2){ from.x - p->pos.x, from.z - p->pos.z });
     return to.x * sinf(p->facing) + to.y * cosf(p->facing) > 0.25f;
 }
@@ -449,6 +459,68 @@ static int SpotPlayer(const Fighter *f, Vector3 pos)
     return best;
 }
 
+// Whether an arrow from 'a' would reach 'b' with nothing solid in the way.
+static bool ClearShot(Vector3 a, Vector3 b)
+{
+    float d = Vector3Distance(a, b);
+    for (float s = 1.0f; s < d - 0.8f; s += 1.0f)
+        if (PointInSolid(Vector3Lerp(a, b, s / d))) return false;
+    return true;
+}
+
+// How far an archer shoots at player s: its bow's reach, less in the dark.
+static float BowRange(const Fighter *f, int s)
+{
+    return fminf(BOW_RANGE, SightOf(f->role, s) * 1.15f);
+}
+
+// The arrow leaves the bow, aimed where the player will be (if they are on the move) and not quite
+// true.
+static void Loose(const Fighter *f, int s)
+{
+    Vitals *v = f->v;
+    const Peer *p = &G.peers[s];
+    Vector3 from = { v->at.x + sinf(v->face) * 0.6f, v->at.y + 1.5f, v->at.z + cosf(v->face) * 0.6f };
+    Vector3 to = { p->pos.x, p->pos.y + 1.1f, p->pos.z };
+    float speed = NPC_BOW_SPEED[f->bow], flight = Vector3Distance(from, to) / speed, miss = 0.15f + 0.02f * Vector3Distance(from, to);
+    if (p->flags & PF_MOVE) {
+        float run = (p->flags & PF_RUN) ? 7.5f : (p->flags & PF_CROUCH) ? 2.0f : 4.5f;
+        to.x += sinf(p->facing) * run * flight * 0.8f;
+        to.z += cosf(p->facing) * run * flight * 0.8f;
+    }
+    to.x += RandF(-miss, miss);
+    to.y += RandF(-0.3f, 0.3f) * miss;
+    to.z += RandF(-miss, miss);
+    LooseFor(from, to, speed, (int)NPC_BOW_DAMAGE[f->bow], Cause(f));
+}
+
+// An archer stands, draws for a moment and looses at player s, then draws again. It does not move
+// while its bow is drawn.
+static void Archery(const Fighter *f, int s, float dt)
+{
+    Vitals *v = f->v;
+    Vector3 tp = G.peers[s].pos;
+    v->face = atan2f(tp.x - v->at.x, tp.z - v->at.z);
+    if (v->drawing) {
+        v->windup -= dt;
+        if (v->windup > 0) return;
+        v->drawing = false;
+        v->windup = 0;
+        v->cool = BOW_REST;
+        Loose(f, s);
+        return;
+    }
+    if (v->cool > 0) return;
+    Vector3 from = { v->at.x, v->at.y + 1.5f, v->at.z }, to = { tp.x, tp.y + 1.2f, tp.z };
+    if (!ClearShot(from, to)) {
+        v->cool = 0.8f;
+        return;
+    }
+    v->drawing = true;
+    v->windup = BOW_DRAW_TIME;
+    v->mark = MARK_NONE;
+}
+
 void UpdateCombat(float dt)
 {
     CollectFighters();
@@ -486,6 +558,25 @@ void UpdateCombat(float dt)
         bool reach = t >= 0 && InReach(f, G.peers[t].pos);
         if (v->hostile > 0 && !reach) v->hostile -= dt;
         bool angry = v->hostile > 0 && reach;
+
+        // An archer shoots at whoever it is after: a city guard once they have run beyond its reach,
+        // a village guard or a bowman from any distance beyond a few steps.
+        bool aim = f->bow > 0 && v->hostile > 0 && t >= 0 && !foe && fabsf(pos.y - G.peers[t].pos.y) < 8.0f &&
+                   (v->drawing || (dist <= BowRange(f, t) && dist > 4.0f && (!reach || f->kind != FK_CITY_GUARD)));
+        if (aim) {
+            if (!v->override) {
+                v->override = true;
+                v->at = pos;
+                v->face = f->homeFace;
+            }
+            if (reach) v->hostile -= dt;
+            Archery(f, t, dt);
+            continue;
+        }
+        if (v->drawing) {
+            v->drawing = false;
+            v->windup = 0;
+        }
 
         if (angry || foe) {
             if (!v->override) {
@@ -810,7 +901,7 @@ bool ClaimBody(int i)
 void GiveLoot(int i)
 {
     static const int traderGoods[][2] = { { IT_ARROWS, 5 }, { IT_SEEDS, 4 }, { IT_REEDS, 4 }, { IT_COWHIDE, 1 }, { IT_BRONZE, 1 },
-                                          { IT_ARROWS, 6 }, { IT_SHEEPSKIN, 1 } };
+                                          { IT_ARROWS, 6 }, { IT_SHEEPSKIN, 1 }, { IT_FISH, 4 } };
     static const int jobGoods[][2] = { { IT_WOOD, 3 }, { IT_COPPER, 2 }, { IT_CLAY, 3 }, { IT_POT, 1 }, { IT_BRONZE, 1 },
                                        { IT_FISH, 2 }, { IT_FISH, 2 }, { IT_WHEAT, 2 } };
     static const int raiderGoods[][2] = { { IT_ARROWS, 4 }, { IT_BREAD, 1 }, { IT_COPPER, 2 }, { IT_BRONZE, 1 }, { IT_TIN, 1 }, { IT_WOOD, 3 } };

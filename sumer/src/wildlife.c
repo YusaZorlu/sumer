@@ -18,7 +18,8 @@
 #define SNAKE_HISS     0.8f
 #define CLOSE_LANDING  6.0f
 #define CLOSE_FLYBY    3.0f
-#define MACE_DAMAGE    30
+// Twice a club's weight of bronze: it cannot parry, but it hits everything in front hard.
+#define MACE_DAMAGE    60
 #define MACE_REACH     2.9f
 #define MACE_ARC       0.2f
 
@@ -50,8 +51,8 @@ static const AnimalDef DEFS[AN_TYPES] = {
                      0.7f, 3.2f, 3.0f, 1.0f, 1.0f, 16, IT_NONE, false, false },
 };
 
-// City side: herds near and far, three packs of four (one denning by the far-north ford).
-// Across the river: two packs of six. A few snakes lie in the long grass on both banks.
+// City side: herds near and far, five packs of four (one denning by the far-north ford).
+// Across the river: two packs of six and one of five. A few snakes lie in the long grass on both banks.
 static const Herd HERDS[] = {
     { AN_GAZELLE, 6, { 40, 150, 260, 180 } },
     { AN_ONAGER,  4, { 60, -330, 240, 170 } },
@@ -73,6 +74,11 @@ static const Herd HERDS[] = {
     { AN_WOLF,    6, { -534, -534, 375, 1068 } },
     { AN_SNAKE,   1, { -380, 120, 110, 110 } },
     { AN_SNAKE,   1, { -300, -200, 100, 120 } },
+    // More wolves roam the open country: the east plain on either side of the hunters' road, and the
+    // west bank's hills.
+    { AN_WOLF,    4, { 160, -480, 340, 380 } },
+    { AN_WOLF,    4, { 160, 120, 340, 380 } },
+    { AN_WOLF,    5, { -534, -150, 300, 400 } },
 };
 #define HERD_COUNT ((int)(sizeof(HERDS) / sizeof(HERDS[0])))
 
@@ -751,6 +757,57 @@ int ShootArrow(Vector3 from, Vector3 to, float power)
     return SpawnArrow(G.self, from, vel, damage);
 }
 
+// Another archer's arrow (a guard's, a village guard's, a barbarian's), aimed above the mark by as
+// much as it will drop. It strikes players only.
+void LooseFor(Vector3 from, Vector3 to, float speed, int damage, int cause)
+{
+    Vector3 aim = to;
+    for (int k = 0; k < 3; k++) {
+        float t = Vector3Distance(from, aim) / speed;
+        aim.y = to.y + 0.5f * ARROW_GRAVITY * t * t;
+    }
+    int i = SpawnArrow(-1, from, Vector3Scale(Vector3Normalize(Vector3Subtract(aim, from)), speed), damage);
+    if (i >= 0) G.arrows[i].cause = cause;
+}
+
+static void Spend(Arrow *ar);
+
+static void FlyNpcArrow(Arrow *ar, float dt)
+{
+    if (!ar->flying) {
+        ar->fade = fmaxf(0.0f, ar->fade - dt);
+        ar->life -= dt;
+        if (ar->life <= 0 || (ar->spent && ar->fade <= 0)) ar->active = false;
+        return;
+    }
+    Vector3 prev = ar->pos;
+    ar->vel.y -= ARROW_GRAVITY * dt;
+    ar->pos = Vector3Add(ar->pos, Vector3Scale(ar->vel, dt));
+    ar->life -= dt;
+    ar->trailT -= dt;
+    if (ar->trailT <= 0) {
+        ar->trailT = 0.02f;
+        for (int k = TRAIL_POINTS - 1; k > 0; k--) ar->trail[k] = ar->trail[k - 1];
+        ar->trail[0] = prev;
+        if (ar->trailCount < TRAIL_POINTS) ar->trailCount++;
+    }
+    int s = PlayerOnSegment(prev, ar->pos, -1);
+    if (s >= 0) {
+        Vector3 p = G.peers[s].pos;
+        SpawnBurst((Vector3){ p.x, p.y + 1.2f, p.z }, (Color){ 170, 30, 30, 255 }, 10, 2.2f);
+        HurtSlot(s, (float)ar->damage, ar->cause);
+        Spend(ar);
+    } else if (ar->pos.y <= TerrainHeight(ar->pos.x, ar->pos.z) || (ar->pos.y <= WATER_LEVEL && InWater(ar->pos.x, ar->pos.z)) || PointInSolid(ar->pos)) {
+        if (PointInSolid(ar->pos)) ar->pos = prev;
+        else ar->pos.y = fmaxf(TerrainHeight(ar->pos.x, ar->pos.z), WATER_LEVEL) + 0.05f;
+        ar->flying = false;
+        ar->life = 20.0f;
+        ar->fade = 0.6f;
+    } else if (ar->life <= 0) {
+        ar->active = false;
+    }
+}
+
 // A guest's arrow, flown by the host. Nothing faster than the best bow or harder than its best arrow.
 void ShootFor(int slot, Vector3 from, Vector3 vel, int damage)
 {
@@ -866,6 +923,10 @@ void UpdateArrows(float dt)
     for (int i = 0; i < MAX_ARROWS; i++) {
         Arrow *ar = &G.arrows[i];
         if (!ar->active) continue;
+        if (ar->owner < 0) {
+            FlyNpcArrow(ar, dt);
+            continue;
+        }
         G.actor = ar->owner;
 
         if (!ar->flying) {

@@ -264,7 +264,7 @@ int AddNpc(NpcKind kind, Vector3 a, Vector3 b, float speed, Color robe, float fa
 {
     if (G.villagerCount >= MAX_VILLAGERS) return -1;
     G.villagers[G.villagerCount] = (Villager){ a, b, speed > 0 ? RandF(0, 1) : 0.0f, 1.0f, speed, robe, kind, face, 0.0f, false, false,
-                                               { .hp = 0 }, -1, 0.0f, 0.0f, -1, -1, 0.0f, 0.0f };
+                                               { .hp = 0 }, -1, 0.0f, 0.0f, -1, -1, 0.0f, 0.0f, 0 };
     return G.villagerCount++;
 }
 
@@ -423,10 +423,12 @@ static void BuildTempleStaff(void)
     const Color guard = { 150, 128, 96, 255 }, cleric = { 238, 234, 224, 255 };
     const float cz = ZIG_Z;
 
-    AddNpc(NPC_GUARD, (Vector3){ -7.2f, 0, -4.2f }, (Vector3){ -7.2f, 0, -4.2f }, 0, guard, 0);
-    AddNpc(NPC_GUARD, (Vector3){ 7.2f, 0, -4.2f }, (Vector3){ 7.2f, 0, -4.2f }, 0, guard, 0);
-    AddNpc(NPC_GUARD, (Vector3){ -4.8f, 0, 70.5f }, (Vector3){ -4.8f, 0, 70.5f }, 0, guard, 0);
-    AddNpc(NPC_GUARD, (Vector3){ 4.8f, 0, 70.5f }, (Vector3){ 4.8f, 0, 70.5f }, 0, guard, 0);
+    // The gate guards carry composite bows as well as spears.
+    static const float gates[4][2] = { { -7.2f, -4.2f }, { 7.2f, -4.2f }, { -4.8f, 70.5f }, { 4.8f, 70.5f } };
+    for (int k = 0; k < 4; k++) {
+        int g = AddNpc(NPC_GUARD, (Vector3){ gates[k][0], 0, gates[k][1] }, (Vector3){ gates[k][0], 0, gates[k][1] }, 0, guard, 0);
+        if (g >= 0) G.villagers[g].bow = 2;
+    }
     AddNpc(NPC_GUARD, (Vector3){ 90, 0, 9 }, (Vector3){ 50, 0, 9 }, 0.9f, guard, 0);
     AddNpc(NPC_GUARD, (Vector3){ -90, 0, 39 }, (Vector3){ -40, 0, 39 }, 0.9f, guard, 0);
     AddNpc(NPC_GUARD, (Vector3){ -24, 0, -10 }, (Vector3){ -24, 0, -60 }, 1.0f, guard, 0);
@@ -894,6 +896,9 @@ void DrawVillage(void)
         float face = v->vit.override ? v->vit.face : v->face;
         if (XZDist(pos, G.cam.position) > 200.0f) continue;
         if (v->vit.override && v->vit.hostile > 0) stride = (float)GetTime() * 8.0f;
+        // An archer stands still while it draws.
+        float pull = v->vit.drawing ? Clamp(1.0f - v->vit.windup / BOW_DRAW_TIME, 0.0f, 1.0f) : 0.0f;
+        if (v->vit.drawing) stride = 0;
         LightFor(pos);
         if (v->vit.dead) {
             Look look = { COL_SKIN, v->robe, v->kind == NPC_GUARD ? (Color){ 120, 96, 66, 255 } : v->robe, v->kind == NPC_GUARD ? COL_BRONZE : COL_HAIR };
@@ -908,14 +913,22 @@ void DrawVillage(void)
             DrawHuman(pos, face, stride, look, false, archer, pull);
             if (v->kind == NPC_TRAVELLER) DrawTravelGear(pos, face, v->robe);
             if (v->kind == NPC_TRAVELLER && G.night >= 0.3f) DrawHandTorch(pos, face);
+        } else if (v->kind == NPC_WARDEN) {
+            // A village guard: a leather jerkin and cap, and a bow always in hand.
+            Look look = { COL_SKIN, v->robe, (Color){ 128, 88, 56, 255 }, (Color){ 128, 88, 56, 255 } };
+            DrawHuman(pos, face, stride, look, false, true, pull);
+            if (G.night >= 0.3f) DrawHandTorch(pos, face);
         } else if (v->kind == NPC_GUARD) {
             Look look = { COL_SKIN, v->robe, (Color){ 120, 96, 66, 255 }, COL_BRONZE };
-            DrawHuman(pos, face, stride, look, false, false, 0);
+            DrawHuman(pos, face, stride, look, false, v->vit.drawing, pull);
             rlPushMatrix();
             rlTranslatef(pos.x, pos.y, pos.z);
             rlRotatef(face * RAD2DEG, 0, 1, 0);
             Part(0, 1.97f, -0.02f, 0.36f, 0.12f, 0.36f, COL_BRONZE);
-            if (v->vit.swing > 0) {
+            if (v->vit.drawing) {
+                // The spear slung on the back while the bow is drawn.
+                Part(0.1f, 1.3f, -0.25f, 0.05f, 2.4f, 0.05f, COL_WOOD);
+            } else if (v->vit.swing > 0) {
                 float k = v->vit.swing / 0.35f;
                 Part(0.3f, 1.35f, 0.9f - 0.5f * k, 0.05f, 0.05f, 2.4f, COL_WOOD);
                 Part(0.3f, 1.35f, 2.2f - 0.5f * k, 0.08f, 0.08f, 0.26f, COL_BRONZE);

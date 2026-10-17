@@ -326,8 +326,10 @@ static void DrawNetPausePanel(void)
         DrawRectangleLines((int)bx, (int)y + 2, 16, 16, Fade(BLACK, 0.6f));
         DrawTextEx(GameFont(), p->name, (Vector2){ bx + 26, y }, 18, 1, s == G.self ? C_GOLD : C_TEXT);
         const char *tag = s == 0 ? (s == G.self ? "host, you" : "host") : s == G.self ? "you" : "";
-        if (tag[0]) Text(TextFormat("(%s)", L(tag)), bx + 210, y + 2, 15, C_DIM);
-        Text(PlayerColorName(s), bx + 330, y + 2, 15, C_DIM);
+        if (tag[0]) Text(TextFormat("(%s)", L(tag)), bx + 160, y + 2, 15, C_DIM);
+        Text(PlayerColorName(s), bx + 250, y + 2, 15, C_DIM);
+        if (G.pvp) Text(KillDeath(s), bx + 320, y + 2, 15, C_TEXT);
+        if (p->wanted > 0) Text(TextFormat(L("wanted %d:%02d"), (int)p->wanted / 60, (int)p->wanted % 60), bx + 440, y + 2, 15, C_BAD);
         y += 24;
     }
 
@@ -455,7 +457,7 @@ static void DrawHelpPanel(void)
     static const char *const keys[][2] = {
         { "WASD", "move" }, { "Shift", "run" }, { "Space", "jump" }, { "C", "crouch (stealth)" },
         { "Mouse", "look" }, { "Wheel", "zoom; all the way in is first person" }, { "P", "first person on/off" },
-        { "1 / 2 / 3", "bow / melee weapon / hands free" }, { "4", "war mace (the smith sells one)" },
+        { "1 / 2", "bow / melee weapon" }, { "3 / 4", "war mace / hands free" },
         { "Left mouse", "draw and release (bow), strike (melee)" },
         { "Right mouse, Q", "parry with the melee weapon" }, { "V", "strike" },
         { "E", "use, talk, pick up, climb, search" }, { "F", "alternate action" },
@@ -472,15 +474,16 @@ static void DrawHelpPanel(void)
         "growing wheat. The shepherd takes withered plant waste, the cattle herder spare seeds.",
         "Hens live 12 seasons, eat every 3 days, and die after 6 days without food or water. E at the coop shows each hen.",
         "Home: quern, trough, oven, storage, bed. The workbench sews leather armor or a wolf-pelt cloak. The smith makes "
-        "bronze armor (5 bronze, 3 sheepskin, 3 cowhide) and sells a war mace (key 4) that strikes everything in front of "
+        "bronze armor (5 bronze, 3 sheepskin, 3 cowhide) and sells a war mace (key 3) that strikes everything in front of "
         "you. Tin comes with the caravans. Picking dates is free; all other gathering costs food, mining the most, then "
         "woodcutting. Health returns while food is at 20% or more. Brought down, you lose what you gathered that day unless "
         "it is in your storage.",
         "Ziggurat: market in the base. The priest at the top blesses you for a day: +20% running and attack speed. "
         "Guards fight raiders who follow you. Raiders camp south and north of the city; barbarians twice as strong camp "
         "across the river. The ferry west of the city crosses the river for a fare. The far north ford is wolf country.",
-        "Roads on the map lead east to the hunters' village and south-west to the herders' village; travellers walk them, "
-        "and wolves leave you alone in company. Only the shepherd sells sheepskin and sheep.",
+        "Roads on the map lead east to the hunters' village and south-west to the herders' village; the fishers live across "
+        "the ferry and sell a fine net that doubles your catch. Each village has a guard with a bow. Travellers walk the "
+        "roads, and wolves leave you alone in company. Only the shepherd sells sheepskin and sheep.",
         "Herbs grow in green meadows, most of all across the river: chew one from your baskets to heal fast. Snakes hide "
         "in long grass; a hiss means back off (crouch to creep by). Hurt a boar and its whole sounder charges. Arrows "
         "landing close send prey running and bring wolves down on you.",
@@ -605,6 +608,7 @@ static void DrawStatus(void)
     else if (wolves) Text("Wolves are hunting you!", 24, 190, 18, C_BAD);
     else if (beast) Text("A wild beast is attacking you!", 24, 190, 18, C_BAD);
     else if (me->alone) Text("Alone outside the walls", 24, 190, 18, C_GOLD);
+    if (Online() && G.pvp) Text(TextFormat(L("PvP: %s"), KillDeath(G.self)), 24, 212, 18, C_TEXT);
 }
 
 static void DrawMinimap(int ox, int oy, int size)
@@ -704,6 +708,14 @@ static void DrawPeerTags(void)
             float k = Clamp(p->health / HEALTH_MAX, 0.0f, 1.0f);
             DrawRectangle((int)sp.x - 24, (int)sp.y + 21, 48, 5, Fade(BLACK, 0.6f));
             DrawRectangle((int)sp.x - 24, (int)sp.y + 21, (int)(48 * k), 5, k > 0.35f ? C_GOOD : C_BAD);
+        }
+        // With PvP on: their kills and deaths, and how long the guards are still after them.
+        if (G.pvp && dist < 60.0f) {
+            const char *line = p->wanted > 0 ? TextFormat(L("%s   wanted %d:%02d"), KillDeath(s), (int)p->wanted / 60, (int)p->wanted % 60)
+                                             : KillDeath(s);
+            int lw = Measure(line, 14);
+            DrawRectangle((int)sp.x - lw / 2 - 6, (int)sp.y - 22, lw + 12, 18, Fade(BLACK, 0.45f));
+            DrawTextEx(GameFont(), line, (Vector2){ (float)((int)sp.x - lw / 2), sp.y - 20 }, 14, 1, p->wanted > 0 ? C_BAD : RAYWHITE);
         }
     }
 }

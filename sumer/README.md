@@ -76,6 +76,10 @@ Playing together:
 - A carcass, a tree's wood, a plot or the eggs go to whoever gets there first.
 - Names float over the other players' heads, with their health when they are hurt; the map shows them
   as dots in their colors.
+- With PvP on, every player's score shows over their head, in the Esc menu's list of players and (your
+  own) under your health: "K/D 3/1 (3.0)", players brought down and times brought down by a player.
+  Anyone wanted by the guards shows how long the search still lasts. When a player brings another
+  down, everyone else hears of it.
 
 ## Controls
 
@@ -86,7 +90,7 @@ Playing together:
 | C | Toggle crouch: slower, much harder for animals to notice |
 | Mouse / arrow keys, wheel | Look, zoom (zoom all the way in for first person) |
 | P | First person on/off |
-| 1 / 2 / 3 / 4 | Bow / melee weapon / hands free / war mace, once you own one (also buttons in Tab) |
+| 1 / 2 / 3 / 4 | Bow / melee weapon / war mace, once you own one / hands free (also buttons in Tab) |
 | Left mouse | Bow: hold to draw, release to shoot (the camera follows the arrow). Melee or mace: strike |
 | V | Strike with the melee weapon |
 | Right mouse or Q | Parry with the melee weapon or the mace |
@@ -143,6 +147,13 @@ fields outside. Gates: south (main road), east, west, north, plus the harbor wat
   quiver and the composite bow
 - Herders' village, on the downs south-west of the city: mud houses and a sheepfold with its flock.
   The shepherd is the only one who sells sheepskin and sheep, and takes plant waste as fodder
+- Fishers' village, across the river by the ferry's west landing: reed houses, fish drying on racks,
+  boats drawn up on the bank, and good fishing in the river just below. The fisher sells the only fine
+  fishing net (8 reeds and 2 copper ore), which doubles every cast (4 fish instead of 2), and trades
+  fish: 3 fish for 4 dates, 3 grilled fish for 3 fish and a piece of wood, arrows, herbs, or bronze
+  for 8 fish
+- Every village keeps a guard with a hunting bow. When the village turns on you, its guard shoots at
+  you from where it stands
 - Eastern hills: copper mine and woodcutters' forest; more forest along the river, in the hills and
   around the hunters
 - Gazelles south-east and around the hunters' basin, onagers north-east, boars in the south-west marsh
@@ -250,17 +261,18 @@ seed, so it is never stored.
 - Animals show health bars once they notice you or are hurt. Shots at unaware animals do double damage.
 - Melee weapon: Wooden club (14), Copper mace (24), Bronze sickle-sword (38), one strike a second.
   Forge upgrades at the smelter in the craft quarter with F: 3 copper ore + 2 wood, then 3 bronze + 2 wood.
-- War mace (key 4): the smith sells one for 2 bronze, 3 copper ore and 4 wood. Each blow (30, one every
+- War mace (key 3): the smith sells one for 2 bronze, 3 copper ore and 4 wood. Each blow (60, one every
   1.4 seconds) sweeps a wide arc and strikes every animal and every foe in front of you, which helps
-  against a wolf pack or a band of raiders. A bystander is only hit if the blow was aimed at them. You
-  can parry with it too.
+  against a wolf pack or a band of raiders. A bystander is only hit if the blow was aimed at them. It
+  is too heavy to parry with: take up your melee weapon (2) for that.
 - Bow damage: 20 / 28 / 40 by bow, +10 with bronze arrowheads. Arrows strike where the crosshair
-  points, near or far, and over the shoulder too: the archer allows for the arrow's drop.
+  points, near or far, and over the shoulder too: the archer allows for the arrow's drop. While the
+  bow is drawn you stand still (players and archers alike); loose or lower it to move again.
 - Parry: before a person strikes, a yellow mark shows over their head. Press right mouse or Q with
   your melee weapon in hand while facing them: the mark turns green, the blow does nothing, and they
   are open for a moment (your next hit does a quarter more). If it lands, the mark turns red. There
   is no shield yet.
-- Only what is in your hand is drawn and used: 1 bow, 2 melee weapon, 3 hands free.
+- Only what is in your hand is drawn and used: 1 bow, 2 melee weapon, 3 war mace, 4 hands free.
 
 ## People, crime and raiders
 
@@ -295,13 +307,17 @@ townsperson (260 health, light armor, blows of 19): with the starting club you s
 copper mace and leather armor you lose unless you parry well; with the bronze sickle-sword and leather
 armor you win, narrowly unless you parry. Chewing herbs mid-fight helps. Killing them is no crime. Guards (and caravan guards) attack any raider that has left its
 camp, so leading raiders back to the city brings help; the guards return to their posts afterwards.
+
+The four gate guards (at the temple gate and the south gate) also carry composite bows. They chase you
+on foot as far as their reach; once you are past it (over a canal, say) they stand and shoot instead.
+Archers stop to draw: a second or so before each shot, which is your moment to step aside.
 Each camp's chest holds bronze, tin, ore, arrows and the like; it is restocked each dawn, and dead
 raiders return the next day while you are away from the camp.
 
 Barbarians hold two war camps across the river, north-west and south-west, behind palisades with a
 lookout, a war banner and skulls on poles. They are twice as strong as the raiders (520 health, blows
-of 38) and wear horned helmets and carry bronze axes: fight them from range, parry, wear your best
-armor, or bring the war mace. No guards come out there. Their bodies and chests hold about twice the
+of 38) and wear horned helmets and carry bronze axes; each camp also has a bowman with a war bow who
+shoots from range. Fight them from range, parry, wear your best armor, or bring the war mace. No guards come out there. Their bodies and chests hold about twice the
 loot.
 
 ## Armor
@@ -338,7 +354,8 @@ or bronze armor. Workers do these jobs from 6:00 to 18:30 and go home at night.
 
 Wolves hunt you only when you are alone outside the walls: no worker, villager, traveller or caravan
 within about 20 m. By day the job sites and the villages are safe; at night, or out in the empty
-steppe, a pack will chase you. Packs are four strong on the city side and six across the river, and a
+steppe, a pack will chase you. Packs are four strong on the city side (five packs, two of them roaming the open east plain) and
+five or six across the river (three packs), and a
 wolf takes 60 damage to kill. Each bite hurts, and the pack circles between bites. Hitting a wolf turns
 its pack on you, even near people; a badly wounded wolf runs off. Run back to the city, crouch to be
 noticed later, or wear a wolf-pelt cloak. Gazelles, onagers and geese notice you less at night; boars
@@ -372,7 +389,7 @@ Animals you kill stay gone until the next spring, when their herds are full agai
 | `src/raiders.c` | Two raider camps and two barbarian war camps, their idle routine, the restocked chests |
 | `src/world.c` | Box store, collision queries, water and ponds, palms, reeds, forests, west-bank greenery, herbs, resources, sky and season light, culled drawing |
 | `src/roads.c` | Main roads: their routes, terrain-following strips, walking heights for travellers, distance queries, the map overlay |
-| `src/villages.c` | The hunters' and herders' villages, the hunter's and shepherd's offers, the sheepfold flock, travellers |
+| `src/villages.c` | The hunters', herders' and fishers' villages, their traders' offers and village guards, the sheepfold flock, travellers |
 | `src/jobs.c` | Craft quarter, docks, ferry, mine, woodcutters' camp, farmhands, daylight workers, smith |
 | `src/caravan.c` | Trade-road caravans, their stalls and offers |
 | `src/farm.c` | Seasons, weather and rain, farm plots, ditch and well, buckets, coop and hens, city farms, crop stages |
