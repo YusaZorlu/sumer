@@ -27,17 +27,46 @@ static const Offer SHEPHERD[] = {
     { IT_WASTE, 2, IT_NONE, 0, OUT_ITEM, IT_MILK,      1, 0, 0 },
 };
 
-static const char *const NAMES[VILLAGES] = { "Hunters' village", "Herders' village" };
+// The fishers sell the only fine net, and deal in fish.
+static const Offer FISHER[] = {
+    { IT_REEDS,  8, IT_COPPER, 2, OUT_TOOL, TOOL_NET,   1, 0, 0 },
+    { IT_DATES,  4, IT_NONE,   0, OUT_ITEM, IT_FISH,    3, 0, 0 },
+    { IT_FISH,   3, IT_WOOD,   1, OUT_ITEM, IT_GRILLED, 3, 0, 0 },
+    { IT_FISH,   5, IT_NONE,   0, OUT_ITEM, IT_ARROWS,  8, 0, 0 },
+    { IT_FISH,   4, IT_NONE,   0, OUT_ITEM, IT_HERB,    2, 0, 0 },
+    { IT_FISH,   8, IT_NONE,   0, OUT_ITEM, IT_BRONZE,  1, 0, 0 },
+};
+
+static const char *const NAMES[VILLAGES] = { "Hunters' village", "Herders' village", "Fishers' village" };
+static const float CENTERS[VILLAGES][2] = { { HUNTERS_X, HUNTERS_Z }, { HERDERS_X, HERDERS_Z }, { FISHERS_X, FISHERS_Z } };
 
 Vector3 VillageCenter(int v)
 {
-    float x = v == VIL_HUNTERS ? HUNTERS_X : HERDERS_X, z = v == VIL_HUNTERS ? HUNTERS_Z : HERDERS_Z;
+    v = v < 0 || v >= VILLAGES ? 0 : v;
+    float x = CENTERS[v][0], z = CENTERS[v][1];
     return (Vector3){ x, TerrainHeight(x, z), z };
+}
+
+// The village a place belongs to (within 45 m of its middle), or -1.
+int VillageAt(Vector3 p)
+{
+    for (int v = 0; v < VILLAGES; v++) {
+        float dx = p.x - CENTERS[v][0], dz = p.z - CENTERS[v][1];
+        if (dx * dx + dz * dz < 45.0f * 45.0f) return v;
+    }
+    return -1;
 }
 
 const char *VillageName(int v)
 {
-    return L(NAMES[v == VIL_HERDERS ? VIL_HERDERS : VIL_HUNTERS]);
+    return L(NAMES[v < 0 || v >= VILLAGES ? 0 : v]);
+}
+
+// Each village keeps a guard with a bow, who shoots at anyone the village has turned on.
+static void Warden(float x, float z, float face, Color robe)
+{
+    int i = AddNpc(NPC_WARDEN, (Vector3){ x, TerrainHeight(x, z), z }, (Vector3){ x, TerrainHeight(x, z), z }, 0, robe, face);
+    if (i >= 0) G.villagers[i].bow = 1;
 }
 
 // The sheepfold, where the herders' flock wanders.
@@ -183,6 +212,7 @@ static void BuildHunters(void)
     AddNpc(NPC_VILLAGER, (Vector3){ cx - 3, Ground(cx - 3, cz - 8), cz - 8 }, (Vector3){ cx - 3, Ground(cx - 3, cz + 10), cz + 10 }, 0.5f, green, 0);
     float ax = cx - 13, az = cz - 12;
     AddNpc(NPC_VILLAGER, (Vector3){ ax, Ground(ax, az), az }, (Vector3){ ax, Ground(ax, az), az }, 0, green, -PI / 2);
+    Warden(cx - 12, cz + 3, -PI / 2, (Color){ 104, 82, 56, 255 });
 }
 
 // A low mud-brick house with a flat roof and its door toward (fx, fz).
@@ -244,6 +274,88 @@ static void BuildHerders(void)
     const Color brown = { 140, 110, 80, 255 }, pale = { 200, 186, 150, 255 };
     AddNpc(NPC_VILLAGER, (Vector3){ f.x - 1.5f, Ground(f.x - 1.5f, f.y), f.y }, (Vector3){ f.x - 1.5f, Ground(f.x - 1.5f, f.y + f.height), f.y + f.height }, 0.5f, brown, 0);
     AddNpc(NPC_VILLAGER, (Vector3){ cx - 10, Ground(cx - 10, cz - 3), cz - 3 }, (Vector3){ cx - 10, Ground(cx - 10, cz + 9), cz + 9 }, 0.45f, pale, 0);
+    Warden(cx + 2, cz - 9, PI, (Color){ 120, 96, 70, 255 });
+}
+
+// A reed house in the marsh style: a long barrel vault of bundled reeds, its door toward (fx, fz).
+static void ReedHouse(float x, float z, float len, bool alongX)
+{
+    const Color reed = { 196, 176, 112, 255 }, dark = { 150, 132, 80, 255 };
+    float y = Ground(x, z), w = 3.6f;
+    float sx = alongX ? len : w, sz = alongX ? w : len;
+    AddBox(x, y, z, sx, 1.4f, sz, reed, true);
+    AddShape(x, y + 1.0f, z, sx * 0.98f, 1.7f, sz * 0.98f, reed, true, SHAPE_BLOB);
+    for (int k = -1; k <= 1; k += 2) {
+        float ex = alongX ? x + (len / 2) * (float)k : x, ez = alongX ? z : z + (len / 2) * (float)k;
+        AddShape(ex, y - 0.1f, ez, 0.36f, 2.9f, 0.36f, dark, true, SHAPE_CYL);
+    }
+    if (alongX) AddBox(x + len / 2 + 0.02f, y, z, 0.06f, 1.5f, 1.0f, COL_DOORWAY, false);
+    else AddBox(x, y, z + len / 2 + 0.02f, 1.0f, 1.5f, 0.06f, COL_DOORWAY, false);
+}
+
+// Fish split and hung to dry in the sun.
+static void FishRack(float x, float z)
+{
+    const Color fish = { 170, 176, 168, 255 };
+    float y = Ground(x, z);
+    Post(x - 1.4f, z, 1.6f, COL_WOOD);
+    Post(x + 1.4f, z, 1.6f, COL_WOOD);
+    AddBox(x, y + 1.5f, z, 3.0f, 0.06f, 0.06f, COL_WOOD, false);
+    for (int k = 0; k < 6; k++) AddBox(x - 1.1f + 0.44f * (float)k, y + 1.15f, z, 0.16f, 0.6f, 0.05f, fish, false);
+}
+
+static void BeachedBoat(float x, float z)
+{
+    float y = Ground(x, z);
+    AddBox(x, y + 0.1f, z, 1.0f, 0.36f, 3.6f, COL_STRAW, false);
+    AddBox(x, y + 0.3f, z - 1.75f, 0.7f, 0.5f, 0.35f, COL_STRAW, false);
+    AddBox(x, y + 0.3f, z + 1.75f, 0.7f, 0.5f, 0.35f, COL_STRAW, false);
+}
+
+// Across the river from the city, beside the ferry's landing: reed houses, fish drying, boats on the
+// bank, and the river full of fish below.
+static void BuildFishers(void)
+{
+    const float cx = FISHERS_X, cz = FISHERS_Z;
+    const Color blue = { 70, 96, 120, 255 }, sand = { 186, 168, 128, 255 };
+
+    ReedHouse(cx - 10, cz - 10, 7.0f, true);
+    ReedHouse(cx - 11, cz + 9, 6.0f, true);
+    ReedHouse(cx + 1, cz - 15, 6.5f, false);
+    ReedHouse(cx + 2, cz + 15, 6.0f, false);
+    FirePit(cx - 1, cz);
+    FishRack(cx + 7, cz - 6);
+    FishRack(cx + 7, cz + 6);
+    FishRack(cx - 6, cz - 1);
+    for (int k = 0; k < 3; k++) BeachedBoat(cx + 14 + 1.6f * (float)k, cz - 24 + 0.6f * (float)k);
+    for (int k = 0; k < 3; k++) {
+        float x = cx - 4 + 1.0f * (float)k, z = cz + 6.5f;
+        AddShape(x, Ground(x, z) - 0.05f, z, 0.5f, 0.55f, 0.5f, COL_POT, true, SHAPE_BLOB);
+    }
+
+    // The fisher's stall faces the road: baskets of fish and a net hung on poles.
+    float sx = cx + 12, sz = cz + 4, sy = Ground(sx, sz);
+    AddBoxOn(sx, sz, 0.9f, 0.75f, 2.2f, COL_WOOD, true);
+    AddBox(sx, sy + 0.8f, sz - 0.5f, 0.6f, 0.2f, 0.6f, COL_REED, false);
+    AddBox(sx, sy + 0.8f, sz + 0.5f, 0.5f, 0.15f, 0.7f, (Color){ 170, 176, 168, 255 }, false);
+    Post(sx - 0.2f, sz - 1.8f, 2.0f, COL_WOOD);
+    Post(sx - 0.2f, sz + 1.8f, 2.0f, COL_WOOD);
+    AddBox(sx - 0.2f, sy + 1.4f, sz, 0.04f, 1.0f, 3.4f, (Color){ 110, 100, 80, 255 }, false);
+    G.traders[TR_FISHER] = (Trader){ "Fisher", "The river feeds us. A fine net catches twice the fish, and I have the only ones.",
+                                     { sx + 1.1f, Ground(sx + 1.1f, sz), sz }, PI / 2, blue, FISHER, COUNT(FISHER), false, false, { .hp = 0 } };
+
+    // Fish to catch in the river below the village, upstream and downstream of the ferry.
+    static const float spots[4] = { -86, -76, -46, -38 };
+    for (int k = 0; k < 4; k++) AddResource(-147.5f, spots[k], RES_FISH);
+
+    AddTorch(cx + 10, Ground(cx + 10, cz - 9), cz - 9, true);
+    AddTorch(cx + 10, Ground(cx + 10, cz + 10), cz + 10, true);
+    AddTorch(cx - 15, Ground(cx - 15, cz), cz, true);
+    KeepOut(cx - 16, cz - 20, cx + 16, cz + 20);
+
+    AddNpc(NPC_VILLAGER, (Vector3){ cx - 4, Ground(cx - 4, cz - 5), cz - 5 }, (Vector3){ cx + 9, Ground(cx + 9, cz - 5), cz - 5 }, 0.5f, blue, 0);
+    AddNpc(NPC_VILLAGER, (Vector3){ cx + 5, Ground(cx + 5, cz + 10), cz + 10 }, (Vector3){ cx + 5, Ground(cx + 5, cz - 10), cz - 10 }, 0.45f, sand, 0);
+    Warden(cx + 11, cz - 2, PI / 2, (Color){ 88, 100, 110, 255 });
 }
 
 // Travellers walk whole roads back and forth, day and night, carrying torches after dark.
@@ -261,6 +373,7 @@ void BuildVillages(void)
 {
     BuildHunters();
     BuildHerders();
+    BuildFishers();
     Traveller(ROAD_EAST, 0.2f, 1.0f, 1.2f, (Color){ 150, 120, 84, 255 });
     Traveller(ROAD_EAST, 0.75f, -1.0f, 1.0f, (Color){ 120, 96, 120, 255 });
     Traveller(ROAD_HERDERS, 0.5f, 1.0f, 1.1f, (Color){ 176, 160, 120, 255 });

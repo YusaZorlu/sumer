@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define NET_VERSION   2
+#define NET_VERSION   4
 #define SNAP_EVERY    0.1f
 #define STATE_EVERY   0.066f
 #define RECORD_EVERY  15.0f
@@ -148,7 +148,7 @@ bool IsClient(void)
 static void WVitals(Writer *w, const Vitals *v)
 {
     unsigned flags = (v->used ? 1u : 0u) | (v->dead ? 2u : 0u) | (v->override ? 4u : 0u) | (v->looted ? 8u : 0u) |
-                     (v->hostile > 0 ? 16u : 0u) | ((unsigned)(v->mark & 3) << 5);
+                     (v->hostile > 0 ? 16u : 0u) | ((unsigned)(v->mark & 3) << 5) | (v->drawing ? 128u : 0u);
     W8(w, flags);
     if (!v->used) return;
     W16(w, (unsigned)Clamp(v->hp * 4.0f, 0.0f, 65535.0f));
@@ -184,6 +184,7 @@ static void RVitals(Reader *r, Vitals *v)
     v->looted = (flags & 8u) != 0;
     v->hostile = (flags & 16u) ? 1.0f : 0.0f;
     v->mark = (unsigned char)((flags >> 5) & 3u);
+    v->drawing = (flags & 128u) != 0;
     v->swing = (float)R8(r) / 200.0f;
     v->windup = (float)R8(r) / 200.0f;
     v->markT = (float)R8(r) / 200.0f;
@@ -226,6 +227,8 @@ static void WriteSnapshot(Writer *w, bool slow)
         W8(w, (unsigned)p->equip); W8(w, (unsigned)p->weapon); W8(w, (unsigned)p->bow); W8(w, (unsigned)p->armor);
         W16(w, (unsigned)Clamp(p->wanted, 0.0f, 65000.0f));
         W8(w, p->alone ? 1u : 0u);
+        W8(w, (unsigned)(p->kills < 255 ? p->kills : 255));
+        W8(w, (unsigned)(p->deaths < 255 ? p->deaths : 255));
     }
 
     W8(w, (unsigned)G.animalCount);
@@ -367,6 +370,10 @@ static void ReadSnapshot(Reader *r)
         int flags = (int)R16(r), equip = (int)R8(r), weapon = (int)R8(r), bow = (int)R8(r), armor = (int)R8(r);
         float wanted = (float)R16(r);
         bool alone = R8(r) != 0;
+        int kills = (int)R8(r);
+        int deaths = (int)R8(r);
+        p->kills = kills;
+        p->deaths = deaths;
         if (s == G.self) {
             p->wanted = wanted;
             p->alone = alone;
@@ -753,11 +760,12 @@ static void ShowSay(Reader *r)
     if (!r->bad) Show(fmt, args, n);
 }
 
-void NetHurt(int slot, float dmg)
+void NetHurt(int slot, float dmg, int by)
 {
     Writer w = Begin(M_EVENT);
     W8(&w, EV_HURT);
     WF(&w, dmg);
+    W8(&w, (unsigned)by);
     SendGuest(slot, &w);
 }
 
@@ -996,6 +1004,7 @@ static void HostHello(int net, Reader *r)
     W8(&w, (unsigned)slot);
     W32(&w, (unsigned)worldSign);
     WStr(&w, myRoom);
+    W8(&w, (G.pvp ? 1u : 0u) | (G.combat ? 2u : 0u));
     W8(&w, rec ? 1u : 0u);
     if (rec) WriteRecord(&w, rec);
     SendGuest(slot, &w);
@@ -1121,6 +1130,30 @@ static void Drop(const char *why)
     LeaveToLobby(why);
 }
 
+// The rules the host picked on the title screen for the game it opens.
+static bool rulePvp = true, ruleCombat;
+
+void NetRules(bool pvp, bool combat)
+{
+    rulePvp = pvp;
+    ruleCombat = pvp && combat;
+}
+
+// A player's kills and deaths at other players' hands, and the ratio: "K/D 3/1 (3.0)".
+const char *KillDeath(int s)
+{
+    const Peer *p = &G.peers[s];
+    float ratio = p->deaths > 0 ? (float)p->kills / (float)p->deaths : (float)p->kills;
+    return TextFormat("K/D %d/%d (%.1f)", p->kills, p->deaths, ratio);
+}
+
+// The game's rules in a line.
+const char *RulesText(void)
+{
+    return L(!G.pvp ? "PvP off: players cannot hurt each other." : G.combat ? "Combat mode: best gear, unlimited arrows, guards stay out of player fights."
+                    : "PvP on: guards punish whoever starts a fight in the city.");
+}
+
 static void StartHosting(void)
 {
     GameInit();
@@ -1133,11 +1166,13 @@ static void StartHosting(void)
     bool resumed = LoadNetGame();
     const PlayerRecord *mine = FindRecord(myName);
     if (mine) ApplyRecord(mine);
+    G.pvp = rulePvp;
+    G.combat = ruleCombat;
     UpdateSky();
     FollowCamera(1.0f);
     phase = PHASE_PLAYING;
-    if (resumed) Say("Your game is open again: day %d. Friends join from this same address.", G.day);
-    else Say("You are hosting a new game. Friends open this same address and press Join.");
+    if (resumed) Say("%s %s", TextFormat(L("Your game is open again: day %d. Friends join from this same address."), G.day), RulesText());
+    else Say("%s %s", L("You are hosting a new game. Friends open this same address and press Join."), RulesText());
     G.msgT = 8.0f;
 }
 
@@ -1146,6 +1181,7 @@ static void StartGuest(Reader *r)
     int slot = (int)R8(r), sign = (int)R32(r);
     char room[32];
     RStr(r, room, sizeof(room));
+    unsigned rules = R8(r);
     bool hasRecord = R8(r) != 0;
     PlayerRecord rec;
     if (hasRecord && !ReadRecord(r, &rec)) hasRecord = false;
@@ -1159,6 +1195,8 @@ static void StartGuest(Reader *r)
         return;
     }
     G.role = NET_CLIENT;
+    G.pvp = (rules & 1u) != 0;
+    G.combat = (rules & 2u) != 0;
     G.self = G.actor = slot;
     memset(G.peers, 0, sizeof(G.peers));
     G.peers[slot] = (Peer){ .active = true };
@@ -1173,7 +1211,8 @@ static void StartGuest(Reader *r)
     UpdateSky();
     FollowCamera(1.0f);
     phase = PHASE_PLAYING;
-    Say(hasRecord ? "Welcome back. Your home has the %s lintel." : "You joined the game. Your home has the %s lintel.", PlayerColorName(slot));
+    Say("%s %s", TextFormat(L(hasRecord ? "Welcome back. Your home has the %s lintel." : "You joined the game. Your home has the %s lintel."), PlayerColorName(slot)),
+        RulesText());
     G.msgT = 8.0f;
 }
 
@@ -1289,7 +1328,8 @@ static void ClientEvent(Reader *r)
     switch (kind) {
     case EV_HURT: {
         float dmg = RF(r);
-        if (!r->bad) HurtPlayer(dmg);
+        int by = (int)R8(r);
+        if (!r->bad) HurtPlayer(dmg, by);
         break;
     }
     case EV_SAY: ShowSay(r); break;

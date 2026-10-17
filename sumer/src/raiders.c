@@ -4,9 +4,11 @@
 #include <stdio.h>
 #include <string.h>
 
-#define PER_CAMP (MAX_RAIDERS / CAMPS)
+// Four raiders to a camp; the barbarians' war camps have a fifth, a bowman by the lookout.
+#define RAIDER_CAMP 4
+#define WAR_CAMP    5
 
-static const float HOMES[PER_CAMP][2] = { { -4.5f, 2.5f }, { 3.5f, 3.0f }, { 5.0f, -3.5f }, { -2.5f, -5.0f } };
+static const float HOMES[WAR_CAMP][2] = { { -4.5f, 2.5f }, { 3.5f, 3.0f }, { 5.0f, -3.5f }, { -2.5f, -5.0f }, { 5.0f, -9.5f } };
 // Raiders south and north of the city; barbarians, twice as strong, north-west and south-west across the river.
 static const float CAMP_POS[CAMPS][2] = { { 34, 210 }, { 30, -240 }, { -360, -230 }, { -380, 250 } };
 static const int STASHES[CAMPS] = { STN_STASH, STN_STASH2, STN_STASH3, STN_STASH4 };
@@ -27,6 +29,23 @@ int StashCamp(int station)
 static bool West(int camp)
 {
     return camp >= EAST_CAMPS;
+}
+
+static int CampSize(int camp)
+{
+    return West(camp) ? WAR_CAMP : RAIDER_CAMP;
+}
+
+static int CampFirst(int camp)
+{
+    return camp <= EAST_CAMPS ? camp * RAIDER_CAMP : EAST_CAMPS * RAIDER_CAMP + (camp - EAST_CAMPS) * WAR_CAMP;
+}
+
+bool RaiderBowman(int i)
+{
+    if (i < 0 || i >= MAX_RAIDERS) return false;
+    int camp = G.raiders[i].camp;
+    return West(camp) && i == CampFirst(camp) + WAR_CAMP - 1;
 }
 
 static float Ground(float x, float z)
@@ -138,8 +157,8 @@ static void BuildCamp(int camp)
     if (West(camp)) BuildWarCamp(cx, cz);
     KeepOut(cx - 12, cz - 12, cx + 12, cz + 12);
 
-    for (int k = 0; k < PER_CAMP; k++) {
-        Raider *r = &G.raiders[camp * PER_CAMP + k];
+    for (int k = 0; k < CampSize(camp); k++) {
+        Raider *r = &G.raiders[CampFirst(camp) + k];
         r->camp = camp;
         r->home = (Vector3){ cx + HOMES[k][0], 0, cz + HOMES[k][1] };
         r->home.y = Ground(r->home.x, r->home.z);
@@ -243,8 +262,14 @@ void DrawRaiders(void)
             continue;
         }
         bool sitting = !r->vit.override && !r->moving && G.night > 0.5f;
-        float stride = (r->vit.override || r->moving) ? time * (r->vit.override ? 8.0f : 4.0f) : 0.0f;
-        DrawHuman(p, f, stride, look, sitting, false, 0);
+        float stride = (r->vit.override || r->moving) && !r->vit.drawing ? time * (r->vit.override ? 8.0f : 4.0f) : 0.0f;
+        if (RaiderBowman(i)) {
+            // The bowman: a war bow in hand, no axe.
+            float pull = r->vit.drawing ? Clamp(1.0f - r->vit.windup / BOW_DRAW_TIME, 0.0f, 1.0f) : 0.0f;
+            DrawHuman(p, f, stride, look, sitting, true, pull);
+        } else {
+            DrawHuman(p, f, stride, look, sitting, false, 0);
+        }
 
         float k = Clamp(r->vit.swing / 0.35f, 0.0f, 1.0f);
         float angle = r->vit.swing > 0 ? -80.0f + 120.0f * (1.0f - k) : (r->vit.override ? -40.0f : 30.0f);
@@ -254,10 +279,10 @@ void DrawRaiders(void)
         rlRotatef(f * RAD2DEG, 0, 1, 0);
         rlTranslatef(0.3f, 0, 0.1f);
         rlRotatef(angle, 1, 0, 0);
-        if (west) {
+        if (west && !RaiderBowman(i)) {
             DrawShadedBox((Vector3){ 0, 0, 0.5f }, (Vector3){ 0.06f, 0.06f, 1.0f }, COL_WOOD);
             DrawShadedBox((Vector3){ 0, 0.14f, 0.92f }, (Vector3){ 0.04f, 0.42f, 0.28f }, COL_BRONZE);
-        } else {
+        } else if (!west) {
             DrawShadedBox((Vector3){ 0, 0, 0.42f }, (Vector3){ 0.05f, 0.05f, 0.85f }, COL_WOOD);
             DrawShadedBox((Vector3){ 0, 0.1f, 0.8f }, (Vector3){ 0.04f, 0.3f, 0.2f }, COL_STONE);
         }
