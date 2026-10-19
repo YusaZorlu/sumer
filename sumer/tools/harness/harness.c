@@ -385,6 +385,61 @@ int main(int argc, char **argv)
         WetWays();
     } else if (strcmp(argv[1], "textmap") == 0 && argc > 6) {
         TextMap((float)atof(argv[2]), (float)atof(argv[3]), (float)atof(argv[4]), (float)atof(argv[5]), (float)atof(argv[6]));
+    } else if (strcmp(argv[1], "spots") == 0) {
+        // Free patches inside the city (nothing solid, no keep-out zone, no water) of 2*half+1 metres square: spots <x0> <z0> <x1> <z1> <step> <half>
+        float x0 = (float)atof(argv[2]), z0 = (float)atof(argv[3]), x1 = (float)atof(argv[4]), z1 = (float)atof(argv[5]), st = (float)atof(argv[6]), half = (float)atof(argv[7]);
+        int skip = argc > 8 ? atoi(argv[8]) : 0;
+        for (float cz = z0; cz <= z1; cz += st)
+            for (float cx = x0; cx <= x1; cx += st) {
+                bool ok = true;
+                for (float dz = -half; dz <= half && ok; dz += 1)
+                    for (float dx = -half; dx <= half && ok; dx += 1) {
+                        float x = cx + dx, z = cz + dz;
+                        ok = (skip & 1 || !SolidAt(x, z, 0.2f)) && !InWater(x, z) && (skip & 2 || !InKeepOut(x, z, 0.0f)) && (skip & 4 || InsideWalls(x, z, 2.0f));
+                    }
+                if (ok) printf("%.0f %.0f\n", cx, cz);
+            }
+    } else if (strcmp(argv[1], "pvpshot") == 0 && argc > 3) {
+        // How another player looks in a fight, and the red lights of a blow on you: pvpshot <out.png> <variant 0-4>
+        //   0 raising a sword (yellow)  1 striking down (red)  2 flinching, with a blow from ahead and left on you
+        //   3 sweeping the mace (yellow)  4 holding the sword up to parry (green)
+        int v = atoi(argv[3]);
+        G.role = NET_SOLO;
+        Player *pl = &G.player;
+        pl->pos = (Vector3){ 38, GroundHeight(38, 20, 50.0f), 20 };
+        pl->yaw = 0;
+        pl->pitch = 0.2f;
+        pl->dist = 4.0f;
+        G.camDist = 4.0f;
+        G.hour = 12;
+        for (int f = 0; f < 3; f++) {
+            GameUpdate();
+            BeginDrawing();
+            GameDraw();
+            EndDrawing();
+        }
+        G.role = NET_HOST;
+        G.pvp = true;
+        G.self = G.actor = 0;
+        G.peers[1] = (Peer){ .active = true, .net = 1, .health = HEALTH_MAX, .flags = PF_GROUND, .equip = EQ_MELEE, .weapon = 2 };
+        snprintf(G.peers[1].name, NAME_LEN, "Bob");
+        Peer *b = &G.peers[1];
+        b->pos = b->shown = (Vector3){ 40.4f, GroundHeight(40.4f, 16.8f, 50.0f), 16.8f };
+        b->facing = b->shownFacing = atan2f(38 - 40.4f, 20 - 16.8f);
+        b->lastHealth = HEALTH_MAX;
+        if (v == 0) { b->swingT = 0.34f; b->mark = MARK_WARN; }
+        if (v == 1) { b->swingT = 0.12f; b->mark = MARK_HIT; }
+        if (v == 2) { b->hitT = 0.3f; b->hitX = 0; b->hitZ = -1; b->mark = MARK_PARRIED; G.hitLight[0] = 0.8f; G.hitLight[2] = 0.9f; G.hurtT = 0.2f; }
+        if (v == 3) { b->equip = EQ_MACE; b->swingT = 0.28f; b->mark = MARK_WARN; }
+        if (v == 4) { b->flags |= PF_PARRY; b->mark = MARK_PARRIED; }
+        FollowCamera(1.0f);
+        BeginDrawing();
+        GameDraw();
+        rlDrawRenderBatchActive();
+        Image im = LoadImageFromScreen();
+        ExportImage(im, argv[2]);
+        UnloadImage(im);
+        EndDrawing();
     } else if (strcmp(argv[1], "archers") == 0) {
         TestArchers();
         printf("%d passed, %d failed\n", passes, fails);

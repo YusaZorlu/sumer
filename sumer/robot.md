@@ -7,7 +7,7 @@ build and test, how the code is organised, what to update with every change, and
 
 An open-world prototype of Ur, about 2100 BC: C99 and raylib 5.5, everything drawn from primitive shapes,
 about 17,000 lines in `src/`. It runs as a desktop program (Linux, macOS) and in the browser (Emscripten),
-where up to five people share one world: one player's browser is the **host** and runs the whole world,
+where up to six people share one world: one player's browser is the **host** and runs the whole world,
 `server.py` only relays messages. English and Turkish. The player who writes the requests plays in the
 browser with friends and tests by playing, so the browser build has to work, not just the desktop one.
 
@@ -45,6 +45,8 @@ All from the repository root. `tools/out/` is for build products and is git-igno
 | Render and check the music | `sh tools/music/render.sh` |
 | Rebuild `sumer-prebuilt` (zig, glibc 2.29) | `sh tools/prebuilt.sh` (`pip install ziglang`) |
 | Screenshot a panel without playing | `tools/out/harness ui out.png <panel> <lang 0/1>` (panel numbers = `Panel` enum: 4 pause, 5 help) |
+| Screenshot another player mid-fight, and the red hit lights | `tools/out/harness pvpshot out.png <0-4>` (raising, striking, flinching + lights, mace, parrying) |
+| Free patches in the city (for placing a house) | `tools/out/harness spots x0 z0 x1 z1 step half [skip]`; also test a spot against what is built before the city houses (see the sixth house's history in `git log`) |
 
 The harness has more modes (`shot`, `citymap`, `textmap`, `wetways`, `canals`, `pvp`, `archers`, `aim`,
 `stats`): read `main()` at the bottom of `tools/harness/harness.c`. `test` runs everything in
@@ -108,12 +110,28 @@ in `src/game.h`) holds the whole world.
   by `TrackGoods`; storage deposits count as kept).
 - **PvP rules** come from the host (`NetRules`, sent in the welcome message): `G.pvp`, `G.combat`. Combat mode gives
   everyone the best gear through the `Use*()` accessors in `items.c`, never by changing their own records.
+  In PvP the world also changes: `RemoveZigguratGuards()` (village.c) drops the guards on the ziggurat (host and
+  guests both call it right after the rules are known, so their villager lists stay identical), and `CitySpawn()`
+  picks where players start and come to after being brought down (the welcome message also carries the spawn).
+- **Blows between players** (`combat.c`: `HitPlayer`, `StartBlow`, `UpdateBlows`, `LandBlow`): a melee swing at a player is
+  queued and lands `PVP_WINDUP` (0.3 s) later; meanwhile the swinger's `Peer.mark` is `MARK_WARN` (yellow), then
+  `MARK_PARRIED` (green: the victim's raised weapon was in time; the swinger is stunned by `NetStunned`/`swingCool` and
+  left open to a 1.25x answer, `RIPOSTE`) or `MARK_HIT` (red). The host decides and replicates `mark` in the peers'
+  snapshot data; `ui.c` draws the diamond over the head. Arrows still land at once. The swing animation
+  (`WeaponAngle` in player.c, `PeerWeapon` in players.c) is timed so the weapon comes down when the blow lands.
+- **Where a blow came from**: every damage source passes its position (`HurtSlotFrom(slot, dmg, by, &pos)`, `NetHurt`
+  carries it to a guest); `HurtPlayerFrom` turns it into the red edge lights (`G.hitLight[4]`: front, back, left, right
+  relative to the camera) and the body's flinch (`G.flinchT`, camera jolt in `FollowCamera`). Other players' flinch is
+  guessed from a drop in `Peer.health` (`UpdatePeers`). New damage sources should use `HurtSlotFrom`.
 - **Music** (`src/music.c`): see its own section below.
 - **Web specifics:** `src/web.c` (storage in IndexedDB: call `SyncStorage()` after writing a file), `src/shell.html`
   (the page, click and key tap fixes), `src/lobby.c` (title screen), `src/net.c` (websocket to `server.py`).
   The canvas size has to be kept in step with the window (a past bug: clicks landed in the wrong place in any
   window that was not 1280x720).
 - **Limits that have been hit:** `MAX_VILLAGERS` (64; it ran out at 48), `MAX_FIGHTERS` 128, `MAX_BOXES` 20000.
+  `MAX_PLAYERS` is 6 (relay `MAX_GUESTS` in `server.py` is 5; houses in `HOUSE_SPOTS`, colors and their names in
+  `village.c`). A new house goes where nothing built *before* the city's own houses overlaps it (those are laid out
+  last and go around it), clear of the townsfolk's streets.
 
 ## Traps already hit
 
@@ -127,8 +145,12 @@ in `src/game.h`) holds the whole world.
   drives the game (1 teleport, 2 E, 3 F, 4 look, 5 shoot, 6 swing, 7 add item, 9 set hour, 13 hurt, 14 equip ...). Add
   fields there when a test needs to see something new.
 - The prebuilt binary must stay linkable on old systems: build it with `tools/prebuilt.sh`, not with the system compiler.
-- Headless Chromium has no GPU: it runs about 5 frames a second. Time-based checks need generous waits; use
-  `waitFor` in `tools/web/lib.js` instead of fixed sleeps.
+- Headless Chromium has no GPU: it runs about 5 frames a second, and the game clamps each frame to 0.05 s, so game time
+  runs at a quarter of real time there (a 0.3 s windup takes over a second). Time-based checks need generous waits; use
+  `waitFor` in `tools/web/lib.js` instead of fixed sleeps, and poll for what you expect.
+- Asking a page for its state (`info()`) many times a second slows that page, and a seventh heavy page makes the whole
+  machine crawl: `tools/web/mp6.js` tests the full game with six pages and asks the relay itself (a raw WebSocket)
+  whether a seventh would be turned away.
 - `tools/web/audio.js` counts empty audio blocks; in the 5 fps headless browser a few percent are normal (Web Audio shares the
   main thread with a very slow render loop), so it allows 5%. It has not been measured in a real browser on a real GPU.
 - Without a sound device the game runs silently (raylib prints a warning). That is expected on servers and in CI.

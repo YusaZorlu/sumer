@@ -26,7 +26,7 @@ Installs raylib with Homebrew if missing (or builds it from source without Homeb
 
 ## Play in a browser, alone or together
 
-The game also runs in a web browser, and there up to five people can share one world. Start the
+The game also runs in a web browser, and there up to six people can share one world. Start the
 server (Python 3.8 or newer, nothing else to install):
 
     python3 server.py
@@ -46,11 +46,15 @@ The title screen asks for your name, then:
 - **Rules when you host**, the two switches under Host:
   - **PvP** (on unless you switch it off): whether players can hurt each other with blows and
     arrows. A player who starts a fight inside the city's canals is wanted by the guards; hitting
-    back, or hitting someone already wanted, is no crime.
+    back, or hitting someone already wanted, is no crime. In a PvP game everyone starts somewhere
+    else in the city (the spot is picked on open ground, away from the other players), and so does
+    anyone brought down, instead of waking at home. The guards on the ziggurat's stairs and
+    terrace are gone, so anyone can climb to the priest on top for the day's +20% speed boost: the
+    welcome says so.
   - **Combat mode** (off unless you switch it on, and only with PvP): everyone fights with the best
     of everything (bronze sickle-sword, the war mace, the best bow with bronze arrowheads, bronze
     armor) and arrows never run out. The guards stay out of fights between players, and a player
-    brought down comes to at home with full health. Your own gear is untouched: it is what your
+    brought down comes to at home with full health (somewhere in the city in a PvP game, as always). Your own gear is untouched: it is what your
     record keeps, and what you have again in a game without combat mode.
   The rules show in everyone's Esc menu and when they join.
 - **Join a game**: joins the game hosted in the same room. Join again under the same name and your
@@ -63,14 +67,14 @@ can reach (its port open); behind HTTPS the page connects securely by itself.
 Playing together:
 
 - Each player has a house of their own and wears its color: blue for the host, then red, green,
-  yellow and purple. The four guest houses stand in a row south of the east-west street, doors to the
+  yellow, purple and teal. The five guest houses stand in a row south of the east-west street, doors to the
   street, each with its own bed, storeroom, quern, trough, workbench and oven. The farm, the coop, the
   hens and the eggs are shared.
 - The world never stops: the Esc menu only takes your hands off the keys, and time can't be
   fast-forwarded (T).
 - The night passes when every player lies in bed (E at your bed; E, Space or a step gets you up).
-  Someone brought down comes to at home at once, with 30% health, and the message says who did it
-  (a player by name).
+  Someone brought down comes to at home at once (somewhere in the city in a PvP game), with 30% health,
+  and the message says who did it (a player by name).
 - Wolves hunt whoever is alone outside the walls; another player close by counts as company. Guards go
   after whoever attacked someone in the city's lands, raiders after whoever comes near.
 - A carcass, a tree's wood, a plot or the eggs go to whoever gets there first.
@@ -80,6 +84,14 @@ Playing together:
   own) under your health: "K/D 3/1 (3.0)", players brought down and times brought down by a player.
   Anyone wanted by the guards shows how long the search still lasts. When a player brings another
   down, everyone else hears of it.
+- Blows between players are seen and felt. A swing at another player takes 0.3 seconds to land
+  (a person's takes 0.55), and for that moment a yellow mark shows over the swinger; raise your
+  melee weapon toward them in time and it turns green (turned aside: they are stunned a moment and
+  your quick answer hits a quarter harder), otherwise it turns red as it lands. A player who is
+  hit flinches, flushes red and the view jolts; red glows on the edges of your screen show where
+  the blow came from (top ahead of you, bottom behind, left and right), for blows from people,
+  animals and arrows too. Other players swing, raise and sweep their weapons as you do yours, and
+  lean into the blow.
 
 ## Controls
 
@@ -170,7 +182,7 @@ fields outside. Gates: south (main road), east, west, north, plus the harbor wat
 1080 m across; the city is about 200 m by 170 m.
 
 - Home (blue lintel): bed, storage jars (a bucket is in there), quern, kneading trough, oven, workbench.
-  Four more houses like it, with red, green, yellow and purple lintels, stand south of the east-west
+  Five more houses like it, with red, green, yellow, purple and teal lintels, stand south of the east-west
   street for the other players of a shared game
 - Farm east of home: 15 plots, a water ditch along its north edge, a well west of it. Hen coop
   behind the house. Cattle herder at the pen east of the farm
@@ -318,7 +330,8 @@ seed, so it is never stored.
 - Parry: before a person strikes, a yellow mark shows over their head. Press right mouse or Q with
   your melee weapon in hand while facing them: the mark turns green, the blow does nothing, and they
   are open for a moment (your next hit does a quarter more). If it lands, the mark turns red. There
-  is no shield yet.
+  is no shield yet. Other players give the same warning, over their head, with less time to react
+  (see Playing together).
 - Only what is in your hand is drawn and used: 1 bow, 2 melee weapon, 3 war mace, 4 hands free.
 
 ## People, crime and raiders

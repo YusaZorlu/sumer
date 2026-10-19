@@ -7,9 +7,7 @@
 #define CROUCH_SPEED  2.2f
 #define HUNGRY_SPEED  3.4f
 #define DRAW_TIME     0.85f
-#define SWING_TIME    0.45f
 #define SWING_COOL    1.0f
-#define MACE_TIME     0.55f
 #define MACE_COOL     1.4f
 #define BLESS_BOOST   1.2f
 #define PARRY_TIME    0.45f
@@ -294,7 +292,7 @@ static void ArrowCamera(float dt)
 }
 
 // Over-the-shoulder while drawing the bow; pulled in front of walls.
-void FollowCamera(float dt)
+static void PlaceCamera(float dt)
 {
     const Player *p = &G.player;
     float aim = p->aiming ? 1.0f : 0.0f;
@@ -345,16 +343,36 @@ void FollowCamera(float dt)
     G.cam.fovy = Lerp(55.0f, 42.0f, G.camShoulder);
 }
 
+// A blow on the player jolts the view for a moment.
+void FollowCamera(float dt)
+{
+    PlaceCamera(dt);
+    if (G.flinchT > 0) {
+        float k = G.flinchT / FLINCH_TIME, t = (float)GetTime();
+        Vector3 jolt = { sinf(t * 47.0f) * 0.09f * k, sinf(t * 61.0f + 1.0f) * 0.07f * k, sinf(t * 53.0f + 2.0f) * 0.09f * k };
+        G.cam.position = Vector3Add(G.cam.position, jolt);
+        G.cam.target = Vector3Add(G.cam.target, jolt);
+    }
+}
+
 static void WPart(float x, float y, float z, float w, float h, float d, Color c)
 {
     DrawShadedBox((Vector3){ x, y, z }, (Vector3){ w, h, d }, c);
 }
 
-// Raised during the first part of a swing, struck down at the end.
+// Raised for the first part of a swing (as long as a blow on another player takes to land), then struck
+// down. k counts the swing down from 1 to 0; 0 is at rest.
+float WeaponAngle(float k)
+{
+    const float strike = 1.0f - PVP_WINDUP / SWING_TIME;   // where in the swing the weapon starts down
+    if (k <= 0.0f) return 25.0f;
+    return k > strike ? -80.0f : -80.0f + 140.0f * (1.0f - k / strike);
+}
+
 static void DrawWeapon(const Player *p)
 {
     float k = Clamp(G.swingT / SWING_TIME, 0.0f, 1.0f);
-    float angle = (G.swingT > 0) ? (k > 0.5f ? -80.0f : -80.0f + 140.0f * (1.0f - k / 0.5f)) : 25.0f;
+    float angle = WeaponAngle(G.swingT > 0 ? k : 0.0f);
     bool guard = G.parryT > 0;
     float shoulder = p->crouching ? 1.04f : 1.42f;
 
@@ -466,10 +484,21 @@ void DrawPlayer(void)
         G.drawTorch = G.drawFog = 0;
         return;
     }
-    DrawHuman(p->pos, p->facing, p->stride, look, p->crouching, p->aiming, p->draw);
+    // Struck, the body flinches away from the blow and flushes red; swinging, it leans into the stroke.
+    float hit = Clamp(G.flinchT / FLINCH_TIME, 0.0f, 1.0f), swing = 0;
+    if (G.swingT > 0 && (G.equip == EQ_MELEE || G.equip == EQ_MACE)) {
+        float k = Clamp(G.swingT / (G.equip == EQ_MACE ? MACE_TIME : SWING_TIME), 0.0f, 1.0f);
+        swing = G.equip == EQ_MACE ? sinf(PI * (1.0f - k)) : Clamp((0.45f - k) / 0.45f, 0.0f, 1.0f);
+    }
+    Vector2 ahead = { sinf(p->facing), cosf(p->facing) };
+    Vector2 lean = { G.flinchX * 24.0f * hit + ahead.x * 12.0f * swing, G.flinchZ * 24.0f * hit + ahead.y * 12.0f * swing };
+    float degrees = Vector2Length(lean);
+    if (degrees > 0.5f) BeginLean(p->pos, Vector2Scale(lean, 1.0f / degrees), degrees);
+    DrawHuman(p->pos, p->facing, p->stride, hit > 0 ? Flushed(look, hit) : look, p->crouching, p->aiming, p->draw);
     DrawArmor(p);
     if (G.climb == 0 && G.equip == EQ_MELEE) DrawWeapon(p);
     if (G.climb == 0 && G.equip == EQ_MACE) DrawMace(p);
     if (G.climb == 0 && G.equip == EQ_BOW && !p->aiming) DrawHeldBow(p);
+    if (degrees > 0.5f) EndLean();
     G.drawTorch = G.drawFog = 0;
 }

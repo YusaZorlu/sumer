@@ -16,8 +16,23 @@ async function bobSwings(ann, bob) {
   await sleep(1500);
   const before = await info(ann);
   await cmd(bob, 6);
-  await sleep(2500);
-  return { before, after: await info(ann), bob: await info(bob) };
+  // Watch for a while what each of them sees: the marks over Bob and the red lights on Ann. This browser
+  // runs about 5 frames a second and the game clamps each frame to 0.05 s, so the blow's moment (0.3 s of
+  // game time) takes a second or more here: wait until it has landed or for 9 s.
+  const seen = { warn: false, hit: false, light: [0, 0, 0, 0], bobSawWarn: false };
+  for (const t0 = Date.now(); Date.now() - t0 < 9000;) {
+    const a = await info(ann), b = await info(bob);
+    const m = a && a.peers && a.peers.find(p => p.name === 'Bob');
+    if (m && m.mark === 1) seen.warn = true;
+    if (m && m.mark === 3) seen.hit = true;
+    const mb = b && b.peers && b.peers.find(p => p.name === 'Bob');
+    if (mb && mb.mark === 1) seen.bobSawWarn = true;
+    if (a && a.hitLight) seen.light = seen.light.map((v, i) => Math.max(v, a.hitLight[i]));
+    if (Date.now() - t0 > 2500 && (seen.hit || (a && a.health < before.health))) break;
+    await sleep(60);
+  }
+  await sleep(800);
+  return { before, after: await info(ann), bob: await info(bob), seen };
 }
 
 async function game(rules, name) {
@@ -36,7 +51,17 @@ async function game(rules, name) {
   let g = await game('', 'pvp');
   let a = await info(g.ann), b = await info(g.bob);
   check(a.pvp === 1 && a.combat === 0 && b.pvp === 1 && b.combat === 0, `by default PvP is on and combat mode off, for host and guest ("${b.msg}")`);
+  check(/ziggurat/.test(b.msg) && /boost/.test(b.msg), 'the welcome in a PvP game says the top of the ziggurat gives a boost');
+  const people = { pvp: a.villagers };
+  check(a.villagers === b.villagers && a.villagers > 20, `host and guest have the same people in a PvP game (${a.villagers} and ${b.villagers})`);
+  await g.bob.screenshot({ path: __dirname + '/shots/pvp-welcome.png' });
+  const inCity = i => i.x > -105 && i.x < 112 && i.z > -98 && i.z < 84;
+  const away = (i, x, z) => Math.hypot(i.x - x, i.z - z);
+  check(inCity(a) && inCity(b) && away(a, 14.2, 22) > 4 && away(b, 14, 44.2) > 4 && away(a, b.x, b.z) > 8,
+        `in PvP everyone starts somewhere in the city, not at their door (Ann ${a.x.toFixed(0)},${a.z.toFixed(0)}  Bob ${b.x.toFixed(0)},${b.z.toFixed(0)})`);
   let r = await bobSwings(g.ann, g.bob);
+  check(r.seen.warn && r.seen.hit, `Ann sees yellow over Bob while he swings, then red when it lands (warn ${r.seen.warn}, hit ${r.seen.hit})`);
+  check(r.seen.light[1] > 0.5 && r.seen.light[0] < 0.2, `Bob struck her from behind: the bottom light, not the top (${r.seen.light.join(' ')})`);
   check(r.after.health < r.before.health && /Bob attacks you/.test(r.after.msg), `Bob's blow hurts Ann (${r.before.health} -> ${r.after.health}): "${r.after.msg}"`);
   const bobAtAnn = r.after.peers.find(p => p.name === 'Bob');
   check(bobAtAnn && bobAtAnn.wanted > 0, `Bob started a fight in the city: the guards want him (${bobAtAnn ? bobAtAnn.wanted : '?'} s)`);
@@ -46,8 +71,16 @@ async function game(rules, name) {
   await sleep(800);
   const bobBefore = (await info(g.bob)).health;
   await cmd(g.ann, 6);
-  await sleep(2500);
-  const bobAfter = (await info(g.bob)).health;
+  let bobTop = 0, bobAfter = bobBefore;
+  for (const t0 = Date.now(); Date.now() - t0 < 9000;) {
+    const i = await info(g.bob);
+    bobTop = Math.max(bobTop, i.hitLight[0]);
+    bobAfter = i.health;
+    if (Date.now() - t0 > 2500 && bobAfter < bobBefore) break;
+    await sleep(60);
+  }
+  await sleep(500);
+  check(bobTop > 0.5, `Ann struck Bob from ahead: the top light shows on his screen over the network (${bobTop.toFixed(2)})`);
   a = await info(g.ann);
   const annSelf = a.peers.find(p => p.name === 'Ann');
   check(bobAfter < bobBefore && annSelf.wanted === 0, `Ann hits back (${bobBefore} -> ${bobAfter}) and is not wanted`);
@@ -69,7 +102,10 @@ async function game(rules, name) {
   // 2. PvP off.
   g = await game('&pvp=0', 'nopvp');
   b = await info(g.bob);
+  const a0 = await info(g.ann);
   check(b.pvp === 0, `PvP off reaches the guest: "${b.msg}"`);
+  check(a0.villagers === b.villagers && b.villagers === people.pvp + 3, `without PvP the three ziggurat guards stand (${b.villagers} people, ${people.pvp} with PvP)`);
+  check(!/ziggurat/.test(b.msg) && Math.hypot(b.x - 14, b.z - 44.2) < 1.5, `PvP off: no ziggurat tip, and Bob starts at his own door (${b.x.toFixed(1)},${b.z.toFixed(1)})`);
   r = await bobSwings(g.ann, g.bob);
   check(r.after.health === r.before.health, `PvP off: Bob's blow does Ann no harm (${r.before.health} -> ${r.after.health})`);
   await g.close();

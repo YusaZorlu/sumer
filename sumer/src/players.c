@@ -110,8 +110,14 @@ bool Warn(int s, int kind, float quiet)
 
 void HurtSlot(int s, float dmg, int by)
 {
-    if (s == G.self) HurtPlayer(dmg, by);
-    else if (G.role == NET_HOST && PlayerIn(s)) NetHurt(s, dmg, by);
+    HurtSlotFrom(s, dmg, by, NULL);
+}
+
+// Like HurtSlot, with the place the blow came from, so the one hit can see which way to turn.
+void HurtSlotFrom(int s, float dmg, int by, const Vector3 *src)
+{
+    if (s == G.self) HurtPlayerFrom(dmg, by, src);
+    else if (G.role == NET_HOST && PlayerIn(s)) NetHurt(s, dmg, by, src);
 }
 
 // The acting player's blow or arrow landed.
@@ -180,6 +186,14 @@ void UpdatePeers(float dt)
         Peer *p = &G.peers[s];
         if (!p->active || s == G.self) continue;
         p->heard += dt;
+        // A drop in their health is a blow on them: they flinch (back, as if struck from the front).
+        if (p->lastHealth > 0 && p->health < p->lastHealth - 0.9f) {
+            p->hitT = FLINCH_TIME;
+            p->hitX = -sinf(p->shownFacing);
+            p->hitZ = -cosf(p->shownFacing);
+        }
+        p->lastHealth = p->health;
+        if (p->hitT > 0) p->hitT -= dt;
         float k = fminf(1.0f, dt * 12.0f);
         if (Vector3Distance(p->shown, p->pos) > 6.0f) p->shown = p->pos;
         else p->shown = Vector3Lerp(p->shown, p->pos, k);
@@ -188,15 +202,52 @@ void UpdatePeers(float dt)
     }
 }
 
+// A body leaning 'degrees' toward the horizontal direction 'dir', about its feet: draw the person between
+// BeginLean and EndLean.
+void BeginLean(Vector3 at, Vector2 dir, float degrees)
+{
+    rlPushMatrix();
+    rlTranslatef(at.x, at.y, at.z);
+    rlRotatef(degrees, dir.y, 0, -dir.x);
+    rlTranslatef(-at.x, -at.y, -at.z);
+}
+
+void EndLean(void)
+{
+    rlPopMatrix();
+}
+
+// A look flushed red, as a body struck by a blow is, by 'k' (0 to 1).
+Look Flushed(Look look, float k)
+{
+    const Color red = { 220, 40, 34, 255 };
+    k = Clamp(k, 0.0f, 1.0f) * 0.55f;
+    return (Look){ Mix(look.skin, red, k), Mix(look.cloth, red, k), Mix(look.top, red, k), look.hair };
+}
+
+// Another player's weapon, held and swung as the one in your own hands is: raised and struck down, the
+// mace swept across, the melee weapon held up to parry.
 static void PeerWeapon(const Peer *p, Vector3 at)
 {
     float shoulder = (p->flags & PF_CROUCH) ? 1.04f : 1.42f;
+    bool mace = p->equip == EQ_MACE, guard = (p->flags & PF_PARRY) && !mace;
+    float k = Clamp(p->swingT / (mace ? MACE_TIME : SWING_TIME), 0.0f, 1.0f);
     rlPushMatrix();
     rlTranslatef(at.x, at.y + shoulder, at.z);
     rlRotatef(p->shownFacing * RAD2DEG, 0, 1, 0);
-    rlTranslatef(0.32f, 0, 0.1f);
-    rlRotatef(p->swingT > 0 ? -60.0f : 25.0f, 1, 0, 0);
-    if (p->equip == EQ_MACE) {
+    if (guard) {
+        rlTranslatef(0.3f, 0.12f, 0.38f);
+        rlRotatef(-75.0f, 0, 1, 0);
+        rlRotatef(-25.0f, 1, 0, 0);
+    } else if (mace && p->swingT > 0) {
+        rlTranslatef(0, -0.15f, 0.15f);
+        rlRotatef(Lerp(-80.0f, 80.0f, k), 0, 1, 0);
+        rlRotatef(-6.0f, 1, 0, 0);
+    } else {
+        rlTranslatef(0.32f, 0, 0.1f);
+        rlRotatef(mace ? -35.0f : WeaponAngle(p->swingT > 0 ? k : 0.0f), 1, 0, 0);
+    }
+    if (mace) {
         DrawShadedBox((Vector3){ 0, 0, 0.45f }, (Vector3){ 0.06f, 0.06f, 0.95f }, COL_WOOD);
         DrawShadedBlob((Vector3){ 0, 0, 0.98f }, (Vector3){ 0.17f, 0.17f, 0.2f }, (Color){ 120, 112, 100, 255 });
     } else if (p->weapon >= 2) {
@@ -236,8 +287,19 @@ void DrawPeers(void)
             continue;
         }
         bool aim = (p->flags & PF_AIM) != 0;
-        DrawHuman(p->shown, p->shownFacing, p->stride, look, (p->flags & PF_CROUCH) != 0, aim, p->draw);
+        // Hit, they flinch back and flush red; swinging, they lean into the stroke.
+        float hit = Clamp(p->hitT / FLINCH_TIME, 0.0f, 1.0f), swing = 0;
+        if (p->swingT > 0 && (p->equip == EQ_MELEE || p->equip == EQ_MACE)) {
+            float k = Clamp(p->swingT / (p->equip == EQ_MACE ? MACE_TIME : SWING_TIME), 0.0f, 1.0f);
+            swing = p->equip == EQ_MACE ? sinf(PI * (1.0f - k)) : Clamp((0.45f - k) / 0.45f, 0.0f, 1.0f);
+        }
+        Vector2 ahead = { sinf(p->shownFacing), cosf(p->shownFacing) };
+        Vector2 lean = { p->hitX * 24.0f * hit + ahead.x * 12.0f * swing, p->hitZ * 24.0f * hit + ahead.y * 12.0f * swing };
+        float degrees = Vector2Length(lean);
+        if (degrees > 0.5f) BeginLean(p->shown, Vector2Scale(lean, 1.0f / degrees), degrees);
+        DrawHuman(p->shown, p->shownFacing, p->stride, hit > 0 ? Flushed(look, hit) : look, (p->flags & PF_CROUCH) != 0, aim, p->draw);
         if ((p->equip == EQ_MELEE || p->equip == EQ_MACE) && !(p->flags & PF_CLIMB)) PeerWeapon(p, p->shown);
+        if (degrees > 0.5f) EndLean();
         if (G.night >= 0.3f) DrawHandTorch(p->shown, p->shownFacing);
     }
     G.drawTorch = G.drawFog = 0;

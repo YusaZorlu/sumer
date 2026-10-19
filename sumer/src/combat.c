@@ -334,7 +334,7 @@ static void Strike(const Fighter *f, int s)
         SpawnBurst((Vector3){ (v->at.x + pp.x) / 2, pp.y + 1.3f, (v->at.z + pp.z) / 2 }, (Color){ 255, 230, 150, 255 }, 8, 2.5f);
     } else {
         v->mark = MARK_HIT;
-        HurtSlot(s, r->damage, Cause(f));
+        HurtSlotFrom(s, r->damage, Cause(f), &v->at);
     }
 }
 
@@ -521,9 +521,12 @@ static void Archery(const Fighter *f, int s, float dt)
     v->mark = MARK_NONE;
 }
 
+static void UpdateBlows(float dt);
+
 void UpdateCombat(float dt)
 {
     CollectFighters();
+    UpdateBlows(dt);
     for (int a = 0; a < MAX_PLAYERS; a++)
         for (int b = 0; b < MAX_PLAYERS; b++)
             if (struck[a][b] > 0) struck[a][b] -= dt;
@@ -839,30 +842,45 @@ int PlayersInArc(Vector3 chest, Vector3 fwd, float range, float minDot, int skip
     return n;
 }
 
-// The acting player's blow or arrow reaches player s, if the host's game allows players to fight.
-// A raised weapon turns a blow aside. Whoever starts a fight in the city's lands is wanted by the
-// guards, unless the game is in combat mode; hitting back, or hitting someone wanted, is no crime.
-void HitPlayer(int s, float dmg, Vector3 from, bool melee)
+// Blows between players. A swing at another player takes PVP_WINDUP to land, like a person's does, and
+// for that moment the mark over the swinger is yellow: the one about to be hit can raise their weapon in
+// time (a person's warning is longer, theirs is short on purpose, but it is there). Then the mark says
+// how it came out: green, turned aside (the swinger is stunned and left open to a quick answer), or red,
+// it landed. The host settles it all.
+#define MAX_BLOWS 16
+typedef struct { bool on, opened; int a, s; float t, dmg; } Blow;
+static Blow blows[MAX_BLOWS];
+
+static void SetMark(int a, int mark, float secs)
 {
-    int a = G.actor;
-    if (!G.pvp || !Hittable(s, a) || !PlayerIn(a)) return;
-    Vector3 sp = G.peers[s].pos;
-    if (melee && PlayerParries(s, from)) {
-        if (s == G.self) {
-            G.parryT = 0;
-            G.parryCool = 0;
-        } else {
-            NetParried(s);
-        }
-        SpawnBurst((Vector3){ (from.x + sp.x) / 2, sp.y + 1.3f, (from.z + sp.z) / 2 }, (Color){ 255, 230, 150, 255 }, 8, 2.5f);
-        Say("%s turned your blow aside!", G.peers[s].name);
-        return;
+    if (a < 0 || a >= MAX_PLAYERS) return;
+    G.peers[a].mark = mark;
+    G.peers[a].markT = secs;
+}
+
+static void StartBlow(int a, int s, float dmg)
+{
+    Blow *slot = &blows[0];
+    for (int k = 0; k < MAX_BLOWS; k++) {
+        if (blows[k].on && blows[k].a == a && blows[k].s == s) return;
+        if (!blows[k].on) slot = &blows[k];
     }
+    // Someone parried in the last moment leaves the one whose blow was turned aside open to a quick answer.
+    bool opened = G.peers[s].mark == MARK_PARRIED && G.peers[s].markT > 0;
+    *slot = (Blow){ true, opened, a, s, PVP_WINDUP, dmg };
+    SetMark(a, MARK_WARN, PVP_WINDUP + 0.1f);
+}
+
+// The blow's damage reaches player s, from player a. Whoever starts a fight in the city's lands is wanted
+// by the guards, unless the game is in combat mode; hitting back, or hitting someone wanted, is no crime.
+static void Hurt(int a, int s, float dmg, bool opened)
+{
+    Vector3 sp = G.peers[s].pos;
     bool provoked = G.peers[s].wanted > 0 || struck[s][a] > 0, fresh = struck[a][s] <= 0;
     struck[a][s] = PROVOKED;
     // The warning first: a blow that brings them down leaves its own message.
     if (fresh && !provoked) SayTo(s, "%s attacks you!", G.peers[a].name);
-    HurtSlot(s, dmg * PVP_SCALE, BY_PLAYER + a);
+    HurtSlotFrom(s, dmg * PVP_SCALE * (opened ? RIPOSTE : 1.0f), BY_PLAYER + a, &G.peers[a].pos);
     HitMark();
     SpawnBurst((Vector3){ sp.x, sp.y + 1.2f, sp.z }, (Color){ 170, 30, 30, 255 }, 10, 2.2f);
     if (!G.combat && !provoked && InCityLands(G.peers[a].pos.x, G.peers[a].pos.z)) {
@@ -871,11 +889,73 @@ void HitPlayer(int s, float dmg, Vector3 from, bool melee)
     }
 }
 
+// A blow's moment has come: it lands, or is turned aside, or finds no one.
+static void LandBlow(const Blow *b)
+{
+    int a = b->a, s = b->s, saved = G.actor;
+    Vector3 from = G.peers[a].pos, sp = G.peers[s].pos;
+
+    G.actor = a;   // what this says and the hit mark it gives are for the one who swung
+    if (!G.pvp || !Hittable(s, a) || !PlayerIn(a) || XZDist(from, sp) > 3.4f || fabsf(sp.y - from.y) > 1.8f) {
+        SetMark(a, MARK_NONE, 0);
+    } else if (PlayerParries(s, from)) {
+        if (s == G.self) {
+            G.parryT = 0;
+            G.parryCool = 0;
+        } else {
+            NetParried(s);
+        }
+        if (a == G.self) G.swingCool += PARRY_STUN;
+        else NetStunned(a, PARRY_STUN);
+        SetMark(a, MARK_PARRIED, MARK_TIME);
+        SpawnBurst((Vector3){ (from.x + sp.x) / 2, sp.y + 1.3f, (from.z + sp.z) / 2 }, (Color){ 255, 230, 150, 255 }, 8, 2.5f);
+        Say("%s turned your blow aside!", G.peers[s].name);
+    } else {
+        Hurt(a, s, b->dmg, b->opened);
+        SetMark(a, MARK_HIT, MARK_TIME);
+    }
+    G.actor = saved;
+}
+
+static void UpdateBlows(float dt)
+{
+    for (int s = 0; s < MAX_PLAYERS; s++) {
+        Peer *p = &G.peers[s];
+        bool swinging = false;
+        for (int k = 0; k < MAX_BLOWS; k++) swinging |= blows[k].on && blows[k].a == s;
+        if (p->markT > 0) p->markT -= dt;
+        else if (!swinging) p->mark = MARK_NONE;
+    }
+    for (int k = 0; k < MAX_BLOWS; k++) {
+        Blow *b = &blows[k];
+        if (!b->on) continue;
+        b->t -= dt;
+        if (b->t > 0) continue;
+        b->on = false;
+        LandBlow(b);
+    }
+}
+
+// The acting player's blow or arrow reaches player s, if the host's game allows players to fight.
+// An arrow lands at once; a swing of a weapon takes its moment to land (see above), and a raised weapon
+// turns it aside.
+void HitPlayer(int s, float dmg, Vector3 from, bool melee)
+{
+    int a = G.actor;
+    (void)from;
+    if (!G.pvp || !Hittable(s, a) || !PlayerIn(a)) return;
+    if (melee) StartBlow(a, s, dmg);
+    else Hurt(a, s, dmg, false);
+}
+
 // A player brought down (or gone): old fights with them are over.
 void ForgetFights(int slot)
 {
     if (slot < 0 || slot >= MAX_PLAYERS) return;
     for (int k = 0; k < MAX_PLAYERS; k++) struck[slot][k] = struck[k][slot] = 0;
+    for (int k = 0; k < MAX_BLOWS; k++)
+        if (blows[k].on && (blows[k].a == slot || blows[k].s == slot)) blows[k].on = false;
+    SetMark(slot, MARK_NONE, 0);
 }
 
 bool BodyLootable(int i)

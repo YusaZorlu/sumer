@@ -48,7 +48,7 @@
 #define MAX_WORKERS     16
 #define MAX_CARAVANS    2
 #define CARAVAN_GUARDS  2
-#define MAX_PLAYERS     5
+#define MAX_PLAYERS     6
 #define HOUSE_STN       6
 #define MAX_STARS       90
 #define MAX_TORCHES     176
@@ -265,6 +265,12 @@ typedef struct { Vector3 center, door; Vector3 stations[HOUSE_STN]; float bedFac
 // Playing alone, hosting a game others join, or playing in someone else's.
 typedef enum { NET_SOLO, NET_HOST, NET_CLIENT } NetRole;
 // PF_SLEEP: asleep or out cold (nothing attacks them); PF_BED: lying in bed waiting for the night to pass.
+// A swing's length (also how the weapon is drawn), and how long a blow on another player takes to land
+// from the start of the swing: the warning the one about to be hit gets.
+#define SWING_TIME   0.45f
+#define MACE_TIME    0.55f
+#define PVP_WINDUP   0.3f
+#define FLINCH_TIME  0.45f
 enum { PF_CROUCH = 1, PF_RUN = 2, PF_MOVE = 4, PF_GROUND = 8, PF_AIM = 16, PF_SLEEP = 32, PF_CLIMB = 64, PF_PARRY = 128, PF_BED = 256 };
 #define NAME_LEN 16
 #define SAFE_RADIUS 22.0f
@@ -278,6 +284,10 @@ typedef struct {
     float facing, shownFacing, stride, draw, health, swingT, wanted, aggro, heard;
     int flags, equip, weapon, bow, armor, net;
     int kills, deaths;   // players brought down by this one, and times brought down by a player
+    // The warning mark over this player's head while they swing at someone, then how it came out
+    // (MARK_*, the host decides); and how long since this machine saw them hurt (a flinch).
+    int mark;
+    float markT, hitT, hitX, hitZ, lastHealth;
 } Peer;
 
 // Everything a player owns and where they stand: kept by the host for each name, saved with its game.
@@ -372,6 +382,9 @@ typedef struct {
     int quiver, quiverMax, bow, tools, weapon;
     bool hasMace;
     float swingT, swingCool, hitMarkT, impactT, herbT;
+    // Where the last blow on this player came from, as red lights at the screen's edges (front, back, left,
+    // right) that fade, and the flinch of the body: how long it lasts and the way it was pushed.
+    float hitLight[4], flinchT, flinchX, flinchZ;
     Vector3 impact;
     int followArrow;
     float followT, camBlend;
@@ -390,7 +403,7 @@ typedef struct {
     float sleepT;
     bool sleeping, slept;
 
-    char msg[256];
+    char msg[384];
     float msgT;
     char promptE[192], promptF[192];
     bool okE, okF;
@@ -576,6 +589,10 @@ void StartClimb(int ladder, bool up);
 const char *EquipName(int eq);
 void FollowCamera(float dt);
 void DrawPlayer(void);
+float WeaponAngle(float k);
+void BeginLean(Vector3 at, Vector2 dir, float degrees);
+void EndLean(void);
+Look Flushed(Look look, float k);
 
 void InitWildlife(void);
 void UpdateWildlife(float dt);
@@ -606,6 +623,8 @@ void BuildVillage(void);
 Color PlayerColor(int slot);
 const char *PlayerColorName(int slot);
 void SetHome(int slot);
+Vector3 CitySpawn(int slot);
+void RemoveZigguratGuards(void);
 int AddNpc(NpcKind kind, Vector3 a, Vector3 b, float speed, Color robe, float face);
 void UpdateVillage(float dt);
 void AdvanceHours(float h);
@@ -739,6 +758,7 @@ void GameUpdate(void);
 void GameDraw(void);
 void StartSleep(void);
 void HurtPlayer(float dmg, int by);
+void HurtPlayerFrom(float dmg, int by, const Vector3 *src);
 void WakeAfterNight(float hours, bool rained, bool dawn);
 void TrackGoods(void);
 void PassHours(float h);
@@ -777,6 +797,7 @@ float PlayerStance(int s);
 void UpdatePlayerSafety(float dt);
 bool Warn(int s, int kind, float quiet);
 void HurtSlot(int s, float dmg, int by);
+void HurtSlotFrom(int s, float dmg, int by, const Vector3 *src);
 void HitMark(void);
 void ShowImpact(Vector3 at);
 void SayTo(int s, const char *fmt, ...) PRINTF_LIKE(2, 3);
@@ -797,7 +818,8 @@ const Arrow *NetArrows(void);
 void DrawNetArrows(void);
 void LocalSayV(const char *fmt, va_list ap);
 void NetSayV(int slot, const char *fmt, va_list ap);
-void NetHurt(int slot, float dmg, int by);
+void NetHurt(int slot, float dmg, int by, const Vector3 *src);
+void NetStunned(int slot, float secs);
 void NetHitMark(int slot);
 void NetImpact(int slot, Vector3 at);
 void NetParried(int slot);

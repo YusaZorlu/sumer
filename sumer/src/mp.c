@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define NET_VERSION   4
+#define NET_VERSION   5
 #define SNAP_EVERY    0.1f
 #define STATE_EVERY   0.066f
 #define RECORD_EVERY  15.0f
@@ -21,7 +21,7 @@
 #define MAX_ARGS      REQ_ARGS
 
 enum { M_HELLO = 1, M_WELCOME, M_ROSTER, M_SNAP, M_STATE, M_REQ, M_REPLY, M_EVENT, M_RECORD, M_KICK };
-enum { EV_HURT = 1, EV_SAY, EV_HIT, EV_IMPACT, EV_SKIP, EV_PARRIED };
+enum { EV_HURT = 1, EV_SAY, EV_HIT, EV_IMPACT, EV_SKIP, EV_PARRIED, EV_STUNNED };
 
 typedef struct { int id, kind, args[MAX_ARGS], nargs; float age; } Pending;
 typedef struct { Vector3 pos; Color color; int count; float speed; bool ring; } Effect;
@@ -229,6 +229,7 @@ static void WriteSnapshot(Writer *w, bool slow)
         W8(w, p->alone ? 1u : 0u);
         W8(w, (unsigned)(p->kills < 255 ? p->kills : 255));
         W8(w, (unsigned)(p->deaths < 255 ? p->deaths : 255));
+        W8(w, (unsigned)(p->mark & 3));
     }
 
     W8(w, (unsigned)G.animalCount);
@@ -372,8 +373,10 @@ static void ReadSnapshot(Reader *r)
         bool alone = R8(r) != 0;
         int kills = (int)R8(r);
         int deaths = (int)R8(r);
+        int mark = (int)(R8(r) & 3u);
         p->kills = kills;
         p->deaths = deaths;
+        p->mark = mark;
         if (s == G.self) {
             p->wanted = wanted;
             p->alone = alone;
@@ -760,12 +763,26 @@ static void ShowSay(Reader *r)
     if (!r->bad) Show(fmt, args, n);
 }
 
-void NetHurt(int slot, float dmg, int by)
+void NetHurt(int slot, float dmg, int by, const Vector3 *src)
 {
     Writer w = Begin(M_EVENT);
     W8(&w, EV_HURT);
     WF(&w, dmg);
     W8(&w, (unsigned)by);
+    W8(&w, src ? 1u : 0u);
+    if (src) {
+        WF(&w, src->x);
+        WF(&w, src->z);
+    }
+    SendGuest(slot, &w);
+}
+
+// The guest's blow was turned aside: they cannot swing again for a moment.
+void NetStunned(int slot, float secs)
+{
+    Writer w = Begin(M_EVENT);
+    W8(&w, EV_STUNNED);
+    WF(&w, secs);
     SendGuest(slot, &w);
 }
 
@@ -988,7 +1005,7 @@ static void HostHello(int net, Reader *r)
     for (int s = 1; s < MAX_PLAYERS && slot < 0; s++)
         if (!G.peers[s].active) slot = s;
     if (slot < 0) {
-        Kick(net, "The game is full: five players already.");
+        Kick(net, "The game is full: six players already.");
         return;
     }
     // Everyone already playing hears of it; the newcomer gets a welcome of their own instead, which
@@ -998,7 +1015,8 @@ static void HostHello(int net, Reader *r)
     Peer *p = &G.peers[slot];
     *p = (Peer){ .active = true, .net = net, .health = HEALTH_MAX, .flags = PF_GROUND };
     snprintf(p->name, NAME_LEN, "%s", name);
-    p->pos = p->shown = rec ? rec->pos : G.houses[slot].door;
+    // In PvP everyone starts somewhere else in the city; otherwise a returning player is where they left.
+    p->pos = p->shown = G.pvp ? CitySpawn(slot) : rec ? rec->pos : G.houses[slot].door;
 
     Writer w = Begin(M_WELCOME);
     W8(&w, (unsigned)slot);
@@ -1007,6 +1025,8 @@ static void HostHello(int net, Reader *r)
     W8(&w, (G.pvp ? 1u : 0u) | (G.combat ? 2u : 0u));
     W8(&w, rec ? 1u : 0u);
     if (rec) WriteRecord(&w, rec);
+    WF(&w, p->pos.x);
+    WF(&w, p->pos.z);
     SendGuest(slot, &w);
     SendRoster();
     Snapshot(slot, true);
@@ -1148,6 +1168,12 @@ const char *KillDeath(int s)
 }
 
 // The game's rules in a line.
+// What a PvP game's welcome adds: the way to the priest's blessing is open.
+static const char *ZigguratHint(void)
+{
+    return G.pvp ? L(" Tip: the priest on top of the ziggurat gives you a boost: +20% speed for a day. Its stairs are unguarded here.") : "";
+}
+
 const char *RulesText(void)
 {
     return L(!G.pvp ? "PvP off: players cannot hurt each other." : G.combat ? "Combat mode: best gear, unlimited arrows, guards stay out of player fights."
@@ -1168,11 +1194,16 @@ static void StartHosting(void)
     if (mine) ApplyRecord(mine);
     G.pvp = rulePvp;
     G.combat = ruleCombat;
+    if (G.pvp) {
+        RemoveZigguratGuards();
+        G.player.pos = CitySpawn(0);
+        G.player.pos.y = GroundHeight(G.player.pos.x, G.player.pos.z, G.player.pos.y + 0.5f);
+    }
     UpdateSky();
     FollowCamera(1.0f);
     phase = PHASE_PLAYING;
-    if (resumed) Say("%s %s", TextFormat(L("Your game is open again: day %d. Friends join from this same address."), G.day), RulesText());
-    else Say("%s %s", L("You are hosting a new game. Friends open this same address and press Join."), RulesText());
+    if (resumed) Say("%s %s%s", TextFormat(L("Your game is open again: day %d. Friends join from this same address."), G.day), RulesText(), ZigguratHint());
+    else Say("%s %s%s", L("You are hosting a new game. Friends open this same address and press Join."), RulesText(), ZigguratHint());
     G.msgT = 8.0f;
 }
 
@@ -1185,6 +1216,7 @@ static void StartGuest(Reader *r)
     bool hasRecord = R8(r) != 0;
     PlayerRecord rec;
     if (hasRecord && !ReadRecord(r, &rec)) hasRecord = false;
+    float startX = RF(r), startZ = RF(r);
     if (r->bad || slot <= 0 || slot >= MAX_PLAYERS) {
         Fail("The host sent something this game could not read.");
         return;
@@ -1208,12 +1240,17 @@ static void StartGuest(Reader *r)
         G.player.pos = G.houses[slot].door;
         G.player.pos.y = GroundHeight(G.player.pos.x, G.player.pos.z, 1.0f);
     }
+    if (G.pvp) {
+        RemoveZigguratGuards();
+        G.player.pos = (Vector3){ startX, 0, startZ };
+        G.player.pos.y = GroundHeight(startX, startZ, TerrainHeight(startX, startZ) + 0.5f);
+    }
     UpdateSky();
     FollowCamera(1.0f);
     phase = PHASE_PLAYING;
-    Say("%s %s", TextFormat(L(hasRecord ? "Welcome back. Your home has the %s lintel." : "You joined the game. Your home has the %s lintel."), PlayerColorName(slot)),
-        RulesText());
-    G.msgT = 8.0f;
+    Say("%s %s%s", TextFormat(L(hasRecord ? "Welcome back. Your home has the %s lintel." : "You joined the game. Your home has the %s lintel."), PlayerColorName(slot)),
+        RulesText(), ZigguratHint());
+    G.msgT = 9.0f;
 }
 
 // Called every frame while the lobby waits: 1 once the game is on, -1 if it failed (see NetFailure).
@@ -1238,7 +1275,7 @@ int NetLobby(void)
         } else if (m.kind == S_NOHOST) {
             Fail("No one is hosting a game here yet. One player presses Host first.");
         } else if (m.kind == S_FULL) {
-            Fail("The game is full: five players already.");
+            Fail("The game is full: six players already.");
         } else if (m.kind == S_DATA && m.len > 0) {
             Reader r = { m.data, m.len, 1, false };
             if (m.data[0] == M_WELCOME) {
@@ -1329,7 +1366,18 @@ static void ClientEvent(Reader *r)
     case EV_HURT: {
         float dmg = RF(r);
         int by = (int)R8(r);
-        if (!r->bad) HurtPlayer(dmg, by);
+        bool has = R8(r) != 0;
+        Vector3 src = { 0 };
+        if (has) {
+            src.x = RF(r);
+            src.z = RF(r);
+        }
+        if (!r->bad) HurtPlayerFrom(dmg, by, has ? &src : NULL);
+        break;
+    }
+    case EV_STUNNED: {
+        float secs = RF(r);
+        if (!r->bad && secs >= 0 && secs < 5.0f) G.swingCool += secs;
         break;
     }
     case EV_SAY: ShowSay(r); break;

@@ -23,18 +23,18 @@ EMSCRIPTEN_KEEPALIVE const char *TestInfo(void)
     Esc(failure, sizeof(failure), NetFailure());
     int n = snprintf(buf, sizeof(buf),
         "{\"lobby\":%d,\"role\":%d,\"self\":%d,\"players\":%d,\"day\":%d,\"hour\":%.3f,\"x\":%.2f,\"y\":%.2f,\"z\":%.2f,"
-        "\"yaw\":%.3f,\"pitch\":%.3f,\"captured\":%d,\"lang\":%d,\"health\":%.1f,\"food\":%.1f,\"quiver\":%d,\"henCount\":%d,\"eggs\":%d,\"waitBed\":%d,\"sleeping\":%d,\"panel\":%d,\"swing\":%.2f,\"cool\":%.2f,\"equip\":%d,\"pvp\":%d,\"combat\":%d,\"mood\":%d,\"musicLevel\":%d,"
+        "\"yaw\":%.3f,\"pitch\":%.3f,\"captured\":%d,\"lang\":%d,\"health\":%.1f,\"food\":%.1f,\"quiver\":%d,\"henCount\":%d,\"eggs\":%d,\"waitBed\":%d,\"sleeping\":%d,\"panel\":%d,\"swing\":%.2f,\"cool\":%.2f,\"equip\":%d,\"pvp\":%d,\"combat\":%d,\"mood\":%d,\"musicLevel\":%d,\"hitLight\":[%.2f,%.2f,%.2f,%.2f],\"flinch\":%.2f,\"villagers\":%d,"
         "\"target\":%d,\"targetIndex\":%d,\"promptE\":\"%s\",\"msg\":\"%s\",\"failure\":\"%s\",\"peers\":[",
         InLobby(), G.role, G.self, PlayerCount(), G.day, G.hour, G.player.pos.x, G.player.pos.y, G.player.pos.z,
-        G.player.yaw, G.player.pitch, PointerCaptured(), Language(), G.health, G.food, G.quiver, G.henCount, G.coopEggs, G.waitBed, G.sleeping, G.panel, G.swingT, G.swingCool, G.equip, G.pvp, G.combat, MusicMood(), MusicLevel(), G.target.kind, G.target.index,
+        G.player.yaw, G.player.pitch, PointerCaptured(), Language(), G.health, G.food, G.quiver, G.henCount, G.coopEggs, G.waitBed, G.sleeping, G.panel, G.swingT, G.swingCool, G.equip, G.pvp, G.combat, MusicMood(), MusicLevel(), G.hitLight[0], G.hitLight[1], G.hitLight[2], G.hitLight[3], G.flinchT, G.villagerCount, G.target.kind, G.target.index,
         G.promptE, msg, failure);
     for (int s = 0, first = 1; s < MAX_PLAYERS; s++) {
         const Peer *p = &G.peers[s];
         if (!p->active) continue;
         char name[40];
         Esc(name, sizeof(name), p->name);
-        n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%s{\"s\":%d,\"name\":\"%s\",\"x\":%.2f,\"z\":%.2f,\"flags\":%d,\"health\":%.0f,\"wanted\":%.0f,\"kills\":%d,\"deaths\":%d}",
-                      first ? "" : ",", s, name, p->pos.x, p->pos.z, p->flags, p->health, p->wanted, p->kills, p->deaths);
+        n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%s{\"s\":%d,\"name\":\"%s\",\"x\":%.2f,\"z\":%.2f,\"flags\":%d,\"health\":%.0f,\"wanted\":%.0f,\"kills\":%d,\"deaths\":%d,\"mark\":%d}",
+                      first ? "" : ",", s, name, p->pos.x, p->pos.z, p->flags, p->health, p->wanted, p->kills, p->deaths, p->mark);
         first = 0;
     }
     n += snprintf(buf + n, sizeof(buf) - (size_t)n, "],\"animals\":[");

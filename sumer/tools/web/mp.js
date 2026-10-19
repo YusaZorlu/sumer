@@ -1,4 +1,6 @@
 // A host and two guests in separate browser profiles, through server.py.
+// These suites host with PvP off (&pvp=0): they check the world, doors, sleep and saves, where a PvP game would start everyone at
+// random places in the city. PvP has its own suite (pvp.js).
 const { launch, open, info, cmd, waitFor, sleep } = require('./lib.js');
 const SHOTS = __dirname + '/shots/';
 const BASE = 'http://localhost:8123/';
@@ -12,7 +14,7 @@ async function press(page, key) { await page.keyboard.down(key); await sleep(250
 
 (async () => {
   const browser = await launch();
-  const host = await open(browser, 'host', `${BASE}?auto=host&name=Ann&room=${ROOM}`);
+  const host = await open(browser, 'host', `${BASE}?auto=host&name=Ann&room=${ROOM}&pvp=0`);
   let h = await waitFor(host, 'the host game', i => i.lobby === 0 && i.role === 1);
   check(h.self === 0 && h.players === 1, `Ann hosts room ${ROOM} (slot ${h.self})`);
 
@@ -134,7 +136,7 @@ async function press(page, key) { await page.keyboard.down(key); await sleep(250
   await bob.screenshot({ path: SHOTS + 'mp-hostleft.png' });
 
   // The host opens the game again: same day, Bob comes back to his things.
-  await host.goto(`${BASE}?auto=host&name=Ann&room=${ROOM}`);
+  await host.goto(`${BASE}?auto=host&name=Ann&room=${ROOM}&pvp=0`);
   h = await waitFor(host, 'host again', i => i.lobby === 0 && i.role === 1);
   check(h.day === before + 1, `the hosted game goes on: day ${h.day}`);
   await bob.goto(`${BASE}?auto=join&name=Bob&room=${ROOM}`);

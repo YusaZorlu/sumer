@@ -214,7 +214,7 @@ void LobbyFrame(void)
     if (Choice((Rectangle){ x, y, 250, 46 }, "Host a game", menu && named)) Connect(true);
     int day;
     float hour;
-    Label("Up to four friends join from this same address.", x + 270, y + 4, 15, dim);
+    Label("Up to five friends join from this same address.", x + 270, y + 4, 15, dim);
     if (NetSaveSummary(&day, &hour)) {
         // The hosted world carries on until its host starts a new one (two clicks).
         Label(TextFormat(L("Your hosted world: day %d."), day), x + 270, y + 26, 15, dim);

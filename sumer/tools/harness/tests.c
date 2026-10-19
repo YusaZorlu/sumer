@@ -775,10 +775,20 @@ static void TestCanals(void)
 
 
 // The guest (slot 1) swings at the host where both stand; returns the host's health lost.
-static float GuestBlow(float gx, float gz, float hx, float hz, int weapon)
+// A blow on another player takes PVP_WINDUP to land; this lets it (and anything else going on) play out.
+static void Settle(float seconds)
+{
+    for (float t = 0; t < seconds; t += 0.05f) {
+        SyncSelf();
+        UpdateCombat(0.05f);
+    }
+}
+
+// The guest swings at the host (who is placed at hx, hz); the blow is on its way, not yet landed.
+static void GuestSwing(float gx, float gz, float hx, float hz, int weapon)
 {
     G.peers[1].pos = (Vector3){ gx, TerrainHeight(gx, gz), gz };
-    G.peers[1].flags = PF_GROUND;
+    G.peers[1].flags = (G.peers[1].flags & PF_PARRY) | PF_GROUND;
     PlaceAt(hx, hz, 0);
     SyncSelf();
     G.sleeping = false;
@@ -787,6 +797,13 @@ static float GuestBlow(float gx, float gz, float hx, float hz, int weapon)
     G.actor = 1;
     StrikeFor(chest, fwd, EQ_MELEE, weapon);
     G.actor = 0;
+}
+
+static float GuestBlow(float gx, float gz, float hx, float hz, int weapon)
+{
+    G.peers[1].flags = PF_GROUND;
+    GuestSwing(gx, gz, hx, hz, weapon);
+    Settle(PVP_WINDUP + 0.3f);
     return HEALTH_MAX - G.health;
 }
 
@@ -820,6 +837,7 @@ static void TestPvp(void)
     G.actor = 0;
     Vector3 hc = { 3, TerrainHeight(3, 4.5f) + 1.0f, 4.5f };
     StrikeFor(hc, (Vector3){ 0, 0, 1 }, EQ_MELEE, 0);
+    Settle(PVP_WINDUP + 0.3f);
     Check(G.peers[0].wanted <= 0, "the host hits back: no crime");
 
     // A parry turns the blow aside.
@@ -849,6 +867,7 @@ static void TestPvp(void)
     G.actor = 1;
     StrikeFor((Vector3){ 200, TerrainHeight(200, 1.5f) + 1.0f, 1.5f }, (Vector3){ 0, 0, -1 }, EQ_MELEE, 2);
     G.actor = 0;
+    Settle(PVP_WINDUP + 0.3f);
     Check(strstr(G.msg, "Guest beat you down") != NULL, "brought down by the guest: \"%s\"", G.msg);
     Check(G.peers[1].kills == 1 && G.peers[0].deaths == 1 && G.peers[0].kills == 0, "a kill for the guest, a death for the host: %s / %s",
           KillDeath(1), KillDeath(0));
@@ -872,6 +891,7 @@ static void TestPvp(void)
     G.sleeping = false;
     StrikeFor((Vector3){ 200, TerrainHeight(200, 1.5f) + 1.0f, 1.5f }, (Vector3){ 0, 0, -1 }, EQ_MACE, 0);
     G.actor = 0;
+    Settle(PVP_WINDUP + 0.3f);
     Check(fabsf((HEALTH_MAX - G.health) - 30.0f) < 0.5f, "the war mace's blow on a player: 60, halved between players (%.0f)", HEALTH_MAX - G.health);
     G.health = HEALTH_MAX;
     G.sleeping = false;
@@ -1293,6 +1313,204 @@ static void TestMusic(void)
     MusicSetLevel(2);
 }
 
+// The warning mark before a blow between players, and how it comes out: yellow, then green or red.
+static void TestPlayerMarks(void)
+{
+    G.role = NET_HOST;
+    G.self = G.actor = 0;
+    G.peers[1] = (Peer){ .active = true, .net = 1, .health = HEALTH_MAX, .flags = PF_GROUND, .equip = EQ_MELEE };
+    snprintf(G.peers[1].name, NAME_LEN, "Guest");
+    RespawnPeople();
+    ForgetFights(0);
+    ForgetFights(1);
+    G.armor = ARMOR_NONE;
+    G.combat = false;
+    G.pvp = true;
+    G.equip = EQ_MELEE;
+    G.parryT = 0;
+    G.player.facing = 0.0f;
+
+    // Out east, past the canals: no guards. The guest swings; for a moment the host sees yellow over them.
+    GuestSwing(200, 1.5f, 200, 0, 2);
+    Check(G.peers[1].mark == MARK_WARN && G.health == HEALTH_MAX, "a swing at a player shows yellow first and has not landed (mark %d, health %.0f)", G.peers[1].mark, G.health);
+    Settle(PVP_WINDUP - 0.12f);
+    Check(G.health == HEALTH_MAX && G.peers[1].mark == MARK_WARN, "still yellow a moment before it lands (health %.0f)", G.health);
+    Settle(0.3f);
+    Check(G.health < HEALTH_MAX && G.peers[1].mark == MARK_HIT, "then it lands and the mark turns red (health %.0f, mark %d)", G.health, G.peers[1].mark);
+    float plain = HEALTH_MAX - G.health;
+    Settle(1.3f);
+    Check(G.peers[1].mark == MARK_NONE, "the mark fades (%d)", G.peers[1].mark);
+
+    // Moving out of reach in the moment: the blow finds no one.
+    GuestSwing(200, 1.5f, 200, 0, 2);
+    PlaceAt(200, -8, 0);
+    SyncSelf();
+    Settle(PVP_WINDUP + 0.3f);
+    Check(G.health == HEALTH_MAX && G.peers[1].mark == MARK_NONE, "a blow on someone who stepped away finds no one (health %.0f, mark %d)", G.health, G.peers[1].mark);
+
+    // A raised weapon in time turns it aside: green over the swinger.
+    G.parryT = 1.0f;
+    float through = GuestBlow(200, 1.5f, 200, 0, 2);
+    Check(through == 0 && G.peers[1].mark == MARK_PARRIED, "a parry in the moment: no harm, green over the swinger (%.0f, mark %d)", through, G.peers[1].mark);
+    G.parryT = 0;
+
+    // And a parry too late is no parry.
+    G.parryT = 0;
+    GuestSwing(200, 1.5f, 200, 0, 2);
+    Settle(PVP_WINDUP - 0.1f);
+    G.parryT = 1.0f;
+    Settle(0.4f);
+    Check(G.health == HEALTH_MAX && G.peers[1].mark == MARK_PARRIED, "a parry raised just before it lands still counts (health %.0f, mark %d)", G.health, G.peers[1].mark);
+    G.parryT = 0;
+
+    // The host swings at a guest who parries: the host is stunned a while and sees green.
+    ForgetFights(0);
+    ForgetFights(1);
+    G.peers[1].pos = (Vector3){ 200, TerrainHeight(200, 1.5f), 1.5f };
+    G.peers[1].flags = PF_GROUND | PF_PARRY;
+    G.peers[1].facing = PI;   // facing -z, toward the host
+    G.peers[1].equip = EQ_MELEE;
+    PlaceAt(200, 0, 0);
+    SyncSelf();
+    G.sleeping = false;
+    G.health = HEALTH_MAX;
+    G.swingCool = 0;
+    G.actor = 0;
+    StrikeFor((Vector3){ 200, G.player.pos.y + 1.0f, 0 }, (Vector3){ 0, 0, 1 }, EQ_MELEE, 2);
+    Settle(PVP_WINDUP + 0.3f);
+    Check(G.peers[0].mark == MARK_PARRIED && G.swingCool >= 0.85f, "the host's blow is parried: green and stunned (mark %d, cooldown %.2f)", G.peers[0].mark, G.swingCool);
+
+    // Left open: the guest's quick answer, before the green fades, hits harder than a plain blow.
+    float answer = GuestBlow(200, 1.5f, 200, 0, 2);
+    (void)answer;
+    G.peers[0].mark = MARK_PARRIED;
+    G.peers[0].markT = 0.6f;
+    G.peers[1].flags = PF_GROUND;
+    GuestSwing(200, 1.5f, 200, 0, 2);
+    G.peers[0].mark = MARK_NONE;
+    Settle(PVP_WINDUP + 0.3f);
+    float riposte = HEALTH_MAX - G.health;
+    Check(fabsf(riposte - plain * 1.25f) < 0.6f, "a quick answer to a parried blow hits a quarter harder (%.1f against %.1f)", riposte, plain);
+
+    G.peers[1] = (Peer){ 0 };
+    G.peers[0].mark = MARK_NONE;
+    G.health = HEALTH_MAX;
+    G.role = NET_SOLO;
+    G.pvp = true;
+    G.swingCool = 0;
+    RespawnPeople();
+}
+
+// Red lights at the edges of the screen show which way a blow came from.
+static void TestHitLights(void)
+{
+    G.role = NET_SOLO;
+    G.self = G.actor = 0;
+    G.sleeping = false;
+    G.player.yaw = 0;
+    PlaceAt(0, -200, 0);
+    // Looking along yaw 0 means looking toward -z: that is ahead; +x is on the right.
+    struct { const char *name; Vector3 src; int light; } cases[] = {
+        { "ahead", { 0, 0, -12 }, 0 }, { "behind", { 0, 0, 12 }, 1 }, { "to the left", { -12, 0, 0 }, 2 }, { "to the right", { 12, 0, 0 }, 3 },
+    };
+    for (int c = 0; c < 4; c++) {
+        for (int k = 0; k < 4; k++) G.hitLight[k] = 0;
+        G.health = HEALTH_MAX;
+        Vector3 src = { G.player.pos.x + cases[c].src.x, 0, G.player.pos.z + cases[c].src.z };
+        HurtPlayerFrom(10, BY_PLAYER + 1, &src);
+        int strongest = 0;
+        for (int k = 1; k < 4; k++) if (G.hitLight[k] > G.hitLight[strongest]) strongest = k;
+        Check(strongest == cases[c].light && G.hitLight[cases[c].light] > 0.5f, "a blow from %s lights the %s edge (%.2f %.2f %.2f %.2f)", cases[c].name,
+              (const char *[]){ "top", "bottom", "left", "right" }[cases[c].light], G.hitLight[0], G.hitLight[1], G.hitLight[2], G.hitLight[3]);
+    }
+    // Turning around turns the lights with you: a blow from -z, with yaw PI (looking toward +z), is behind.
+    for (int k = 0; k < 4; k++) G.hitLight[k] = 0;
+    G.player.yaw = PI;
+    Vector3 north = { G.player.pos.x, 0, G.player.pos.z - 12 };
+    HurtPlayerFrom(10, BY_PLAYER + 1, &north);
+    Check(G.hitLight[1] > 0.5f && G.hitLight[0] < 0.1f, "turned around, the same blow is behind you (%.2f front, %.2f back)", G.hitLight[0], G.hitLight[1]);
+    G.player.yaw = 0;
+    for (int k = 0; k < 4; k++) G.hitLight[k] = 0;
+    HurtPlayer(5, BY_NONE);
+    Check(G.hitLight[0] + G.hitLight[1] + G.hitLight[2] + G.hitLight[3] == 0 && G.flinchT > 0, "a hurt from nowhere in particular lights no edge, but the body still flinches");
+    G.health = HEALTH_MAX;
+    G.flinchT = 0;
+}
+
+// Six players, six houses; in PvP the start is anywhere in the city and the ziggurat is unguarded.
+static void TestSixPlayers(void)
+{
+    Check(MAX_PLAYERS == 6, "six players");
+    int sound = 0;
+    bool distinct = true;
+    for (int h = 0; h < MAX_PLAYERS; h++) {
+        const House *hs = &G.houses[h];
+        sound += InsideWalls(hs->center.x, hs->center.z, 4.0f) && !SolidAt(hs->door.x, hs->door.z, 0.4f);
+        for (int o = 0; o < h; o++)
+            distinct &= XZDist(hs->center, G.houses[o].center) > 9.0f && (PlayerColor(h).r != PlayerColor(o).r || PlayerColor(h).g != PlayerColor(o).g || PlayerColor(h).b != PlayerColor(o).b);
+    }
+    Check(sound == MAX_PLAYERS && distinct, "all six houses stand inside the walls with a clear doorstep, apart, each in its own color (%d of 6)", sound);
+    const House *six = &G.houses[5];
+    Check(XZDist(six->stations[STN_BED], six->center) < 6.0f && XZDist(six->stations[STN_STORAGE], six->center) < 6.0f, "the sixth house has its bed and storeroom");
+
+    // Spawns: always inside the walls on open ground, spread out, and away from other players.
+    G.role = NET_HOST;
+    G.peers[1] = (Peer){ .active = true, .net = 1, .health = HEALTH_MAX, .flags = PF_GROUND };
+    G.peers[1].pos = (Vector3){ 0, 0, 20 };
+    int good = 0;
+    float nearest = 1e9f, minX = 1e9f, maxX = -1e9f;
+    for (int k = 0; k < 40; k++) {
+        Vector3 at = CitySpawn(0);
+        good += InsideWalls(at.x, at.z, 8.0f) && !SolidAt(at.x, at.z, 1.0f) && !InWater(at.x, at.z);
+        nearest = fminf(nearest, XZDist(at, G.peers[1].pos));
+        minX = fminf(minX, at.x);
+        maxX = fmaxf(maxX, at.x);
+    }
+    Check(good == 40, "every spawn is inside the walls on open ground (%d of 40)", good);
+    Check(nearest > 25.0f, "spawns keep away from other players (nearest %.0f m)", nearest);
+    Check(maxX - minX > 60.0f, "spawns are spread over the city (x from %.0f to %.0f)", minX, maxX);
+    G.peers[1] = (Peer){ 0 };
+    G.role = NET_SOLO;
+
+    // The guards on the ziggurat's stairs and terrace go in PvP; the others stay.
+    Villager saved[MAX_VILLAGERS];
+    int savedCount = G.villagerCount, up = 0, guards = 0;
+    memcpy(saved, G.villagers, sizeof(saved));
+    for (int i = 0; i < G.villagerCount; i++) {
+        up += G.villagers[i].kind == NPC_GUARD && G.villagers[i].a.y >= 5.0f;
+        guards += G.villagers[i].kind == NPC_GUARD;
+    }
+    RemoveZigguratGuards();
+    int upAfter = 0, guardsAfter = 0;
+    for (int i = 0; i < G.villagerCount; i++) {
+        upAfter += G.villagers[i].kind == NPC_GUARD && G.villagers[i].a.y >= 5.0f;
+        guardsAfter += G.villagers[i].kind == NPC_GUARD;
+    }
+    Check(up >= 3 && upAfter == 0 && guardsAfter == guards - up && G.villagerCount == savedCount - up,
+          "%d guards of the ziggurat are gone, the other %d stay (%d people left of %d)", up, guardsAfter, G.villagerCount, savedCount);
+    bool open = true;
+    for (int i = 0; i < G.villagerCount; i++) open &= !G.villagers[i].templePost;
+    Check(open, "no one stands at the temple gate to ask for an offering");
+    memcpy(G.villagers, saved, sizeof(saved));
+    G.villagerCount = savedCount;
+
+    // Brought down in a PvP game: they come to somewhere in the city, not at home.
+    G.pvp = true;
+    G.role = NET_SOLO;
+    G.sleeping = false;
+    PlaceAt(0, -200, 0);
+    Vector3 bed = G.stations[STN_BED];
+    G.health = 1;
+    HurtPlayer(50, BY_WOLF);
+    Check(XZDist(G.player.pos, bed) > 4.0f && InsideWalls(G.player.pos.x, G.player.pos.z, 8.0f) && strstr(G.msg, "somewhere else in the city") != NULL,
+          "brought down in PvP: comes to elsewhere in the city (%.0f, %.0f): \"%s\"", G.player.pos.x, G.player.pos.z, G.msg);
+    G.sleeping = false;
+    G.sleepT = 0;
+    G.health = HEALTH_MAX;
+    G.pvp = true;
+    RespawnPeople();
+}
+
 static void RunTests(void)
 {
     TestMusic();
@@ -1315,5 +1533,8 @@ static void RunTests(void)
     TestSave();
     TestHostWorld();
     TestPvp();
+    TestPlayerMarks();
+    TestHitLights();
+    TestSixPlayers();
     printf("%d passed, %d failed\n", passes, fails);
 }

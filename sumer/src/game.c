@@ -172,9 +172,32 @@ void TrackGoods(void)
     G.safeDay = G.day;
 }
 
+// What brought the player down, in a PvP game: nobody carries them home, they come to somewhere in the city.
+static const char *BroughtDownInCity(int by)
+{
+    const char *what;
+    switch (by) {
+    case BY_GUARD: what = L("The guards beat you down."); break;
+    case BY_CARAVAN: what = L("The caravan guards beat you down."); break;
+    case BY_TOWNSFOLK: what = L("The townsfolk beat you down."); break;
+    case BY_VILLAGERS: what = L("The villagers beat you down."); break;
+    case BY_RAIDER: what = L("Raiders left you for dead."); break;
+    case BY_BARBARIAN: what = L("Barbarians left you for dead."); break;
+    case BY_WOLF: what = L("Wolves brought you down."); break;
+    case BY_BOAR: what = L("A boar brought you down."); break;
+    case BY_SNAKE: what = L("A snake's venom brought you down."); break;
+    default:
+        if (by >= BY_PLAYER && by < BY_PLAYER + MAX_PLAYERS && G.peers[by - BY_PLAYER].name[0])
+            what = TextFormat(L("%s beat you down."), G.peers[by - BY_PLAYER].name);
+        else what = L("You were brought down.");
+    }
+    return TextFormat("%s %s", what, L("You came to somewhere else in the city."));
+}
+
 // What brought the player down, in a sentence.
 static const char *BroughtDown(int by)
 {
+    if (G.pvp) return BroughtDownInCity(by);
     switch (by) {
     case BY_GUARD: return L("The guards beat you down and dumped you at your door.");
     case BY_CARAVAN: return L("The caravan guards beat you down. A shepherd carried you home.");
@@ -234,7 +257,11 @@ static void Collapse(void)
     }
 
     G.health = (G.combat ? 1.0f : 0.3f) * HEALTH_MAX;
-    p->pos = Vector3Add(G.stations[STN_BED], (Vector3){ -1.6f, 0, 0.5f });
+    if (G.pvp) {
+        p->pos = CitySpawn(G.self);
+    } else {
+        p->pos = Vector3Add(G.stations[STN_BED], (Vector3){ -1.6f, 0, 0.5f });
+    }
     p->pos.y = GroundHeight(p->pos.x, p->pos.z, p->pos.y + 0.5f);
     p->vy = 0;
     p->crouching = p->aiming = false;
@@ -248,7 +275,35 @@ static void Collapse(void)
     G.msgT = 6.0f;
 }
 
+// Where a blow came from: red lights on the edge of the screen (the top is ahead of you, the bottom behind,
+// then left and right as you look) and a flinch of the body, away from whoever struck.
+static void NoteHit(float dmg, const Vector3 *src)
+{
+    const Player *p = &G.player;
+    Vector2 away = { -sinf(p->facing), -cosf(p->facing) };   // without a known source, as if struck from the front
+
+    G.flinchT = FLINCH_TIME;
+    if (src && XZDist(*src, p->pos) > 0.2f) {
+        Vector2 to = Vector2Normalize((Vector2){ src->x - p->pos.x, src->z - p->pos.z });
+        Vector2 fwd = { -sinf(p->yaw), -cosf(p->yaw) }, right = { cosf(p->yaw), -sinf(p->yaw) };
+        float f = to.x * fwd.x + to.y * fwd.y, r = to.x * right.x + to.y * right.y;
+        float power = Clamp(0.6f + dmg / 40.0f, 0.6f, 1.0f);
+        G.hitLight[0] = fmaxf(G.hitLight[0], fmaxf(f, 0.0f) * power);
+        G.hitLight[1] = fmaxf(G.hitLight[1], fmaxf(-f, 0.0f) * power);
+        G.hitLight[2] = fmaxf(G.hitLight[2], fmaxf(-r, 0.0f) * power);
+        G.hitLight[3] = fmaxf(G.hitLight[3], fmaxf(r, 0.0f) * power);
+        away = (Vector2){ -to.x, -to.y };
+    }
+    G.flinchX = away.x;
+    G.flinchZ = away.y;
+}
+
 void HurtPlayer(float dmg, int by)
+{
+    HurtPlayerFrom(dmg, by, NULL);
+}
+
+void HurtPlayerFrom(float dmg, int by, const Vector3 *src)
 {
     if (G.sleeping) return;
     // This happens to this machine's player, whoever struck: what it says is for them.
@@ -257,6 +312,7 @@ void HurtPlayer(float dmg, int by)
     G.waitBed = false;
     G.health -= dmg * (1.0f - ArmorReduction(UseArmor()));
     G.hurtT = 0.45f;
+    NoteHit(dmg, src);
     G.safeT = 0;
     G.hurtBy = by;
     if (G.panel == PANEL_BAG || G.panel == PANEL_STORAGE || G.panel == PANEL_TRADE) SetPanel(PANEL_NONE);
@@ -508,6 +564,8 @@ void GameUpdate(void)
     }
     if (G.msgT > 0) G.msgT -= dt;
     if (G.hurtT > 0) G.hurtT -= dt;
+    if (G.flinchT > 0) G.flinchT -= dt;
+    for (int k = 0; k < 4; k++) G.hitLight[k] = fmaxf(0.0f, G.hitLight[k] - dt * 1.1f);
 
     // A browser tab can be closed at any moment: a game played alone there is saved every two minutes.
     if (OnWeb() && !online) {

@@ -393,7 +393,7 @@ static void UpdateWolf(Animal *a, const AnimalDef *d, float dt)
         } else {
             a->speed = 0;
             if (a->bite <= 0) {
-                HurtSlot(s, WOLF_BITE, BY_WOLF);
+                HurtSlotFrom(s, WOLF_BITE, BY_WOLF, &a->pos);
                 a->bite = BITE_COOLDOWN;
                 a->timer = 1.2f;
             }
@@ -444,7 +444,7 @@ static void UpdateCharge(Animal *a, const AnimalDef *d, float dt)
     } else {
         a->speed = 0;
         if (a->bite <= 0 && fabsf(at.y - a->pos.y) < 1.5f) {
-            HurtSlot(s, BOAR_GORE, BY_BOAR);
+            HurtSlotFrom(s, BOAR_GORE, BY_BOAR, &a->pos);
             a->bite = GORE_COOLDOWN;
         }
     }
@@ -515,7 +515,7 @@ static void UpdateSnake(Animal *a, const AnimalDef *d, float dt)
         a->timer -= dt;
         a->speed = (dist > 1.1f && XZDist(a->pos, a->lair) < 3.0f) ? d->run : 0.0f;
         if (dist < 1.7f && level && a->bite <= 0) {
-            HurtSlot(s, SNAKE_BITE, BY_SNAKE);
+            HurtSlotFrom(s, SNAKE_BITE, BY_SNAKE, &a->pos);
             a->bite = SNAKE_COOLDOWN;
             SayTo(s, "A snake bit you!");
         }
@@ -795,7 +795,9 @@ static void FlyNpcArrow(Arrow *ar, float dt)
     if (s >= 0) {
         Vector3 p = G.peers[s].pos;
         SpawnBurst((Vector3){ p.x, p.y + 1.2f, p.z }, (Color){ 170, 30, 30, 255 }, 10, 2.2f);
-        HurtSlot(s, (float)ar->damage, ar->cause);
+        // The shot came from along the way the arrow was flying.
+        Vector3 shotFrom = Vector3Subtract(ar->pos, Vector3Scale(Vector3Normalize(ar->vel), 8.0f));
+        HurtSlotFrom(s, (float)ar->damage, ar->cause, &shotFrom);
         Spend(ar);
     } else if (ar->pos.y <= TerrainHeight(ar->pos.x, ar->pos.z) || (ar->pos.y <= WATER_LEVEL && InWater(ar->pos.x, ar->pos.z)) || PointInSolid(ar->pos)) {
         if (PointInSolid(ar->pos)) ar->pos = prev;

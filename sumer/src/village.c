@@ -87,20 +87,20 @@ static void Fence(float x0, float z0, float x1, float z1)
 
 // Each player's home: the first one by the farm, the others in a row south of the east-west street,
 // their doors toward it. A house is laid out in its own frame with the door on its -x side.
-static const float HOUSE_SPOTS[MAX_PLAYERS][3] = { { 20, 22, 0 }, { 14, 50, 1 }, { 28, 50, 1 }, { 42, 50, 1 }, { -14, 50, 1 } };
+static const float HOUSE_SPOTS[MAX_PLAYERS][3] = { { 20, 22, 0 }, { 14, 50, 1 }, { 28, 50, 1 }, { 42, 50, 1 }, { -14, 50, 1 }, { 56, 50, 1 } };
 static const int HOUSE_STATIONS[HOUSE_STN] = { STN_BED, STN_STORAGE, STN_QUERN, STN_TROUGH, STN_BENCH, STN_OVEN };
 
 Color PlayerColor(int slot)
 {
     static const Color colors[MAX_PLAYERS] = {
-        { 38, 84, 160, 255 }, { 176, 46, 40, 255 }, { 46, 128, 62, 255 }, { 222, 162, 30, 255 }, { 118, 60, 150, 255 },
+        { 38, 84, 160, 255 }, { 176, 46, 40, 255 }, { 46, 128, 62, 255 }, { 222, 162, 30, 255 }, { 118, 60, 150, 255 }, { 30, 150, 150, 255 },
     };
     return colors[slot >= 0 && slot < MAX_PLAYERS ? slot : 0];
 }
 
 const char *PlayerColorName(int slot)
 {
-    static const char *const names[MAX_PLAYERS] = { "blue", "red", "green", "yellow", "purple" };
+    static const char *const names[MAX_PLAYERS] = { "blue", "red", "green", "yellow", "purple", "teal" };
     return L(names[slot >= 0 && slot < MAX_PLAYERS ? slot : 0]);
 }
 
@@ -201,6 +201,45 @@ void SetHome(int slot)
     const House *home = &G.houses[slot >= 0 && slot < MAX_PLAYERS ? slot : 0];
     G.home = home->center;
     for (int k = 0; k < HOUSE_STN; k++) G.stations[HOUSE_STATIONS[k]] = home->stations[k];
+}
+
+// Where a player starts in a PvP game (and comes to after being brought down): anywhere inside the city
+// walls on open ground, as far from the other players as a handful of tries finds. Alone, or if nothing
+// open turns up, it is the player's own door.
+Vector3 CitySpawn(int slot)
+{
+    Vector3 best = G.houses[slot >= 0 && slot < MAX_PLAYERS ? slot : 0].door;
+    float bestAway = -1.0f;
+    int found = 0;
+
+    for (int tries = 0; tries < 400 && found < 24; tries++) {
+        float x = RandF(-CITY_A, CITY_A), z = RandF(CITY_Z - CITY_B, CITY_Z + CITY_B);
+        if (!InsideWalls(x, z, 10.0f) || InWater(x, z) || SolidAt(x, z, 1.3f)) continue;
+        float ground = TerrainHeight(x, z);
+        if (GroundHeight(x, z, ground + 0.5f) > ground + 0.3f) continue;
+        found++;
+        float away = 1e9f;
+        for (int s = 0; s < MAX_PLAYERS; s++)
+            if (s != slot && PlayerIn(s)) away = fminf(away, XZDist(G.peers[s].pos, (Vector3){ x, 0, z }));
+        if (away > bestAway) {
+            bestAway = away;
+            best = (Vector3){ x, ground, z };
+        }
+    }
+    return best;
+}
+
+// In PvP the guards on the ziggurat's stairs and terrace are gone, so anyone can climb to the priest.
+// Host and guests both call this once the rules are known, so their lists of people stay the same.
+void RemoveZigguratGuards(void)
+{
+    int kept = 0;
+    for (int i = 0; i < G.villagerCount; i++) {
+        const Villager *v = &G.villagers[i];
+        if (v->kind == NPC_GUARD && v->a.y >= 5.0f && v->b.y >= 5.0f) continue;
+        G.villagers[kept++] = G.villagers[i];
+    }
+    G.villagerCount = kept;
 }
 
 static void BuildHome(void)

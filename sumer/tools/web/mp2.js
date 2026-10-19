@@ -1,4 +1,5 @@
 // Arrows, carcasses, a hen bought into the shared coop, a guest brought down, and messages in Turkish.
+// Hosted with PvP off (&pvp=0), where being brought down means a shepherd carries you home; see pvp.js for the PvP game.
 const { launch, open, info, cmd, waitFor, sleep } = require('./lib.js');
 const SHOTS = __dirname + '/shots/';
 const BASE = 'http://localhost:8123/';
@@ -9,7 +10,7 @@ const count = (s, item) => s.bag.filter(x => x[0] === item).reduce((n, x) => n +
 
 (async () => {
   const browser = await launch();
-  const host = await open(browser, 'host', `${BASE}?auto=host&name=Ann&room=${ROOM}`);
+  const host = await open(browser, 'host', `${BASE}?auto=host&name=Ann&room=${ROOM}&pvp=0`);
   await waitFor(host, 'the host game', i => i.lobby === 0 && i.role === 1);
   const bob = await open(browser, 'bob', `${BASE}?auto=join&name=Bob&room=${ROOM}`);
   let b = await waitFor(bob, 'Bob joining', i => i.lobby === 0 && i.role === 2);
