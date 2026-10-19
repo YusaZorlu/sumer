@@ -1,7 +1,8 @@
 // Test harness: links the game without main.c. Usage: harness <mode> [args]
 //   stats            counts boxes, resources, animals, fighters; times the update loop
 //   topo <out.png>   top-down map of terrain height, water, solids, roads
-//   shot <out.png> x z yaw pitch dist hour [frames]   screenshot from a viewpoint
+//   shot <out.png> x z yaw pitch dist hour [frames] [rain]   screenshot from a viewpoint (rain 1: in the rain);
+//   shotin: the same standing on the floor indoors
 #define _POSIX_C_SOURCE 200809L
 #include "game.h"
 #include "rlgl.h"
@@ -105,10 +106,12 @@ static void Topo(const char *out)
     UnloadImage(im);
 }
 
-static void Shot(const char *out, float x, float z, float yaw, float pitch, float dist, float hour, int frames)
+static bool indoors;   // shotin: stand on the floor under a roof, not on the roof
+
+static void Shot(const char *out, float x, float z, float yaw, float pitch, float dist, float hour, int frames, bool rain)
 {
     Player *p = &G.player;
-    p->pos = (Vector3){ x, GroundHeight(x, z, 50.0f), z };
+    p->pos = (Vector3){ x, GroundHeight(x, z, indoors ? 1.0f : 50.0f), z };
     p->yaw = yaw;
     p->pitch = pitch;
     p->dist = dist;
@@ -117,6 +120,7 @@ static void Shot(const char *out, float x, float z, float yaw, float pitch, floa
     G.panel = PANEL_NONE;
     for (int f = 0; f < frames; f++) {
         GameUpdate();
+        if (rain) G.raining = true;
         BeginDrawing();
         GameDraw();
         EndDrawing();
@@ -284,7 +288,7 @@ static void ShotAnimal(const char *out, int type, float dist, float camDist, flo
         printf("animal %d type %d at %.1f %.1f state %d\n", i, type, a->pos.x, a->pos.z, a->state);
         float ang = 0.9f;
         float ox = sinf(ang) * dist, oz = cosf(ang) * dist;
-        Shot(out, a->pos.x + ox, a->pos.z + oz, ang + 0.35f, pitch, camDist, 11.0f, frames);
+        Shot(out, a->pos.x + ox, a->pos.z + oz, ang + 0.35f, pitch, camDist, 11.0f, frames, false);
         printf("after: state %d hp %d health %.1f at %.1f %.1f\n", a->state, a->hp, G.health, a->pos.x, a->pos.z);
         return;
     }
@@ -350,7 +354,7 @@ static void ShotMace(const char *out, float swing)
 static void ShotCaravan(const char *out)
 {
     for (int k = 0; k < 600 && G.caravans[0].state != CV_TRADE; k++) UpdateCaravans(0.05f);
-    Shot(out, -3, -15, 2.03f, 0.3f, 7.0f, 11.0f, 3);
+    Shot(out, -3, -15, 2.03f, 0.3f, 7.0f, 11.0f, 3, false);
 }
 
 int main(int argc, char **argv)
@@ -480,9 +484,10 @@ int main(int argc, char **argv)
         ShotCaravan(argv[2]);
     } else if (strcmp(argv[1], "animal") == 0 && argc > 7) {
         ShotAnimal(argv[2], atoi(argv[3]), (float)atof(argv[4]), (float)atof(argv[5]), (float)atof(argv[6]), atoi(argv[7]));
-    } else if (strcmp(argv[1], "shot") == 0 && argc > 8) {
+    } else if ((strcmp(argv[1], "shot") == 0 || strcmp(argv[1], "shotin") == 0) && argc > 8) {
+        indoors = strcmp(argv[1], "shotin") == 0;
         Shot(argv[2], (float)atof(argv[3]), (float)atof(argv[4]), (float)atof(argv[5]), (float)atof(argv[6]), (float)atof(argv[7]),
-             (float)atof(argv[8]), argc > 9 ? atoi(argv[9]) : 3);
+             (float)atof(argv[8]), argc > 9 ? atoi(argv[9]) : 3, argc > 10 && atoi(argv[10]) != 0);
     }
     CloseWindow();
     return 0;

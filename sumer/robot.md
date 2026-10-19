@@ -5,8 +5,8 @@ build and test, how the code is organised, what to update with every change, and
 
 ## The project in one paragraph
 
-An open-world prototype of Ur, about 2100 BC: C99 and raylib 5.5, everything drawn from primitive shapes,
-about 17,000 lines in `src/`. It runs as a desktop program (Linux, macOS) and in the browser (Emscripten),
+An open-world prototype of Ur, about 2100 BC: C99 and raylib 5.5, everything built from primitive shapes and
+lit by the game's own shaders (`src/gfx.c`, `src/shaders.c`), about 19,000 lines in `src/`. It runs as a desktop program (Linux, macOS) and in the browser (Emscripten),
 where up to six people share one world: one player's browser is the **host** and runs the whole world,
 `server.py` only relays messages. English and Turkish. The player who writes the requests plays in the
 browser with friends and tests by playing, so the browser build has to work, not just the desktop one.
@@ -36,7 +36,7 @@ All from the repository root. `tools/out/` is for build products and is git-igno
 | Run the desktop game (installs packages, builds raylib into `raylib-linux/`) | `sh run.sh` |
 | Build the browser version into `web/` (needs Emscripten on PATH: `source emsdk_env.sh`) | `sh build-web.sh` |
 | Play the browser version, alone or together | `python3 server.py` then open the address it prints |
-| Logic tests (native, about 130 checks, needs `xvfb` or a display) | `sh tools/harness/run.sh` |
+| Logic tests (native, about 150 checks, needs `xvfb` or a display) | `sh tools/harness/run.sh` |
 | Browser test build (with `tools/web/testhooks.c`) | `bash tools/web/build.sh` |
 | Serve the test build on :8123 | `sh tools/web/serve.sh &` |
 | Browser suites (host + guests in headless Chromium; needs Playwright, `PLAYWRIGHT=<module path>`) | `sh tools/web/run-suites.sh` |
@@ -46,6 +46,9 @@ All from the repository root. `tools/out/` is for build products and is git-igno
 | Rebuild `sumer-prebuilt` (zig, glibc 2.29) | `sh tools/prebuilt.sh` (`pip install ziglang`) |
 | Screenshot a panel without playing | `tools/out/harness ui out.png <panel> <lang 0/1>` (panel numbers = `Panel` enum: 4 pause, 5 help) |
 | Screenshot another player mid-fight, and the red hit lights | `tools/out/harness pvpshot out.png <0-4>` (raising, striking, flinching + lights, mace, parrying) |
+| Screenshot a view (shaders on by default; `SUMER_GFX=Low` or `Classic` for the others) | `tools/out/harness shot out.png x z yaw pitch dist hour [frames] [rain]` |
+| Mesh sizes and build times of the shader renderer | `GFX_STATS=1 tools/out/harness shot ...` (prints to stderr) |
+| A phone held sideways: lobby, tap, HUD, panels (screenshots in `tools/web/shots/phone-*.png`) | `node tools/web/phone.js` (test build on :8123) |
 | Free patches in the city (for placing a house) | `tools/out/harness spots x0 z0 x1 z1 step half [skip]`; also test a spot against what is built before the city houses (see the sixth house's history in `git log`) |
 
 The harness has more modes (`shot`, `citymap`, `textmap`, `wetways`, `canals`, `pvp`, `archers`, `aim`,
@@ -124,10 +127,17 @@ in `src/game.h`) holds the whole world.
   relative to the camera) and the body's flinch (`G.flinchT`, camera jolt in `FollowCamera`). Other players' flinch is
   guessed from a drop in `Peer.health` (`UpdatePeers`). New damage sources should use `HurtSlotFrom`.
 - **Music** (`src/music.c`): see its own section below.
+- **Drawing**: see "Graphics: how drawing works" below.
 - **Web specifics:** `src/web.c` (storage in IndexedDB: call `SyncStorage()` after writing a file), `src/shell.html`
   (the page, click and key tap fixes), `src/lobby.c` (title screen), `src/net.c` (websocket to `server.py`).
   The canvas size has to be kept in step with the window (a past bug: clicks landed in the wrong place in any
-  window that was not 1280x720).
+  window that was not 1280x720). `PageFrame` now gives the canvas the screen's own pixels (`PixelRatio()`, up to
+  about 4 million) and the page's CSS stretches it over the window; mouse and finger positions for menus come from
+  the page (`PointerPosition()`), because raylib follows only the mouse and misses quick taps.
+- **The UI's units** (`UiScale` in `ui.c`): the UI is laid out for at least 960 x 540 and drawn through one scale
+  (`UiBegin`/`UiEnd` around `DrawUI` and the lobby). Inside, use `UiWidth()`/`UiHeight()`, `UiMouse()` and
+  `OnScreen()` (world to UI point), never `GetScreenWidth()`, `GetMousePosition()` or `GetWorldToScreen()` directly;
+  a scissor rectangle has to be multiplied by `UiScale()`. Panels must fit 960 x 540.
 - **Limits that have been hit:** `MAX_VILLAGERS` (64; it ran out at 48), `MAX_FIGHTERS` 128, `MAX_BOXES` 20000.
   `MAX_PLAYERS` is 6 (relay `MAX_GUESTS` in `server.py` is 5; houses in `HOUSE_SPOTS`, colors and their names in
   `village.c`). A new house goes where nothing built *before* the city's own houses overlaps it (those are laid out
@@ -154,7 +164,51 @@ in `src/game.h`) holds the whole world.
 - `tools/web/audio.js` counts empty audio blocks; in the 5 fps headless browser a few percent are normal (Web Audio shares the
   main thread with a very slow render loop), so it allows 5%. It has not been measured in a real browser on a real GPU.
 - Without a sound device the game runs silently (raylib prints a warning). That is expected on servers and in CI.
-- `N` is music, `M` is the map. Check `KEY_*` use in `game.c`, `player.c`, `ui.c` before giving a key a job.
+- `N` is music, `M` is the map, `G` the graphics setting. Check `KEY_*` use in `game.c`, `player.c`, `ui.c` before giving a key a job.
+
+## Graphics: how drawing works
+
+The world's draw code (`render.c` primitives, `DrawGround`, `DrawWater`, `DrawRoads`, `DrawBoxAt`, `DrawResource`,
+`DrawHuman`, the animals ...) is the same for every setting. What changes is where its vertices go.
+
+- **The vertex stream** (`VBegin/VColor/VNormal/VVertex/VEnd` in `gfx.c`): every piece of world geometry is drawn
+  through it, never with `rlBegin`/`rlVertex3f` directly (only transparent effects, rain and arrow trails, still use
+  rlgl). Classic: it goes straight to rlgl. With the shaders it is caught into a list (`Catch`): positions turned by the
+  current `rlPushMatrix` transform, a normal (0 = let the shader take the surface's slope), the color and a material.
+- **`GfxOn()`**: while it is true, `Lit()` hands colors back as they are (the shaders do light, torches and fog), and
+  the primitives add normals: smooth ones on blobs, cylinders and the ground, face normals on boxes.
+- **Materials** (`MAT_*` in `game.h`, `SetMaterial`): thing, ground, water, glow (always set by `DrawGlowBox`),
+  figure (people and animals: no brick or leaf patterns), built (city boxes: mud brick and plaster on light earthen
+  colors), unlit. The world shader decides by material and color: green = leaves, dark warm brown = wood.
+- **Still world**: `BuildStill` catches the ground, water and roads of the whole map once (`DrawingAll()` turns off
+  their culling) and sorts each quad into 60 m chunks. Each chunk's boxes and resources (`TakeNew` adds new ones: a
+  palm planted, a game loaded) are drawn into a mesh at three levels of detail (`BuildThings`, `LOD_D2`), made when
+  first needed, a few milliseconds a frame (`ChooseLods`). A chunk's meshes are thrown away when one of its resources
+  is cut or grows back (`ResSig`). Crop rows (`FieldBox`, `DrawFields`) and fish rings move, so they are not in them.
+  About 220k vertices of ground and 600k of things in all; `GFX_STATS=1` prints the numbers.
+- **What moves** (`CatchMoving`): people, animals, boats, caravans, players, arrows, flames, every frame, into
+  dynamic buffers of 65536 vertices. Everything is quads, so every buffer shares one index buffer.
+- **A frame** (`GfxDrawWorld`): the sun's view into a 2048 (Low: 1024) shadow map, depth packed into the colors
+  (`SH_DEPTH_FS`), over a 130 m (90 m) square ahead of the camera stepped by whole texels; the sky dome; the chunks
+  in view and what moves, with the world shader; effects and rain through rlgl with the same shader; then glow
+  (High), FXAA, a little saturation and a vignette to the screen. The UI is drawn after, untouched.
+- **Light** (`Sky()`): sun by day, moon (dim, blue) by night, colors from the hour, the season and the rain. Torches:
+  `MakeTorches` builds a grid of 8 m squares listing the (up to 8) torches that reach each, which the shader reads
+  (`torchGrid`, `torchData`); hand torches (`G.dynLights`) go as uniforms. Their strength follows `G.night`.
+- **Settings** (`GfxTier`): Auto picks Low where `OnPhone()`, or after `WatchSpeed` finds High too slow. Classic also runs when the GL version is not 3.3/ES 3
+  or a shader fails to build (`failed`). The browser test build (`SUMER_TEST` + Emscripten) draws Classic unless the
+  page asks (`?gfx=high`), because the suites run in software GL; the native harness draws High.
+
+Traps:
+- The browser build needs WebGL 2: raylib is built with `GRAPHICS_API_OPENGL_ES3` (`build-web.sh` rebuilds an older
+  raylib-web, marked in `raylib-web/.graphics`) and linked with `-sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2`. The
+  shaders are written once and get `#version 330` or `#version 300 es` in front (`Compile`).
+- Shadow depth is packed into an RGBA8 texture instead of a depth texture: WebGL 2 is fussy about depth texture
+  formats and rlgl asks for an unsized one.
+- Headless Chromium draws the shaders in software at about 1 frame a second: use `?gfx=classic` (the test build's
+  default) for anything about game logic, and give screenshots long timeouts.
+- `EM_ASM` blocks are macro arguments: a comma outside parentheses (`var a = 1, b = 2;`) breaks the build.
+- In `ScenePass` the textures sit in units 10-13, out of rlgl's way; rlgl's batch (effects) keeps them bound.
 
 ## Music: how to work on it
 
@@ -186,6 +240,9 @@ no sound files. Read the comment at the top of the file and the notation comment
 
 ## Ideas that were mentioned and not done
 
-- Firefox and Safari are untested (only Chromium here). Touch/gamepad input does not exist.
+- Firefox and Safari are untested (only Chromium here). Touch/gamepad input does not exist; the owner wants to decide
+  the phone controls after the graphics work is done (the UI already fits phones and takes taps on its buttons).
+- Graphics, later steps: shadows for distant buildings (a second, coarser shadow map), smoother models for people and
+  animals (they are still boxes and blobs), ambient occlusion in corners, reflections of the town in the water.
 - Sound effects (steps, blows, bow, ambience); the music is the only audio.
 - The prebuilt binary and `web/` are rebuilt by hand; there is no CI.

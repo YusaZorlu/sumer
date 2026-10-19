@@ -1,6 +1,7 @@
 #include "game.h"
 #include "rlgl.h"
 #include <math.h>
+#include <string.h>
 
 typedef struct { float x, z, r, h; } Bump;
 
@@ -294,8 +295,23 @@ void BuildTerrain(void)
 
 static void Quad(float x0, float z0, float x1, float z1, float h00, float h10, float h01, float h11, Color c)
 {
-    rlColor4ub(c.r, c.g, c.b, c.a);
-    rlVertex3f(x0, h00, z0); rlVertex3f(x0, h01, z1); rlVertex3f(x1, h11, z1); rlVertex3f(x1, h10, z0);
+    VColor(c);
+    VNormal(0, 1, 0);
+    VVertex(x0, h00, z0); VVertex(x0, h01, z1); VVertex(x1, h11, z1); VVertex(x1, h10, z0);
+}
+
+// The ground's normal for the shaders: across the coarse grid at its corners, from the terrain itself
+// on the finely cut tiles.
+static void GridNormal(int i, int j)
+{
+    int a = i > 0 ? i - 1 : i, b = i < GROUND_TILES ? i + 1 : i, c = j > 0 ? j - 1 : j, d = j < GROUND_TILES ? j + 1 : j;
+    VNormal((G.heights[a][j] - G.heights[b][j]) / ((float)(b - a) * TILE_SIZE), 1.0f, (G.heights[i][c] - G.heights[i][d]) / ((float)(d - c) * TILE_SIZE));
+}
+
+static void FineNormal(float x, float z)
+{
+    const float e = 0.4f;
+    VNormal((TerrainHeight(x - e, z) - TerrainHeight(x + e, z)) / (2 * e), 1.0f, (TerrainHeight(x, z - e) - TerrainHeight(x, z + e)) / (2 * e));
 }
 
 static float tileLight[GROUND_TILES][GROUND_TILES];
@@ -390,33 +406,37 @@ static void DrawFineTile(int i, int j, Color (*dry)[GROUND_TILES + 1], Color (*l
             }
         }
     }
+    bool normals = GfxOn();
     rlCheckRenderBatchLimit(4 * N * N);
-    rlBegin(RL_QUADS);
+    VBegin(RL_QUADS);
     for (int u = 0; u < N; u++) {
         for (int v = 0; v < N; v++) {
             float xa = x0 + s * (float)u, za = z0 + s * (float)v, xb = xa + s, zb = za + s;
             Color a = c[u][v], b = c[u][v + 1], cc = c[u + 1][v + 1], d = c[u + 1][v];
-            rlColor4ub(a.r, a.g, a.b, 255); rlVertex3f(xa, h[u][v], za);
-            rlColor4ub(b.r, b.g, b.b, 255); rlVertex3f(xa, h[u][v + 1], zb);
-            rlColor4ub(cc.r, cc.g, cc.b, 255); rlVertex3f(xb, h[u + 1][v + 1], zb);
-            rlColor4ub(d.r, d.g, d.b, 255); rlVertex3f(xb, h[u + 1][v], za);
+            VColor(a); if (normals) FineNormal(xa, za); VVertex(xa, h[u][v], za);
+            VColor(b); if (normals) FineNormal(xa, zb); VVertex(xa, h[u][v + 1], zb);
+            VColor(cc); if (normals) FineNormal(xb, zb); VVertex(xb, h[u + 1][v + 1], zb);
+            VColor(d); if (normals) FineNormal(xb, za); VVertex(xb, h[u + 1][v], za);
         }
     }
-    rlEnd();
+    VEnd();
 }
 
+// For the shaders' meshes (DrawingAll) every tile is drawn, finely cut wherever it can be.
 void DrawGround(void)
 {
     static Color dry[GROUND_TILES + 1][GROUND_TILES + 1], lit[GROUND_TILES + 1][GROUND_TILES + 1];
     const int n = GROUND_TILES;
     Vector3 eye = G.cam.position;
+    bool all = DrawingAll(), normals = GfxOn();
 
-    CullTiles();
+    if (all) memset(tileShown, 1, sizeof(tileShown));
+    else CullTiles();
     for (int i = 0; i < n; i++) {
         for (int j = 0; j < n; j++) {
-            tileLight[i][j] = tileShown[i][j] ? TileLight(i, j) : 0.0f;
+            tileLight[i][j] = tileShown[i][j] && !all ? TileLight(i, j) : 0.0f;
             float dx = -WORLD_HALF + ((float)i + 0.5f) * TILE_SIZE - eye.x, dz = -WORLD_HALF + ((float)j + 0.5f) * TILE_SIZE - eye.z;
-            fineNow[i][j] = tileShown[i][j] && fineIndex[i][j] >= 0 && dx * dx + dz * dz < FINE_DIST * FINE_DIST;
+            fineNow[i][j] = tileShown[i][j] && fineIndex[i][j] >= 0 && (all || dx * dx + dz * dz < FINE_DIST * FINE_DIST);
         }
     }
     for (int i = 0; i <= n; i++) {
@@ -445,18 +465,18 @@ void DrawGround(void)
 
     for (int i = 0; i < n; i++) {
         rlCheckRenderBatchLimit(4 * n);
-        rlBegin(RL_QUADS);
+        VBegin(RL_QUADS);
         for (int j = 0; j < n; j++) {
             if (!tileShown[i][j] || fineNow[i][j]) continue;
             float x0 = -WORLD_HALF + (float)i * TILE_SIZE, z0 = -WORLD_HALF + (float)j * TILE_SIZE;
             float x1 = x0 + TILE_SIZE, z1 = z0 + TILE_SIZE;
             Color a = lit[i][j], b = lit[i][j + 1], c = lit[i + 1][j + 1], d = lit[i + 1][j];
-            rlColor4ub(a.r, a.g, a.b, 255); rlVertex3f(x0, G.heights[i][j], z0);
-            rlColor4ub(b.r, b.g, b.b, 255); rlVertex3f(x0, G.heights[i][j + 1], z1);
-            rlColor4ub(c.r, c.g, c.b, 255); rlVertex3f(x1, G.heights[i + 1][j + 1], z1);
-            rlColor4ub(d.r, d.g, d.b, 255); rlVertex3f(x1, G.heights[i + 1][j], z0);
+            VColor(a); if (normals) GridNormal(i, j); VVertex(x0, G.heights[i][j], z0);
+            VColor(b); if (normals) GridNormal(i, j + 1); VVertex(x0, G.heights[i][j + 1], z1);
+            VColor(c); if (normals) GridNormal(i + 1, j + 1); VVertex(x1, G.heights[i + 1][j + 1], z1);
+            VColor(d); if (normals) GridNormal(i + 1, j); VVertex(x1, G.heights[i + 1][j], z0);
         }
-        rlEnd();
+        VEnd();
     }
 
     G.drawTorch = 0;
@@ -466,13 +486,13 @@ void DrawGround(void)
     Color outer = Lit((Color){ 150, 150, 98, 255 }, 0.95f), green = Lit((Color){ 96, 134, 60, 255 }, 0.95f);
     const float W = WORLD_HALF, F = 1150.0f, A = RIVER_X0 - 3.0f, B = RIVER_X1 + 3.0f;
     rlCheckRenderBatchLimit(24);
-    rlBegin(RL_QUADS);
+    VBegin(RL_QUADS);
     Quad(B, -F, F, -W, 0, 0, 0, 0, outer);
     Quad(B, W, F, F, 0, 0, 0, 0, outer);
     Quad(-F, -F, A, -W, 0, 0, 0, 0, green);
     Quad(-F, W, A, F, 0, 0, 0, 0, green);
     Quad(-F, -W, -W, W, 0, 0, 0, 0, green);
     Quad(W, -W, F, W, 0, 0, 0, 0, outer);
-    rlEnd();
+    VEnd();
     G.drawFog = 0;
 }

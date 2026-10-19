@@ -14,13 +14,14 @@ async function page(unused, W, H, name) {
   const p = await (await browser.newContext({ viewport: { width: W, height: H } })).newPage();
   p.on('pageerror', e => console.log(`[${name}] PAGE ERROR ${e.message}`));
   p.W = W; p.H = H; p.name = name;
-  await p.goto(`http://localhost:${PORT}/?room=${ROOM}`);
+  await p.goto(`http://localhost:${PORT}/?room=${ROOM}&gfx=classic`);
   return p;
 }
 // The title screen's panel is 720x490 in the middle of the window.
 const lobby = (p, dx, dy) => ({ x: p.W / 2 - 360 + dx, y: (p.H > 546 ? (p.H - 530) / 2 : 8) + dy });
-// The pause menu is 620x470 in the middle.
-const pause = (p, dx, dy) => ({ x: (p.W - 620) / 2 + dx, y: (p.H - 470) / 2 + dy });
+// The pause menu is 620x516 in the middle.
+const PH = 516;
+const pause = (p, dx, dy) => ({ x: (p.W - 620) / 2 + dx, y: (p.H - PH) / 2 + dy });
 async function click(p, at, what) {
   await p.mouse.move(at.x, at.y, { steps: 3 });
   await sleep(120);
@@ -56,7 +57,7 @@ const shot = (p, n) => p.screenshot({ path: `${dir}/${n}.png`, timeout: 90000 })
   await bob.keyboard.press('Escape');
   await sleep(1200);
   await shot(bob, '5-bob-paused');
-  await click(bob, pause(bob, 50 + 120, 470 - 130 + 20), 'Resume');
+  await click(bob, pause(bob, 50 + 120, PH - 130 + 20), 'Resume');
   await sleep(1500);
   await shot(bob, '6-bob-resumed');
 
@@ -69,7 +70,7 @@ const shot = (p, n) => p.screenshot({ path: `${dir}/${n}.png`, timeout: 90000 })
   await cem.keyboard.press('Escape');
   await sleep(1200);
   await shot(cem, '8-cem-paused');
-  await click(cem, pause(cem, 50 + 240 + 40 + 120, 470 - 130 + 54 + 20), 'Save & quit');
+  await click(cem, pause(cem, 50 + 240 + 40 + 120, PH - 130 + 54 + 20), 'Save & quit');
   await sleep(2500);
   await shot(cem, '9-cem-title');
   for (const b of browsers) await b.close();

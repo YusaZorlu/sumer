@@ -26,6 +26,7 @@ static void Frame(void)
         }
         ready = true;
         LoadLanguage();
+        GfxLoadSetting();
         MusicInit();
         OpenLobby("");
     }
@@ -85,6 +86,7 @@ int main(void)
     rlSetClipPlanes(0.1, 1200.0);
 
     LoadLanguage();
+    GfxLoadSetting();
     MusicInit();
     SetSaveSlot(LastSlot());
     GameInit();

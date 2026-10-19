@@ -420,9 +420,10 @@ void BuildWorld(void)
 
     for (int i = 0; i < MAX_STARS; i++)
         G.stars[i] = Vector3Normalize((Vector3){ RandF(-1, 1), RandF(0.12f, 1), RandF(-1, 1) });
+    GfxWorldChanged();
 }
 
-static Vector3 SunDirection(void)
+Vector3 SunDirection(void)
 {
     float a = (G.hour - 6.0f) / 12.0f * PI;
     return Vector3Normalize((Vector3){ cosf(a), sinf(a), -0.35f });
@@ -480,8 +481,8 @@ static void WaterVertex(float x, float z, float deep, float t)
     G.drawTorch = GroundTorch(x, z);
     G.drawFog = FogAt((Vector3){ x, WATER_LEVEL, z }) * (1.0f - 0.6f * G.drawTorch);
     Color c = Lit(COL_WATER, shade);
-    rlColor4ub(c.r, c.g, c.b, 255);
-    rlVertex3f(x, WATER_LEVEL, z);
+    VColor(c);
+    VVertex(x, WATER_LEVEL, z);
 }
 
 // Water lies flat a little below the land. Its surface reaches under the banks, so the cut ground,
@@ -490,6 +491,7 @@ void DrawWater(void)
 {
     const float cell = 8.0f, t = (float)GetTime();
     Vector3 eye = G.cam.position, fwd = Vector3Normalize(Vector3Subtract(G.cam.target, eye));
+    bool all = DrawingAll();
 
     for (int c = 0; c < ChannelCount(); c++) {
         bool wet;
@@ -500,26 +502,28 @@ void DrawWater(void)
         float sx = (x1 - x0) / (float)nx, sz = (z1 - z0) / (float)nz, deep = wet ? 1.0f / 7.0f : 0.0f;
         for (int i = 0; i < nx; i++) {
             rlCheckRenderBatchLimit(4 * nz);
-            rlBegin(RL_QUADS);
+            VBegin(RL_QUADS);
+            VNormal(0, 1, 0);
             for (int j = 0; j < nz; j++) {
                 float xa = x0 + sx * (float)i, za = z0 + sz * (float)j, xb = xa + sx, zb = za + sz;
                 Vector3 mid = { (xa + xb) / 2 - eye.x, WATER_LEVEL - eye.y, (za + zb) / 2 - eye.z };
-                if (mid.x * mid.x + mid.z * mid.z > 420.0f * 420.0f || Vector3DotProduct(mid, fwd) < -12.0f) continue;
+                if (!all && (mid.x * mid.x + mid.z * mid.z > 420.0f * 420.0f || Vector3DotProduct(mid, fwd) < -12.0f)) continue;
                 WaterVertex(xa, za, fminf(1.0f, EdgeDepth(w, xa, za) * deep), t);
                 WaterVertex(xa, zb, fminf(1.0f, EdgeDepth(w, xa, zb) * deep), t);
                 WaterVertex(xb, zb, fminf(1.0f, EdgeDepth(w, xb, zb) * deep), t);
                 WaterVertex(xb, za, fminf(1.0f, EdgeDepth(w, xb, za) * deep), t);
             }
-            rlEnd();
+            VEnd();
         }
     }
 
     for (int p = 0; p < pondCount; p++) {
         const int segs = 40;
         Vector4 o = ponds[p];
-        if (XZDist((Vector3){ o.x, 0, o.y }, eye) > 420.0f) continue;
+        if (!all && XZDist((Vector3){ o.x, 0, o.y }, eye) > 420.0f) continue;
         rlCheckRenderBatchLimit(4 * segs);
-        rlBegin(RL_QUADS);
+        VBegin(RL_QUADS);
+        VNormal(0, 1, 0);
         for (int k = 0; k < segs; k++) {
             float a0 = 2.0f * PI * (float)k / segs, a1 = 2.0f * PI * (float)(k + 1) / segs;
             float rx = o.z + 2.0f, rz = o.w + 2.0f;
@@ -528,7 +532,7 @@ void DrawWater(void)
             WaterVertex(o.x + cosf(a0) * rx, o.y + sinf(a0) * rz, 0.0f, t);
             WaterVertex(o.x + cosf(a0) * rx, o.y + sinf(a0) * rz, 0.0f, t);
         }
-        rlEnd();
+        VEnd();
     }
 
     // The river runs on past the edge of the world, between low banks.
@@ -537,17 +541,51 @@ void DrawWater(void)
     G.drawFog = G.night * 0.8f;
     Color c = Lit(COL_WATER, 0.9f), bank = Lit((Color){ 104, 88, 62, 255 }, 0.8f);
     rlCheckRenderBatchLimit(24);
-    rlBegin(RL_QUADS);
+    VBegin(RL_QUADS);
     for (int s = -1; s <= 1; s += 2) {
         float za = s < 0 ? -F : WORLD_HALF, zb = s < 0 ? -WORLD_HALF : F;
-        rlColor4ub(c.r, c.g, c.b, 255);
-        rlVertex3f(A, L, za); rlVertex3f(A, L, zb); rlVertex3f(B, L, zb); rlVertex3f(B, L, za);
-        rlColor4ub(bank.r, bank.g, bank.b, 255);
-        rlVertex3f(A, L, zb); rlVertex3f(A, L, za); rlVertex3f(A, 0.0f, za); rlVertex3f(A, 0.0f, zb);
-        rlVertex3f(B, L, za); rlVertex3f(B, L, zb); rlVertex3f(B, 0.0f, zb); rlVertex3f(B, 0.0f, za);
+        VColor(c);
+        VNormal(0, 1, 0);
+        VVertex(A, L, za); VVertex(A, L, zb); VVertex(B, L, zb); VVertex(B, L, za);
+        int mat = CurrentMaterial();
+        SetMaterial(MAT_GROUND);
+        VColor(bank);
+        VNormal(1, 0, 0);
+        VVertex(A, L, zb); VVertex(A, L, za); VVertex(A, 0.0f, za); VVertex(A, 0.0f, zb);
+        VNormal(-1, 0, 0);
+        VVertex(B, L, za); VVertex(B, L, zb); VVertex(B, 0.0f, zb); VVertex(B, 0.0f, za);
+        SetMaterial(mat);
     }
-    rlEnd();
+    VEnd();
     G.drawTorch = G.drawFog = 0;
+}
+
+// One box at the detail fitting its squared distance d2 from the eye: buildings up close get twice
+// the facets and softened edges.
+void DrawBoxAt(int i, float d2)
+{
+    const Box *b = &G.boxes[i];
+    if (b->glow) {
+        DrawGlowBox(b->pos, b->size, b->color);
+        return;
+    }
+    Vector3 base = { b->pos.x, b->pos.y - b->size.y / 2, b->pos.z };
+    bool close = b->built && d2 < 45.0f * 45.0f;
+    int sides = close ? 16 : d2 > 60.0f * 60.0f ? 5 : 8;
+    float small = fminf(fminf(b->size.x, b->size.y), b->size.z);
+    switch (b->shape) {
+    case SHAPE_CYL:  DrawShadedCylinder(base, b->size.x / 2, b->size.z / 2, b->size.y, 1.0f, sides, b->color); break;
+    case SHAPE_CONE: DrawShadedCylinder(base, b->size.x / 2, b->size.z / 2, b->size.y, 0.0f, sides, b->color); break;
+    case SHAPE_BLOB:
+        if (close) DrawShadedBlobFine(b->pos, Vector3Scale(b->size, 0.5f), b->color);
+        else if (d2 > 70.0f * 70.0f) DrawShadedBlobFar(b->pos, Vector3Scale(b->size, 0.5f), b->color);
+        else DrawShadedBlob(b->pos, Vector3Scale(b->size, 0.5f), b->color);
+        break;
+    default:
+        if (close && b->solid && small >= 0.4f) DrawBeveledBox(b->pos, b->size, b->color, fminf(0.12f, 0.14f * small));
+        else DrawShadedBox(b->pos, b->size, b->color);
+        break;
+    }
 }
 
 void DrawTerrain(void)
@@ -565,30 +603,11 @@ void DrawTerrain(void)
         float r = (b->size.x + b->size.y + b->size.z) * 0.5f;
         float d2 = Vector3DotProduct(v, v);
         if (Vector3DotProduct(v, fwd) < -r || d2 > 340.0f * 340.0f || (r < 1.0f && d2 > 150.0f * 150.0f)) continue;
-        if (b->glow) {
-            DrawGlowBox(b->pos, b->size, b->color);
-            continue;
+        if (!b->glow) {
+            G.drawTorch = BoxLight(i);
+            G.drawFog = FogAt(b->pos) * (1.0f - 0.6f * G.drawTorch);
         }
-        G.drawTorch = BoxLight(i);
-        G.drawFog = FogAt(b->pos) * (1.0f - 0.6f * G.drawTorch);
-        Vector3 base = { b->pos.x, b->pos.y - b->size.y / 2, b->pos.z };
-        // Buildings up close get twice the facets and softened edges.
-        bool close = b->built && d2 < 45.0f * 45.0f;
-        int sides = close ? 16 : d2 > 60.0f * 60.0f ? 5 : 8;
-        float small = fminf(fminf(b->size.x, b->size.y), b->size.z);
-        switch (b->shape) {
-        case SHAPE_CYL:  DrawShadedCylinder(base, b->size.x / 2, b->size.z / 2, b->size.y, 1.0f, sides, b->color); break;
-        case SHAPE_CONE: DrawShadedCylinder(base, b->size.x / 2, b->size.z / 2, b->size.y, 0.0f, sides, b->color); break;
-        case SHAPE_BLOB:
-            if (close) DrawShadedBlobFine(b->pos, Vector3Scale(b->size, 0.5f), b->color);
-            else if (d2 > 70.0f * 70.0f) DrawShadedBlobFar(b->pos, Vector3Scale(b->size, 0.5f), b->color);
-            else DrawShadedBlob(b->pos, Vector3Scale(b->size, 0.5f), b->color);
-            break;
-        default:
-            if (close && b->solid && small >= 0.4f) DrawBeveledBox(b->pos, b->size, b->color, fminf(0.12f, 0.14f * small));
-            else DrawShadedBox(b->pos, b->size, b->color);
-            break;
-        }
+        DrawBoxAt(i, d2);
     }
     G.drawTorch = G.drawFog = 0;
     DrawTorches();
@@ -706,23 +725,36 @@ static void DrawHerb(int i, const Resource *r)
     }
 }
 
-void DrawResources(void)
+void DrawResource(int i)
+{
+    const Resource *r = &G.res[i];
+    switch (r->kind) {
+    case RES_PALM:  DrawPalm(r); break;
+    case RES_REEDS: DrawReeds(i, r); break;
+    case RES_TREE:  DrawTreeRes(i, r); break;
+    case RES_CLAY:  DrawClay(r); break;
+    case RES_ORE:   DrawOre(r); break;
+    case RES_FISH:  DrawFish(i, r); break;
+    case RES_HERB:  DrawHerb(i, r); break;
+    default: break;
+    }
+}
+
+// Fish rings are the only resources that move; the shaders' meshes hold the rest (DrawResourcesOf).
+void DrawResourcesOf(bool still, bool moving)
 {
     for (int i = 0; i < G.resCount; i++) {
         const Resource *r = &G.res[i];
+        if (r->kind == RES_FISH ? !moving : !still) continue;
         float d = XZDist(r->pos, G.cam.position);
         if (d > 260.0f || (r->kind == RES_HERB && d > 130.0f)) continue;
         if (G.night > 0) LightFor(r->pos);
-        switch (r->kind) {
-        case RES_PALM:  DrawPalm(r); break;
-        case RES_REEDS: DrawReeds(i, r); break;
-        case RES_TREE:  DrawTreeRes(i, r); break;
-        case RES_CLAY:  DrawClay(r); break;
-        case RES_ORE:   DrawOre(r); break;
-        case RES_FISH:  DrawFish(i, r); break;
-        case RES_HERB:  DrawHerb(i, r); break;
-        default: break;
-        }
+        DrawResource(i);
     }
     G.drawTorch = G.drawFog = 0;
+}
+
+void DrawResources(void)
+{
+    DrawResourcesOf(true, true);
 }

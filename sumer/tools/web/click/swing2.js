@@ -15,9 +15,11 @@ const PORT = process.argv[2] || 8123, W = 800, H = 450;
     document.addEventListener('pointerlockchange', () => log('pointerlockchange locked=' + !!document.pointerLockElement));
     window.addEventListener('mousedown', () => log('mousedown'), true);
   });
-  await p.goto(`http://localhost:${PORT}/?room=swing2`);
+  await p.goto(`http://localhost:${PORT}/?room=swing2&gfx=classic`);
   await sleep(7000);
-  await p.mouse.click(W / 2 - 360 + 165, 8 + 233);   // Play alone (the panel sits at the top of a short window)
+  // Play alone. A window under 960x540 gets the UI shrunk to fit (k), the panel at the top.
+  const k = Math.min(1, H / 540, W / 960);
+  await p.mouse.click((W / k / 2 - 360 + 165) * k, (8 + 233) * k);
   await sleep(6000);
   const info = () => p.evaluate(() => { const i = JSON.parse(Module.ccall('TestInfo', 'string', [], [])); return { panel: i.panel, captured: i.captured, swing: i.cool, equip: i.equip }; });
   // Before each tap: the last swing's cooldown has run out, so any cooldown seen after the tap is a new swing.

@@ -185,27 +185,27 @@ void DrawRoads(void)
 {
     const Color dirt = { 168, 148, 110, 255 };
     Vector3 eye = G.cam.position, fwd = Vector3Normalize(Vector3Subtract(G.cam.target, eye));
+    bool all = DrawingAll();
 
     for (int r = 0; r < ROADS; r++) {
         rlCheckRenderBatchLimit(4 * sampleCount[r]);
-        rlBegin(RL_QUADS);
+        VBegin(RL_QUADS);
         for (int k = 0; k + 1 < sampleCount[r]; k++) {
             const Sample *a = &samples[sampleFirst[r] + k], *b = a + 1;
             if (a->skip || b->skip) continue;
             Vector3 mid = Vector3Lerp(a->l, b->r, 0.5f), v = Vector3Subtract(mid, eye);
-            if (v.x * v.x + v.z * v.z > STRIP_SHOWN * STRIP_SHOWN || Vector3DotProduct(v, fwd) < -8.0f) continue;
+            if (!all && (v.x * v.x + v.z * v.z > STRIP_SHOWN * STRIP_SHOWN || Vector3DotProduct(v, fwd) < -8.0f)) continue;
             // Counter-clockwise seen from above, so the strip's top is its front face.
             const Vector3 *pts[4] = { &a->l, &b->l, &b->r, &a->r };
             for (int q = 0; q < 4; q++) {
                 const Vector3 *p = pts[q];
                 G.drawTorch = GroundTorch(p->x, p->z);
                 G.drawFog = FogAt(*p) * (1.0f - 0.6f * G.drawTorch);
-                Color c = Lit(dirt, 0.97f);
-                rlColor4ub(c.r, c.g, c.b, 255);
-                rlVertex3f(p->x, p->y, p->z);
+                VColor(Lit(dirt, 0.97f));
+                VVertex(p->x, p->y, p->z);
             }
         }
-        rlEnd();
+        VEnd();
     }
     G.drawTorch = G.drawFog = 0;
 }

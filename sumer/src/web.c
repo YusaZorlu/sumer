@@ -123,7 +123,7 @@ void ServerAddress(char *buf, int size, const char *query)
 
 static int presses, taps[16], tapCount;
 #if defined(__EMSCRIPTEN__)
-static Vector2 look;
+static Vector2 look, pointer = { -1, -1 };
 #endif
 
 // The page counts every mouse press on the game (for MousePressed) and adds up every movement of
@@ -136,8 +136,22 @@ void WatchClicks(void)
         Module.sumerPresses = 0;
         Module.sumerLookX = 0;
         Module.sumerLookY = 0;
+        Module.sumerPointerX = -1;
+        Module.sumerPointerY = -1;
         Module.canvas.addEventListener('mousedown', function (e) {
             Module.sumerPresses |= e.button === 0 ? 1 : e.button === 2 ? 2 : e.button === 1 ? 4 : 0;
+        }, true);
+        // Where the mouse or a finger last was, in the canvas's pixels. A tap counts as a left click.
+        var at = function (e) {
+            var r = Module.canvas.getBoundingClientRect();
+            if (r.width <= 0 || r.height <= 0) return;
+            Module.sumerPointerX = (e.clientX - r.left) * Module.canvas.width / r.width;
+            Module.sumerPointerY = (e.clientY - r.top) * Module.canvas.height / r.height;
+        };
+        Module.canvas.addEventListener('pointermove', at, true);
+        Module.canvas.addEventListener('pointerdown', function (e) {
+            at(e);
+            if (e.pointerType !== 'mouse') Module.sumerPresses |= 1;
         }, true);
         document.addEventListener('mousemove', function (e) {
             var x = e.movementX || 0, y = e.movementY || 0;
@@ -152,16 +166,32 @@ void WatchClicks(void)
 // Once at the start of every frame. raylib sizes the canvas to the browser window itself, but
 // Emscripten's GLFW keeps the size the window was opened with (1280x720) and scales every mouse
 // position by the difference, so in any other window the pointer the game sees is not where the
-// mouse is. Telling GLFW the real size whenever it changes keeps the two together.
+// mouse is. Telling GLFW the real size whenever it changes keeps the two together. The canvas gets
+// as many pixels as the screen has under it (three to each CSS pixel on many phones, up to about
+// four million in all), so letters and edges come out sharp; the page's style stretches it over the
+// window.
+static float pixelRatio = 1.0f;
+
+float PixelRatio(void)
+{
+    return pixelRatio;
+}
+
 void PageFrame(void)
 {
 #if defined(__EMSCRIPTEN__)
-    static int w, h;
-    int sw = GetScreenWidth(), sh = GetScreenHeight();
-    if (sw > 0 && sh > 0 && (sw != w || sh != h)) {
-        w = sw;
-        h = sh;
-        SetWindowSize(sw, sh);
+    int iw = EM_ASM_INT({ return window.innerWidth | 0; }), ih = EM_ASM_INT({ return window.innerHeight | 0; });
+    pixelRatio = (float)EM_ASM_DOUBLE({
+        var d = window.devicePixelRatio || 1;
+        var cap = Math.sqrt(4.2e6 / Math.max(1, window.innerWidth * window.innerHeight));
+        return Math.max(1, Math.min(d, cap));
+    });
+    static int setW, setH;
+    int w = (int)((float)iw * pixelRatio + 0.5f), h = (int)((float)ih * pixelRatio + 0.5f);
+    if (w > 0 && h > 0 && (w != setW || h != setH || GetScreenWidth() != w || GetScreenHeight() != h)) {
+        setW = w;
+        setH = h;
+        SetWindowSize(w, h);
     }
     // Every key pressed since the last frame, even one already let go again.
     tapCount = 0;
@@ -181,7 +211,19 @@ void PageFrame(void)
         Module.sumerLookY = 0;
         return y;
     });
+    pointer.x = (float)EM_ASM_DOUBLE({ return Module.sumerPointerX; });
+    pointer.y = (float)EM_ASM_DOUBLE({ return Module.sumerPointerY; });
 #endif
+}
+
+// Where the pointer is on the screen for menus and buttons. In a browser the page's own record, which
+// a finger on a touch screen moves too (raylib follows only the mouse there).
+Vector2 PointerPosition(void)
+{
+#if defined(__EMSCRIPTEN__)
+    if (pointer.x >= 0) return pointer;
+#endif
+    return GetMousePosition();
 }
 
 // How far the captured mouse moved since the last frame. In a browser this is every movement the
@@ -210,6 +252,21 @@ bool KeyPressed(int key)
     for (int i = 0; i < tapCount; i++)
         if (taps[i] == key) return true;
     return false;
+}
+
+// A phone or tablet: its browser says so, or its pointer is a finger.
+bool OnPhone(void)
+{
+#if defined(__EMSCRIPTEN__)
+    return EM_ASM_INT({
+        var ua = navigator.userAgent || "";
+        if (/Android|iPhone|iPad|iPod|Mobile/i.test(ua)) return 1;
+        if (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) return 1;
+        return window.matchMedia && window.matchMedia('(pointer: coarse)').matches ? 1 : 0;
+    }) != 0;
+#else
+    return false;
+#endif
 }
 
 bool OnWeb(void)

@@ -557,6 +557,10 @@ void UpdateSky(void);
 void DrawSky(void);
 void DrawTerrain(void);
 void DrawResources(void);
+void DrawResourcesOf(bool still, bool moving);
+void DrawResource(int i);
+void DrawBoxAt(int i, float d2);
+Vector3 SunDirection(void);
 
 int SlotsCount(const Slot *s, int n, int item);
 int SlotsSpace(const Slot *s, int n, int item);
@@ -697,6 +701,8 @@ void NewDay(void);
 bool RainBefore(float hour);
 bool CropStage(float lead, float *growth, bool *stubble);
 void UpdateFields(void);
+bool FieldBox(int i);
+void DrawFields(void);
 void UpdateWeather(void);
 void DrawRain(void);
 int Season(void);
@@ -778,6 +784,9 @@ Vector2 MouseLook(void);
 const char *PageParam(const char *key);
 void ServerAddress(char *buf, int size, const char *query);
 bool OnWeb(void);
+bool OnPhone(void);
+Vector2 PointerPosition(void);
+float PixelRatio(void);
 
 // The connection to the relay server (net.c).
 bool NetOpen(bool host, const char *room);
@@ -883,6 +892,13 @@ void CalmFor(int slot);
 void OpenLobby(const char *why);
 bool InLobby(void);
 void LobbyFrame(void);
+// The UI's own units (ui.c): a small screen gets the UI shrunk as if it were 960 x 540.
+float UiScale(void);
+float UiWidth(void);
+float UiHeight(void);
+Vector2 UiMouse(void);
+void UiBegin(void);
+void UiEnd(void);
 void LeaveToLobby(const char *why);
 const char *PlayerName(void);
 
@@ -897,5 +913,28 @@ const char *MusicTitle(int mood);
 int MusicMood(void);               // 0 morning, 1 the fight, 2 the night
 void MusicRender(int mood, float *out, int frames);
 float MusicPartBeats(int mood, int part);
+
+// The shader renderer and its setting (gfx.c). While GfxOn() the draw code hands out plain colors
+// (Lit() leaves them as they are), a material and normals, and the shaders do the light. The vertex
+// stream below is how every piece of the world is drawn, whichever way it goes.
+enum { GFX_AUTO, GFX_HIGH, GFX_LOW, GFX_CLASSIC, GFX_CHOICES };
+enum { MAT_THING, MAT_GROUND, MAT_WATER, MAT_GLOW, MAT_FIGURE, MAT_BUILT, MAT_UNLIT };
+void GfxLoadSetting(void);
+int GfxChoice(void);               // what the player picked, GFX_AUTO included
+int GfxTier(void);                 // what runs: GFX_HIGH, GFX_LOW or GFX_CLASSIC
+void GfxSetChoice(int choice);
+const char *GfxChoiceName(int choice);
+const char *GfxLabel(void);
+bool GfxOn(void);
+bool DrawingAll(void);             // drawing the whole map once for the shaders' meshes: no culling
+void GfxWorldChanged(void);
+bool GfxDrawWorld(void);           // the 3D world through the shaders; false when the classic way must draw it
+void SetMaterial(int material);
+int CurrentMaterial(void);
+void VBegin(int mode);
+void VEnd(void);
+void VColor(Color c);
+void VNormal(float x, float y, float z);
+void VVertex(float x, float y, float z);
 
 #endif

@@ -23,10 +23,10 @@ EMSCRIPTEN_KEEPALIVE const char *TestInfo(void)
     Esc(failure, sizeof(failure), NetFailure());
     int n = snprintf(buf, sizeof(buf),
         "{\"lobby\":%d,\"role\":%d,\"self\":%d,\"players\":%d,\"day\":%d,\"hour\":%.3f,\"x\":%.2f,\"y\":%.2f,\"z\":%.2f,"
-        "\"yaw\":%.3f,\"pitch\":%.3f,\"captured\":%d,\"lang\":%d,\"health\":%.1f,\"food\":%.1f,\"quiver\":%d,\"henCount\":%d,\"eggs\":%d,\"waitBed\":%d,\"sleeping\":%d,\"panel\":%d,\"swing\":%.2f,\"cool\":%.2f,\"equip\":%d,\"pvp\":%d,\"combat\":%d,\"mood\":%d,\"musicLevel\":%d,\"hitLight\":[%.2f,%.2f,%.2f,%.2f],\"flinch\":%.2f,\"villagers\":%d,"
+        "\"yaw\":%.3f,\"pitch\":%.3f,\"captured\":%d,\"lang\":%d,\"health\":%.1f,\"food\":%.1f,\"quiver\":%d,\"henCount\":%d,\"eggs\":%d,\"waitBed\":%d,\"sleeping\":%d,\"panel\":%d,\"swing\":%.2f,\"cool\":%.2f,\"equip\":%d,\"pvp\":%d,\"combat\":%d,\"mood\":%d,\"musicLevel\":%d,\"hitLight\":[%.2f,%.2f,%.2f,%.2f],\"flinch\":%.2f,\"villagers\":%d,\"gfx\":%d,\"ui\":%.3f,"
         "\"target\":%d,\"targetIndex\":%d,\"promptE\":\"%s\",\"msg\":\"%s\",\"failure\":\"%s\",\"peers\":[",
         InLobby(), G.role, G.self, PlayerCount(), G.day, G.hour, G.player.pos.x, G.player.pos.y, G.player.pos.z,
-        G.player.yaw, G.player.pitch, PointerCaptured(), Language(), G.health, G.food, G.quiver, G.henCount, G.coopEggs, G.waitBed, G.sleeping, G.panel, G.swingT, G.swingCool, G.equip, G.pvp, G.combat, MusicMood(), MusicLevel(), G.hitLight[0], G.hitLight[1], G.hitLight[2], G.hitLight[3], G.flinchT, G.villagerCount, G.target.kind, G.target.index,
+        G.player.yaw, G.player.pitch, PointerCaptured(), Language(), G.health, G.food, G.quiver, G.henCount, G.coopEggs, G.waitBed, G.sleeping, G.panel, G.swingT, G.swingCool, G.equip, G.pvp, G.combat, MusicMood(), MusicLevel(), G.hitLight[0], G.hitLight[1], G.hitLight[2], G.hitLight[3], G.flinchT, G.villagerCount, GfxTier(), UiScale(), G.target.kind, G.target.index,
         G.promptE, msg, failure);
     for (int s = 0, first = 1; s < MAX_PLAYERS; s++) {
         const Peer *p = &G.peers[s];
@@ -55,7 +55,8 @@ EMSCRIPTEN_KEEPALIVE const char *TestInfo(void)
 // 1 teleport to (a, b); 2 press E; 3 press F; 4 look (yaw a, pitch b); 5 shoot a full-drawn arrow where
 // the camera looks; 6 swing the weapon; 7 add b of item a to the baskets; 8 take an animal: put it
 // down dead at the player's feet (a = index); 9 set the hour to a; 10 shoot at the ground point (a, b)
-// at body height; 11 language a; 12 barter offer b of trader a; 13 hurt the player by a.
+// at body height; 11 language a; 12 barter offer b of trader a; 13 hurt the player by a; 14 equip a;
+// 15 open panel a (PANEL_* in game.h).
 EMSCRIPTEN_KEEPALIVE void TestCommand(int cmd, float a, float b)
 {
     Player *p = &G.player;
@@ -94,6 +95,7 @@ EMSCRIPTEN_KEEPALIVE void TestCommand(int cmd, float a, float b)
     case 12: Barter((int)a, (int)b); break;
     case 13: HurtPlayer(a, BY_NONE); break;
     case 14: SetEquip((int)a); break;
+    case 15: SetPanel((Panel)(int)a); break;
     default: break;
     }
 }

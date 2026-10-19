@@ -27,9 +27,11 @@ Color Mix(Color a, Color b, float t)
                     (unsigned char)Lerp(a.b, b.b, t), (unsigned char)Lerp(a.a, b.a, t) };
 }
 
-// Daylight plus warm torchlight set by LightFor() for the object being drawn.
+// Daylight plus warm torchlight set by LightFor() for the object being drawn. With the shaders on
+// the color goes out as it is: they do the light.
 Color Lit(Color c, float shade)
 {
+    if (GfxOn()) return c;
     float t = G.drawTorch, f = G.drawFog;
     float r = Clamp(c.r * shade * (G.light.x + 1.00f * t), 0.0f, 255.0f);
     float g = Clamp(c.g * shade * (G.light.y + 0.62f * t), 0.0f, 255.0f);
@@ -45,39 +47,50 @@ Color Lit(Color c, float shade)
 static Color Shade(Color c, float f, bool lit)
 {
     if (lit) return Lit(c, f);
+    if (GfxOn()) return c;
     f = 0.85f + 0.15f * f;
     return (Color){ (unsigned char)(c.r * f), (unsigned char)(c.g * f), (unsigned char)(c.b * f), c.a };
 }
 
 static void SetColor(Color c)
 {
-    rlColor4ub(c.r, c.g, c.b, c.a);
+    VColor(c);
 }
 
-// Fixed per-face shading stands in for real lighting.
+// Fixed per-face shading stands in for real lighting; the shaders use the face normals instead.
+// Something glowing (fire, embers) is drawn as glowing whatever material is set.
 static void BoxQuads(Vector3 c, Vector3 s, Color col, bool lit)
 {
     float x0 = c.x - s.x / 2, x1 = c.x + s.x / 2;
     float y0 = c.y - s.y / 2, y1 = c.y + s.y / 2;
     float z0 = c.z - s.z / 2, z1 = c.z + s.z / 2;
+    int mat = CurrentMaterial();
 
+    if (!lit) SetMaterial(MAT_GLOW);
     rlCheckRenderBatchLimit(24);
-    rlBegin(RL_QUADS);
+    VBegin(RL_QUADS);
     SetColor(Shade(col, 1.00f, lit));
-    rlVertex3f(x0, y1, z0); rlVertex3f(x0, y1, z1); rlVertex3f(x1, y1, z1); rlVertex3f(x1, y1, z0);
+    VNormal(0, 1, 0);
+    VVertex(x0, y1, z0); VVertex(x0, y1, z1); VVertex(x1, y1, z1); VVertex(x1, y1, z0);
     SetColor(Shade(col, 0.86f, lit));
-    rlVertex3f(x0, y0, z1); rlVertex3f(x1, y0, z1); rlVertex3f(x1, y1, z1); rlVertex3f(x0, y1, z1);
+    VNormal(0, 0, 1);
+    VVertex(x0, y0, z1); VVertex(x1, y0, z1); VVertex(x1, y1, z1); VVertex(x0, y1, z1);
     SetColor(Shade(col, 0.70f, lit));
-    rlVertex3f(x1, y0, z0); rlVertex3f(x0, y0, z0); rlVertex3f(x0, y1, z0); rlVertex3f(x1, y1, z0);
+    VNormal(0, 0, -1);
+    VVertex(x1, y0, z0); VVertex(x0, y0, z0); VVertex(x0, y1, z0); VVertex(x1, y1, z0);
     SetColor(Shade(col, 0.78f, lit));
-    rlVertex3f(x1, y0, z1); rlVertex3f(x1, y0, z0); rlVertex3f(x1, y1, z0); rlVertex3f(x1, y1, z1);
+    VNormal(1, 0, 0);
+    VVertex(x1, y0, z1); VVertex(x1, y0, z0); VVertex(x1, y1, z0); VVertex(x1, y1, z1);
     SetColor(Shade(col, 0.62f, lit));
-    rlVertex3f(x0, y0, z0); rlVertex3f(x0, y0, z1); rlVertex3f(x0, y1, z1); rlVertex3f(x0, y1, z0);
+    VNormal(-1, 0, 0);
+    VVertex(x0, y0, z0); VVertex(x0, y0, z1); VVertex(x0, y1, z1); VVertex(x0, y1, z0);
     if (y0 > 0.05f) {
         SetColor(Shade(col, 0.5f, lit));
-        rlVertex3f(x0, y0, z0); rlVertex3f(x1, y0, z0); rlVertex3f(x1, y0, z1); rlVertex3f(x0, y0, z1);
+        VNormal(0, -1, 0);
+        VVertex(x0, y0, z0); VVertex(x1, y0, z0); VVertex(x1, y0, z1); VVertex(x0, y0, z1);
     }
-    rlEnd();
+    VEnd();
+    SetMaterial(mat);
 }
 
 void DrawShadedBox(Vector3 c, Vector3 s, Color col)
@@ -95,32 +108,42 @@ static float NormalShade(float nx, float ny, float nz)
     return Clamp(0.74f + 0.26f * ny + 0.08f * nz + 0.08f * nx, 0.45f, 1.0f);
 }
 
-// The top cap is a fan of degenerate quads.
+// The top cap is a fan of degenerate quads. The sides carry smooth normals, so a column looks round
+// in the shaders' light.
 void DrawShadedCylinder(Vector3 base, float rx, float rz, float h, float topScale, int sides, Color col)
 {
     float slope = (1.0f - topScale) * fmaxf(rx, rz) / fmaxf(h, 0.01f);
     float y0 = base.y, y1 = base.y + h;
+    float ny = slope / sqrtf(1.0f + slope * slope), nh = 1.0f / sqrtf(1.0f + slope * slope);
+    bool normals = GfxOn();
 
     rlCheckRenderBatchLimit(sides * 8);
-    rlBegin(RL_QUADS);
+    VBegin(RL_QUADS);
     for (int i = 0; i < sides; i++) {
         float a0 = 2.0f * PI * (float)i / (float)sides, a1 = 2.0f * PI * (float)(i + 1) / (float)sides, am = (a0 + a1) / 2;
         float c0 = cosf(a0), s0 = sinf(a0), c1 = cosf(a1), s1 = sinf(a1);
-        float ny = slope / sqrtf(1.0f + slope * slope);
+        float n0x = c0 * rz, n0z = s0 * rx, n1x = c1 * rz, n1z = s1 * rx;
+        if (normals) {
+            float l0 = sqrtf(n0x * n0x + n0z * n0z), l1 = sqrtf(n1x * n1x + n1z * n1z);
+            n0x *= nh / l0; n0z *= nh / l0; n1x *= nh / l1; n1z *= nh / l1;
+        }
         SetColor(Lit(col, NormalShade(cosf(am), ny, sinf(am))));
-        rlVertex3f(base.x + rx * c0, y0, base.z + rz * s0);
-        rlVertex3f(base.x + rx * c0 * topScale, y1, base.z + rz * s0 * topScale);
-        rlVertex3f(base.x + rx * c1 * topScale, y1, base.z + rz * s1 * topScale);
-        rlVertex3f(base.x + rx * c1, y0, base.z + rz * s1);
+        if (normals) VNormal(n0x, ny, n0z);
+        VVertex(base.x + rx * c0, y0, base.z + rz * s0);
+        VVertex(base.x + rx * c0 * topScale, y1, base.z + rz * s0 * topScale);
+        if (normals) VNormal(n1x, ny, n1z);
+        VVertex(base.x + rx * c1 * topScale, y1, base.z + rz * s1 * topScale);
+        VVertex(base.x + rx * c1, y0, base.z + rz * s1);
         if (topScale > 0.01f) {
             SetColor(Lit(col, 1.0f));
-            rlVertex3f(base.x, y1, base.z);
-            rlVertex3f(base.x + rx * c1 * topScale, y1, base.z + rz * s1 * topScale);
-            rlVertex3f(base.x + rx * c0 * topScale, y1, base.z + rz * s0 * topScale);
-            rlVertex3f(base.x + rx * c0 * topScale, y1, base.z + rz * s0 * topScale);
+            if (normals) VNormal(0, 1, 0);
+            VVertex(base.x, y1, base.z);
+            VVertex(base.x + rx * c1 * topScale, y1, base.z + rz * s1 * topScale);
+            VVertex(base.x + rx * c0 * topScale, y1, base.z + rz * s0 * topScale);
+            VVertex(base.x + rx * c0 * topScale, y1, base.z + rz * s0 * topScale);
         }
     }
-    rlEnd();
+    VEnd();
 }
 
 enum { BLOB_SLICES = 16, BLOB_STACKS = 10, BLOB_FINE = 0, BLOB_MID = 1, BLOB_FAR = 2 };
@@ -159,23 +182,32 @@ static void BlobTables(void)
     blobReady = true;
 }
 
+static void BlobPoint(Vector3 c, Vector3 r, float cp, float sp, float ct, float st, bool normals)
+{
+    float x = cp * ct, z = cp * st;
+    if (normals) VNormal(x / r.x, sp / r.y, z / r.z);
+    VVertex(c.x + r.x * x, c.y + r.y * sp, c.z + r.z * z);
+}
+
+// Smooth normals in the shaders' light: a blob looks round however few its facets.
 static void BlobQuads(const BlobMesh *b, Vector3 c, Vector3 r, Color col)
 {
+    bool normals = GfxOn();
     if (!blobReady) BlobTables();
     rlCheckRenderBatchLimit(b->slices * b->stacks * 4);
-    rlBegin(RL_QUADS);
+    VBegin(RL_QUADS);
     for (int j = 0; j < b->stacks; j++) {
         float cp0 = b->cp[j], sp0 = b->sp[j], cp1 = b->cp[j + 1], sp1 = b->sp[j + 1];
         for (int i = 0; i < b->slices; i++) {
             float ct0 = b->ct[i], st0 = b->st[i], ct1 = b->ct[i + 1], st1 = b->st[i + 1];
             SetColor(Lit(col, b->shade[j][i]));
-            rlVertex3f(c.x + r.x * cp0 * ct0, c.y + r.y * sp0, c.z + r.z * cp0 * st0);
-            rlVertex3f(c.x + r.x * cp1 * ct0, c.y + r.y * sp1, c.z + r.z * cp1 * st0);
-            rlVertex3f(c.x + r.x * cp1 * ct1, c.y + r.y * sp1, c.z + r.z * cp1 * st1);
-            rlVertex3f(c.x + r.x * cp0 * ct1, c.y + r.y * sp0, c.z + r.z * cp0 * st1);
+            BlobPoint(c, r, cp0, sp0, ct0, st0, normals);
+            BlobPoint(c, r, cp1, sp1, ct0, st0, normals);
+            BlobPoint(c, r, cp1, sp1, ct1, st1, normals);
+            BlobPoint(c, r, cp0, sp0, ct1, st1, normals);
         }
     }
-    rlEnd();
+    VEnd();
 }
 
 void DrawShadedBlob(Vector3 c, Vector3 r, Color col)
@@ -271,19 +303,20 @@ void DrawBeveledBox(Vector3 c, Vector3 s, Color col, float b)
     bool grounded = c.y - e.y <= 0.05f;
 
     rlCheckRenderBatchLimit(26 * 4);
-    rlBegin(RL_QUADS);
+    VBegin(RL_QUADS);
     for (int i = 0; i < 26; i++) {
         const BevelPoly *p = &bevels[i];
         if (grounded && p->n[1] < 0) continue;
         SetColor(Lit(col, p->shade));
+        VNormal((float)p->n[0], (float)p->n[1], (float)p->n[2]);
         for (int k = 0; k < 4; k++) {
             int at = k < p->count ? k : p->count - 1;
             Vector3 v = BevelPoint(p->corner[at], p->axis[at], e, b);
             if (grounded && !(p->corner[at] & 2)) v.y = -e.y;
-            rlVertex3f(c.x + v.x, c.y + v.y, c.z + v.z);
+            VVertex(c.x + v.x, c.y + v.y, c.z + v.z);
         }
     }
-    rlEnd();
+    VEnd();
 }
 
 static void Limb(float x, float y0, float z, float r, float h, Color c, int sides)

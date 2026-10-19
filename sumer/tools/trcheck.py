@@ -41,9 +41,11 @@ keys = set()
 for m in re.finditer(r'\{\s*"((?:[^"\\\n]|\\.)*)"\s*,\s*"((?:[^"\\\n]|\\.)*)"\s*\}', tr):
     keys.add(m.group(1))
 
+# shaders.c is GLSL, never shown to a player.
+SKIP = ('turkish.c', 'shaders.c')
 missing = {}
 for name in sorted(os.listdir(src)):
-    if not name.endswith('.c') or name == 'turkish.c':
+    if not name.endswith('.c') or name in SKIP:
         continue
     for s in literals(open(os.path.join(src, name), encoding='utf-8').read()):
         if s in keys or not re.search(r'[A-Za-z]{2}', s):
@@ -56,7 +58,7 @@ print(f'-- {len(missing)} literals without a Turkish entry', file=sys.stderr)
 
 used = set()
 for name in os.listdir(src):
-    if name.endswith('.c') and name != 'turkish.c':
+    if name.endswith('.c') and name not in SKIP:
         used.update(literals(open(os.path.join(src, name), encoding='utf-8').read()))
 for k in sorted(keys - used):
     print(f'unused: "{k}"', file=sys.stderr)

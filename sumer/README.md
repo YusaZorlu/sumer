@@ -1,6 +1,8 @@
 # Sumer
 
-Open-world prototype set in Ur, c. 2100 BC. C99 + raylib, primitive shapes only.
+Open-world prototype set in Ur, c. 2100 BC. C99 + raylib, built from primitive shapes and lit by its own
+shaders: sun and moon shadows, torchlight at night, brick, soil and water worked into the surfaces, sky,
+fog and glow (see Graphics).
 
 ## Run
 
@@ -17,6 +19,8 @@ The first build installs the needed packages with apt (asks for your sudo passwo
 Old GPU or a VM without OpenGL 3.3 (the game prints a hint if it can't open a window):
 
     GL21=1 sh run.sh
+
+(with OpenGL 2.1 the game draws the classic way, without the shaders).
 
 **macOS (Apple Silicon)**
 
@@ -93,6 +97,31 @@ Playing together:
   animals and arrows too. Other players swing, raise and sweep their weapons as you do yours, and
   lean into the blow.
 
+## Graphics
+
+Four settings, switched with **G**, the "Graphics" button in the Esc menu or on the browser's title screen,
+and kept in `sumer.gfx` next to the saves:
+
+- **Auto** (the default): High on a computer, Low on a phone or tablet, and Low for the rest of the session
+  on a computer where High cannot keep up (most frames slower than 24 a second for six seconds; it says so).
+- **High**: everything is lit on the graphics card. The sun casts soft shadows (the moon at night); torches,
+  fires and the guards' hand torches light what is round them, with a flicker; walls show their mud bricks
+  and patches of plaster, the ground its grain, wood its grain, and water ripples and mirrors the sky and
+  the sun. Sky with drifting clouds, stars and the moon at night, haze in the distance, rain that darkens the
+  ground and makes it shine, a glow round fire and bright light, smoothed edges. Round things (people,
+  trees, columns) are shaded round.
+- **Low**: the same look made cheaper for phones: a smaller picture scaled up, sharper-edged shadows over a
+  smaller area, no clouds or glow, fewer torches at once, buildings far away left out sooner.
+- **Classic**: the old way, colors lit on the processor. It also runs by itself where the shaders cannot
+  (OpenGL 2.1, or a browser whose graphics refuse them).
+
+The browser version needs WebGL 2 (any current Chrome, Edge, Firefox; Safari 15 or newer). Adding `?gfx=high`,
+`?gfx=low` or `?gfx=classic` to the page's address overrides the setting for that visit.
+
+**On a phone**, held sideways: the title screen, the HUD and every panel shrink to fit a short screen and are
+drawn with the screen's own pixels, so the letters stay sharp; taps work on every button. There are no
+touch controls yet: play with a keyboard (a USB-C or Bluetooth one works; WASD to move, arrow keys to turn).
+
 ## Controls
 
 | Key | Action |
@@ -115,6 +144,7 @@ Playing together:
 | F11 or Alt+Enter | Borderless fullscreen on/off |
 | M | Map zoom (whole world, x2.5, x6 around you); the map shows the main roads, both villages and the camps |
 | N | Music volume: off, low, medium, high (also a button in the Esc menu and on the title screen) |
+| G | Graphics: auto, high, low, classic (also a button in the Esc menu and on the title screen) |
 | H | Controls and tips window |
 | Esc | Pause / close a panel (pause menu: save slots, language, save, new game, save & quit) |
 
@@ -125,7 +155,7 @@ Resume or Esc takes the mouse back.
 ## Language
 
 English and Turkish. In the pause menu (Esc), the "Language / Dil" button (or L) switches between them;
-the choice is kept in `sumer.lang` next to the saves (the music volume is in `sumer.music`). Türkçe için Esc menüsündeki "Language / Dil"
+the choice is kept in `sumer.lang` next to the saves (the music volume is in `sumer.music`, the graphics setting in `sumer.gfx`). Türkçe için Esc menüsündeki "Language / Dil"
 düğmesine (ya da L'ye) bas.
 
 ## Music
@@ -442,12 +472,12 @@ Animals you kill stay gone until the next spring, when their herds are full agai
 |---|---|
 | `src/game.h` | Shared types, constants, palette, global state |
 | `src/game.c` | Init, update loop, clock, sleep, hunger, health, gathering, interaction targets, slot switching |
-| `src/terrain.c` | Hills height field (east, the downs, the west bank), ground mesh and colours, view culling, ray vs terrain |
+| `src/terrain.c` | Hills height field (east, the downs, the west bank), ground mesh, colours and normals, view culling, ray vs terrain |
 | `src/city.c` | City walls, towers, wall walk and ladders, gates, harbor, river and ford, canals, bridges, seasonal fields, house generator |
 | `src/temple.c` | Temenos, ziggurat stages, rooms, stairways, gatehouse offering, shrine |
 | `src/combat.c` | Health, armor and damage for people, witnesses and alarms, chasing, guards against raiders, looting, dawn reset |
 | `src/raiders.c` | Two raider camps and two barbarian war camps, their idle routine, the restocked chests |
-| `src/world.c` | Box store, collision queries, water and ponds, palms, reeds, forests, west-bank greenery, herbs, resources, sky and season light, culled drawing |
+| `src/world.c` | Box store, collision queries, water and ponds, palms, reeds, forests, west-bank greenery, herbs, resources, sky and season light, culled drawing (boxes at a level of detail, one resource at a time) |
 | `src/roads.c` | Main roads: their routes, terrain-following strips, walking heights for travellers, distance queries, the map overlay |
 | `src/villages.c` | The hunters', herders' and fishers' villages, their traders' offers and village guards, the sheepfold flock, travellers |
 | `src/jobs.c` | Craft quarter, docks, ferry, mine, woodcutters' camp, farmhands, daylight workers, smith |
@@ -457,12 +487,22 @@ Animals you kill stay gone until the next spring, when their herds are full agai
 | `src/wildlife.c` | Animal herds and stats, awareness AI, wolf packs, boar charges, snakes, reactions to arrows, spring return, arrows, melee and war-mace strikes |
 | `src/items.c` | Item table and stack sizes, baskets, storage, barter checks, armor table |
 | `src/player.c` | Movement, jumping, stairs, crouch, ladders, equipment, bow, camera |
-| `src/ui.c` | HUD, minimap, inventory, storage, trade, coop, help and pause panels |
-| `src/render.c` | Shaded box, cylinder and blob primitives, humanoid model, fog, colour helpers |
+| `src/ui.c` | HUD, minimap, inventory, storage, trade, coop, help and pause panels; the UI's scale on small and sharp screens |
+| `src/render.c` | Shaded box, cylinder and blob primitives (with normals for the shaders), humanoid model, fog, colour helpers |
+| `src/gfx.c` | The shader renderer: the vertex stream every primitive draws through, the still world cut into chunks on the GPU at three levels of detail, what moves caught each frame, the sun's shadow, sky and light by the hour, glow and smoothing, the graphics setting |
+| `src/shaders.c` | The GLSL: world materials and light, sky, shadow depth, glow, smoothing and the final picture |
 | `src/people.c` | Solid bodies for everyone: player pushout, NPC blocking checks |
-| `src/lights.c` | Torches, precomputed static light, moving hand torches |
+| `src/lights.c` | Torches, precomputed static light (classic drawing), moving hand torches |
 | `src/effects.c` | Particles, impact rings, arrow trails |
 | `src/save.c` | Compact binary save/load, save slots |
+| `src/main.c` | The program: window, the frame loop on the desktop and in the browser |
+| `src/actions.c` | Prompts and the actions behind E and F, taking from the shared world (a guest asks the host first) |
+| `src/players.c` | Every player as the world sees them: positions, damage to a player on another machine, other players drawn |
+| `src/mp.c` | Multiplayer messages: the host's snapshots, guests' requests and replies, messages in each player's language |
+| `src/net.c` | The WebSocket to `server.py` |
+| `src/lobby.c` | The browser's title screen: name, play alone, host, join, the hosting rules, music, graphics, language |
+| `src/web.c` | What differs in a browser: saves in IndexedDB, the captured mouse, taps and clicks, the canvas's pixels, phone detection |
+| `src/shell.html` | The page around the browser game |
 | `src/music.c` | The synthesizer, the three tunes, picking the mood, the volume, feeding the audio stream |
 | `src/lang.c` | Language setting, text lookup, the pixel font extended with the Turkish letters |
 | `src/turkish.c` | Turkish text for every English string in the game |
@@ -474,3 +514,6 @@ in `game.h`; growth, water, hen and rain numbers at the top of `farm.c` and in `
 `HERDS`, stats in `DEFS` and boar, snake and war-mace numbers at the top of `wildlife.c`; stack sizes
 and food values in `ITEMS` in `items.c`; hills in `terrain.c`; roads in `roads.c`; health, armor,
 damage and sight for people (raiders and barbarians included) in `ROLES` in `combat.c`. The tunes, their tempos, scales and instrument levels are the track tables near the top of `music.c`.
+The light by the hour (sun, moon, sky colors, how bright the night is, fog) is `Sky()` in `gfx.c`; torch
+color and reach, shadow area and picture size per setting are in `gfx.c` too; the materials (brick size,
+how rough things are, ripples) are in `src/shaders.c`.

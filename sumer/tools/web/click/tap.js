@@ -6,7 +6,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
   const page = await (await browser.newContext({ viewport: { width: W, height: H } })).newPage();
   page.on('pageerror', e => console.log('PAGE ERROR', e.message));
-  await page.goto('http://localhost:8124/');
+  await page.goto('http://localhost:8124/?gfx=classic');
   await sleep(6000);
   const px = W / 2 - 360, py = H > 546 ? (H - 530) / 2 : 8;
   await page.mouse.click(px + 720 - 114, py + 25);           // language: instant tap

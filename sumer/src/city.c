@@ -204,6 +204,23 @@ void UpdateFields(void)
     }
 }
 
+// The rows of crops grow all day, so the shaders' still meshes leave them out and they are drawn
+// afresh every frame.
+bool FieldBox(int i)
+{
+    for (int f = 0; f < fieldCount; f++)
+        if (i >= fieldFirst[f] && i < fieldLast[f]) return true;
+    return false;
+}
+
+void DrawFields(void)
+{
+    for (int f = 0; f < fieldCount; f++) {
+        if (fieldLast[f] <= fieldFirst[f] || XZDist(G.boxes[fieldFirst[f]].pos, G.cam.position) > 260.0f) continue;
+        for (int i = fieldFirst[f]; i < fieldLast[f]; i++) DrawShadedBox(G.boxes[i].pos, G.boxes[i].size, G.boxes[i].color);
+    }
+}
+
 void BuildCity(void)
 {
     fieldCount = 0;

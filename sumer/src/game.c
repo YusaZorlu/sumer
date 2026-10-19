@@ -557,6 +557,10 @@ void GameUpdate(void)
             MusicSetLevel((MusicLevel() + 1) % 4);
             Say("%s", L(says[MusicLevel()]));
         }
+        if (KeyPressed(KEY_G)) {
+            GfxSetChoice(GfxChoice() + 1);
+            Say("Graphics: %s.", GfxLabel());
+        }
         if (KeyPressed(KEY_Z)) {
             G.arrowCam = !G.arrowCam;
             Say(G.arrowCam ? "Arrow camera on: the view follows each shot (Z to turn off)." : "Arrow camera off.");
@@ -579,6 +583,10 @@ void GameUpdate(void)
 
 void GameDraw(void)
 {
+    if (GfxDrawWorld()) {
+        DrawUI();
+        return;
+    }
     ClearBackground(G.sky);
     BeginMode3D(G.cam);
     DrawSky();
