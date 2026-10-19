@@ -160,28 +160,62 @@ void WakeAfterNight(float hours, bool rained, bool dawn)
         rained ? L(" It rained meanwhile; the farm and the coop are full of water.") : "", saved ? L(" Game saved.") : "");
 }
 
-static bool RaidersHostile(void)
+// The baskets as the day began are the player's own; whatever they gained since (gathered, bought,
+// found) is at risk until it is put away in their storage at home. Taking something out of storage
+// makes it theirs again (see the storage panel). Eating or spending uses up today's gains first.
+void TrackGoods(void)
 {
-    for (int i = 0; i < MAX_RAIDERS; i++)
-        if (G.raiders[i].vit.hostile > 0 && !G.raiders[i].vit.dead) return true;
-    return false;
+    for (int i = 1; i < IT_COUNT; i++) {
+        int have = BagCount(i);
+        G.safe[i] = G.safeDay != G.day ? have : G.safe[i] < have ? G.safe[i] : have;
+    }
+    G.safeDay = G.day;
+}
+
+// What brought the player down, in a sentence.
+static const char *BroughtDown(int by)
+{
+    switch (by) {
+    case BY_GUARD: return L("The guards beat you down and dumped you at your door.");
+    case BY_CARAVAN: return L("The caravan guards beat you down. A shepherd carried you home.");
+    case BY_TOWNSFOLK: return L("The townsfolk beat you down and left you at your door.");
+    case BY_VILLAGERS: return L("The villagers beat you down. A shepherd carried you home.");
+    case BY_RAIDER: return L("Raiders left you for dead. A shepherd carried you home.");
+    case BY_BARBARIAN: return L("Barbarians left you for dead. A shepherd carried you home.");
+    case BY_WOLF: return L("Wolves brought you down. A shepherd carried you home.");
+    case BY_BOAR: return L("A boar brought you down. A shepherd carried you home.");
+    case BY_SNAKE: return L("A snake's venom brought you down. A shepherd carried you home.");
+    default:
+        if (by >= BY_PLAYER && by < BY_PLAYER + MAX_PLAYERS && G.peers[by - BY_PLAYER].name[0])
+            return TextFormat(L("%s beat you down. You came to at home."), G.peers[by - BY_PLAYER].name);
+        return L("You were brought down. A shepherd carried you home.");
+    }
 }
 
 // Alone, the player wakes at home the next morning. In company the world's clock is everyone's, so
-// they come to at home at once, and whatever was after them gives up.
+// they come to at home at once, and whatever was after them gives up. Carcasses and everything
+// gained today that was not put away in storage are lost.
 static void Collapse(void)
 {
     Player *p = &G.player;
     float hours = (G.hour < 7.0f) ? 7.0f - G.hour : 31.0f - G.hour;
-    const char *how = G.peers[G.self].wanted > 0 ? "The guards beat you down and dumped you at your door. Your carcasses were taken."
-                    : RaidersHostile() ? "Raiders left you for dead. A shepherd carried you home. Your carcasses are gone."
-                    : "You were brought down. A shepherd carried you home. Your carcasses are gone.";
+    char how[200], lost[200] = "";
 
-    for (int i = 0; i < G.bagSlots; i++)
-        if (G.bag[i].item >= IT_GAZELLE && G.bag[i].item <= IT_GOOSE) G.bag[i] = (Slot){ IT_NONE, 0 };
+    snprintf(how, sizeof(how), "%s", BroughtDown(G.hurtBy));
+    TrackGoods();
+    for (int i = 1; i < IT_COUNT; i++) {
+        bool carcass = i >= IT_GAZELLE && i <= IT_GOOSE;
+        int gone = BagCount(i) - (carcass ? 0 : G.safe[i]);
+        if (gone <= 0) continue;
+        BagRemove(i, gone);
+        if (strlen(lost) < sizeof(lost) - 40)
+            snprintf(lost + strlen(lost), sizeof(lost) - strlen(lost), "%s%d %s", lost[0] ? ", " : "", gone, ItemName(i));
+    }
     G.climb = 0;
     G.waitBed = false;
-    Act(RQ_COLLAPSE, NULL, 0);
+    int by = G.hurtBy;
+    G.hurtBy = BY_NONE;
+    Act(RQ_COLLAPSE, &by, 1);
     if (!Online()) {
         CalmBeasts(-1);
         for (int i = 0; i < MAX_RAIDERS; i++) G.raiders[i].vit.hostile = 0;
@@ -199,7 +233,7 @@ static void Collapse(void)
         }
     }
 
-    G.health = 0.3f * HEALTH_MAX;
+    G.health = (G.combat ? 1.0f : 0.3f) * HEALTH_MAX;
     p->pos = Vector3Add(G.stations[STN_BED], (Vector3){ -1.6f, 0, 0.5f });
     p->pos.y = GroundHeight(p->pos.x, p->pos.z, p->pos.y + 0.5f);
     p->vy = 0;
@@ -209,18 +243,25 @@ static void Collapse(void)
     G.sleeping = true;
     G.slept = true;
     G.sleepT = 1.1f;
-    Say("%s", L(how));
+    if (lost[0]) Say("%s %s %s.", how, L("You lost what you had not stored:"), lost);
+    else Say("%s", how);
+    G.msgT = 6.0f;
 }
 
-void HurtPlayer(float dmg)
+void HurtPlayer(float dmg, int by)
 {
     if (G.sleeping) return;
+    // This happens to this machine's player, whoever struck: what it says is for them.
+    int actor = G.actor;
+    G.actor = G.self;
     G.waitBed = false;
-    G.health -= dmg * (1.0f - ArmorReduction(G.armor));
+    G.health -= dmg * (1.0f - ArmorReduction(UseArmor()));
     G.hurtT = 0.45f;
     G.safeT = 0;
+    G.hurtBy = by;
     if (G.panel == PANEL_BAG || G.panel == PANEL_STORAGE || G.panel == PANEL_TRADE) SetPanel(PANEL_NONE);
     if (G.health <= 0) Collapse();
+    G.actor = actor;
 }
 
 static void UpdateDawn(void)
@@ -422,6 +463,7 @@ void GameUpdate(void)
     bool play = G.panel == PANEL_NONE && !G.sleeping && !G.waitBed;
     CollectBodies();
     UpdatePlayer(dt, play && !menu);
+    TrackGoods();
     SyncSelf();
     FollowCamera(dt);
     UpdateWorld(dt);
@@ -450,8 +492,8 @@ void GameUpdate(void)
         if (KeyPressed(KEY_R)) RefillQuiver();
         if (KeyPressed(KEY_ONE)) SetEquip(EQ_BOW);
         if (KeyPressed(KEY_TWO)) SetEquip(EQ_MELEE);
-        if (KeyPressed(KEY_THREE)) SetEquip(EQ_NONE);
-        if (KeyPressed(KEY_FOUR)) SetEquip(EQ_MACE);
+        if (KeyPressed(KEY_THREE)) SetEquip(EQ_MACE);
+        if (KeyPressed(KEY_FOUR)) SetEquip(EQ_NONE);
         if (KeyPressed(KEY_M)) G.mapZoom = (G.mapZoom + 1) % 3;
         if (KeyPressed(KEY_Z)) {
             G.arrowCam = !G.arrowCam;

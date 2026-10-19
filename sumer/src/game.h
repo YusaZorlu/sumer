@@ -41,10 +41,10 @@
 #define MAX_COWS        3
 #define MAX_SHEEP       3
 #define MAX_FLOCK       8
-#define MAX_RAIDERS     16
+#define MAX_RAIDERS     18
 #define MAX_LADDERS     8
 #define MAX_FIGHTERS    128
-#define MAX_VILLAGERS   48
+#define MAX_VILLAGERS   64
 #define MAX_WORKERS     16
 #define MAX_CARAVANS    2
 #define CARAVAN_GUARDS  2
@@ -68,6 +68,7 @@
 #define HERB_BURST      10.0f
 #define HERB_RATE       2.5f
 #define HERB_SECONDS    20.0f
+#define BOW_DRAW_TIME   1.1f
 
 #define COL_MUD         CLITERAL(Color){ 172, 128,  86, 255 }
 #define COL_MUD_LIGHT   CLITERAL(Color){ 186, 142,  98, 255 }
@@ -117,7 +118,7 @@ typedef enum {
 typedef struct { const char *name; int stack; int food; Color color; } ItemDef;
 typedef struct { int item, count; } Slot;
 
-enum { TOOL_AXE = 1, TOOL_PICK = 2, TOOL_ARROWHEADS = 4 };
+enum { TOOL_AXE = 1, TOOL_PICK = 2, TOOL_ARROWHEADS = 4, TOOL_NET = 8 };
 
 typedef enum { OUT_ITEM, OUT_HEN, OUT_BASKET, OUT_BOW, OUT_QUIVER, OUT_TOOL, OUT_WEAPON, OUT_ARMOR, OUT_MACE } OutKind;
 enum { EQ_NONE, EQ_BOW, EQ_MELEE, EQ_MACE };
@@ -146,13 +147,14 @@ typedef struct {
     bool active;
 } Animal;
 
-// 'owner' is the player who shot it; the damage was fixed when it left the bow.
+// 'owner' is the player who shot it, or -1 for someone else's archer (who strikes only players, as
+// 'cause'); the damage was fixed when it left the bow.
 typedef struct {
     Vector3 pos, vel;
     float life, trailT, fade;
     bool flying, active, spent;
     Vector3 trail[TRAIL_POINTS];
-    int trailCount, owner, damage;
+    int trailCount, owner, damage, cause;
 } Arrow;
 
 typedef struct { Vector3 pos, vel; float life, maxLife, size; Color color; bool ring; } Particle;
@@ -173,11 +175,17 @@ typedef struct {
     int foe, target;
     bool dead, override, looted, used;
     unsigned char mark;
+    // A jump over a canal under way (the host's alone): 'jumpDur' runs while it lasts.
+    float jumpT, jumpDur;
+    Vector3 jumpFrom, jumpTo;
+    // An archer drawing its bow ('windup' counts down to the shot).
+    bool drawing;
 } Vitals;
 
 enum { MARK_NONE, MARK_WARN, MARK_PARRIED, MARK_HIT };
 
-typedef enum { NPC_CIVILIAN, NPC_GUARD, NPC_CLERIC, NPC_VILLAGER, NPC_TRAVELLER } NpcKind;
+// NPC_WARDEN: a village's guard, with a bow.
+typedef enum { NPC_CIVILIAN, NPC_GUARD, NPC_CLERIC, NPC_VILLAGER, NPC_TRAVELLER, NPC_WARDEN } NpcKind;
 // Walks the straight lane a-b, or the whole of road 'road' when it is 0 or more. A townsperson who
 // walks the city's streets goes from crossing 'from' to crossing 'to' (a and b are their places),
 // may stand a while ('wait') and turns back when someone has blocked the way too long ('stuck').
@@ -193,6 +201,7 @@ typedef struct {
     float netT, netSide;
     int from, to;
     float wait, stuck;
+    int bow;   // 0: no bow; 1-3: the bow they shoot with (hunting, composite, war)
 } Villager;
 typedef struct { Vector3 home, pos, netPos; float face, timer, speed, respawnDay; bool moving; int camp; Vitals vit; } Raider;
 typedef struct { Vector3 wall, base, n; float top; } Ladder;
@@ -218,7 +227,7 @@ typedef struct {
     Vitals vit[1 + CARAVAN_GUARDS];
 } Caravan;
 
-typedef enum { TR_BOWYER, TR_FARMER, TR_WEAVER, TR_HERDER, TR_SMITH, TR_HUNTER, TR_SHEPHERD, TR_DILMUN, TR_ELAM, TR_COUNT } TraderId;
+typedef enum { TR_BOWYER, TR_FARMER, TR_WEAVER, TR_HERDER, TR_SMITH, TR_HUNTER, TR_SHEPHERD, TR_FISHER, TR_DILMUN, TR_ELAM, TR_COUNT } TraderId;
 
 typedef struct {
     const char *name, *greeting;
@@ -268,6 +277,7 @@ typedef struct {
     Vector3 pos, shown;
     float facing, shownFacing, stride, draw, health, swingT, wanted, aggro, heard;
     int flags, equip, weapon, bow, armor, net;
+    int kills, deaths;   // players brought down by this one, and times brought down by a player
 } Peer;
 
 // Everything a player owns and where they stand: kept by the host for each name, saved with its game.
@@ -298,6 +308,8 @@ enum {
 };
 #define REQ_ARGS 12
 enum { WARN_WOLF, WARN_SNAKE, WARN_KINDS };
+// What hurt a player last, so whoever is brought down hears by whom: BY_PLAYER + slot for a player.
+enum { BY_NONE, BY_GUARD, BY_CARAVAN, BY_TOWNSFOLK, BY_VILLAGERS, BY_RAIDER, BY_BARBARIAN, BY_WOLF, BY_BOAR, BY_SNAKE, BY_PLAYER };
 
 typedef struct {
     Box boxes[MAX_BOXES];
@@ -367,6 +379,9 @@ typedef struct {
     bool arrowCam;
     float food, hungerNag;
     float health, hurtT, safeT;
+    // How much of each thing in the baskets the player had when the day began (or took out of
+    // storage since): the rest was gathered today and is lost if they are brought down.
+    int safe[IT_COUNT], safeDay, hurtBy;
 
     int day;
     float hour, daylight;
@@ -391,6 +406,9 @@ typedef struct {
     PlayerRecord records[MAX_RECORDS];
     int recordCount;
     bool waitBed;
+    // The host's rules for a shared game: players can hurt each other ('pvp'), and in combat mode
+    // everyone fights with the best of everything and the guards leave player fights alone.
+    bool pvp, combat;
 } Game;
 
 extern Game G;
@@ -398,6 +416,12 @@ extern const ItemDef ITEMS[IT_COUNT];
 extern const char *const BOW_NAMES[3];
 const char *ArmorName(int armor);
 float ArmorReduction(int armor);
+// The gear a player fights with: their own, or the best of everything in combat mode (items.c).
+int UseBow(void);
+int UseWeapon(void);
+int UseArmor(void);
+bool UseMace(void);
+bool UseArrowheads(void);
 
 float RandF(float lo, float hi);
 float Hash2(int a, int b);
@@ -476,13 +500,19 @@ void DrawRoadMap(float mx, float mz, float scale);
 #define HUNTERS_Z       20.0f
 #define HERDERS_X       (-62.0f)
 #define HERDERS_Z       425.0f
-enum { VIL_HUNTERS, VIL_HERDERS, VILLAGES };
+#define FISHERS_X       (-188.0f)
+#define FISHERS_Z       (-58.0f)
+enum { VIL_HUNTERS, VIL_HERDERS, VIL_FISHERS, VILLAGES };
 void BuildVillages(void);
 Vector3 VillageCenter(int v);
 const char *VillageName(int v);
+int VillageAt(Vector3 p);
 Rectangle FoldArea(void);
 
 bool InsideWalls(float x, float z, float margin);
+bool InCityLands(float x, float z);
+int BridgeCount(void);
+void BridgeEnds(int i, Vector3 *a, Vector3 *b);
 void BuildCity(void);
 void BuildCityHouses(void);
 void BuildTemple(void);
@@ -563,6 +593,7 @@ bool AnyWolfHunting(void);
 bool AnyBeastAttacking(void);
 void CalmBeasts(int slot);
 void ShootFor(int slot, Vector3 from, Vector3 vel, int damage);
+void LooseFor(Vector3 from, Vector3 to, float speed, int damage, int cause);
 void StrikeFor(Vector3 chest, Vector3 fwd, int equip, int weapon);
 void DrawArrow(const Arrow *ar);
 void DrawArrowTrails(const Arrow *arrows);
@@ -602,10 +633,15 @@ int FighterCount(void);
 bool FighterInfo(int i, Vector3 *pos, float *hp, float *maxHp, const char **name, bool *hostile, bool *dead);
 int FighterMark(int i);
 bool BodyLootable(int i);
+void HitPlayer(int s, float dmg, Vector3 from, bool melee);
+int PlayerOnSegment(Vector3 a, Vector3 b, int skip);
+int PlayersInArc(Vector3 chest, Vector3 fwd, float range, float minDot, int skip, int *out, int max);
+void ForgetFights(int slot);
 void RespawnPeople(void);
 void BuildRaiders(void);
 void UpdateRaiders(float dt);
 void DrawRaiders(void);
+bool RaiderBowman(int i);
 void StashPrompt(int camp, char *buf, int size, bool *ok);
 void TakeStash(int camp);
 bool ClaimStash(int camp, const int *want, int *res, Vector3 by);
@@ -702,8 +738,9 @@ void GameInit(void);
 void GameUpdate(void);
 void GameDraw(void);
 void StartSleep(void);
-void HurtPlayer(float dmg);
+void HurtPlayer(float dmg, int by);
 void WakeAfterNight(float hours, bool rained, bool dawn);
+void TrackGoods(void);
 void PassHours(float h);
 
 // Browser storage, pointer capture and the page's address (web.c); plain files and no-ops natively.
@@ -739,7 +776,7 @@ float NearestAnyone(Vector3 p);
 float PlayerStance(int s);
 void UpdatePlayerSafety(float dt);
 bool Warn(int s, int kind, float quiet);
-void HurtSlot(int s, float dmg);
+void HurtSlot(int s, float dmg, int by);
 void HitMark(void);
 void ShowImpact(Vector3 at);
 void SayTo(int s, const char *fmt, ...) PRINTF_LIKE(2, 3);
@@ -760,7 +797,7 @@ const Arrow *NetArrows(void);
 void DrawNetArrows(void);
 void LocalSayV(const char *fmt, va_list ap);
 void NetSayV(int slot, const char *fmt, va_list ap);
-void NetHurt(int slot, float dmg);
+void NetHurt(int slot, float dmg, int by);
 void NetHitMark(int slot);
 void NetImpact(int slot, Vector3 at);
 void NetParried(int slot);
@@ -778,6 +815,9 @@ const char *NetFailure(void);
 const char *NetRoom(void);
 void NetLeave(void);
 void NetFrame(float dt);
+void NetRules(bool pvp, bool combat);
+const char *RulesText(void);
+const char *KillDeath(int s);
 
 // Save files and the records the host keeps for each player (save.c).
 void W8(Writer *w, unsigned v);

@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define SAVE_MAGIC    0x524D5553u
-#define SAVE_VERSION  4
+#define SAVE_VERSION  5
 #define MASK_BYTES    ((MAX_ANIMALS + 7) / 8)
 #define SAVE_MAX      8192
 #define OLD_PLOTS     9
@@ -305,6 +305,7 @@ bool LoadGame(void)
     G.weapon = s.weapon;
     memcpy(G.bag, s.bag, sizeof(G.bag));
     memcpy(G.store, s.store, sizeof(G.store));
+    G.safeDay = 0;
     G.coopEggs = s.eggs;
     G.coopFeed = Clamp(s.feed, 0.0f, FEED_MAX);
     G.layClock = s.lay;
@@ -452,6 +453,7 @@ void CaptureRecord(PlayerRecord *r)
 void ApplyRecord(const PlayerRecord *r)
 {
     Player *p = &G.player;
+    G.safeDay = 0;
     p->pos = r->pos;
     p->yaw = r->yaw;
     p->pitch = Clamp(r->pitch, -0.45f, 1.35f);

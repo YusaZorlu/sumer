@@ -26,9 +26,9 @@ void SyncSelf(void)
                (pl->grounded ? PF_GROUND : 0) | (pl->aiming ? PF_AIM : 0) | (G.sleeping || G.waitBed ? PF_SLEEP : 0) |
                (G.climb ? PF_CLIMB : 0) | (G.parryT > 0 ? PF_PARRY : 0) | (G.waitBed ? PF_BED : 0);
     p->equip = G.equip;
-    p->weapon = G.weapon;
-    p->bow = G.bow;
-    p->armor = G.armor;
+    p->weapon = UseWeapon();
+    p->bow = UseBow();
+    p->armor = UseArmor();
     p->heard = 0;
 }
 
@@ -108,10 +108,10 @@ bool Warn(int s, int kind, float quiet)
     return true;
 }
 
-void HurtSlot(int s, float dmg)
+void HurtSlot(int s, float dmg, int by)
 {
-    if (s == G.self) HurtPlayer(dmg);
-    else if (G.role == NET_HOST && PlayerIn(s)) NetHurt(s, dmg);
+    if (s == G.self) HurtPlayer(dmg, by);
+    else if (G.role == NET_HOST && PlayerIn(s)) NetHurt(s, dmg, by);
 }
 
 // The acting player's blow or arrow landed.

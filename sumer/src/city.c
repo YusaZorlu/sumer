@@ -8,8 +8,36 @@ bool InsideWalls(float x, float z, float margin)
     return dx * dx + dz * dz < 1.0f;
 }
 
+// The city's lands: everything inside the ring of canals (the river closes it on the west). The
+// city's guards keep the peace here and nowhere else.
+bool InCityLands(float x, float z)
+{
+    return x > RIVER_X1 && x < 120.0f && z > -104.0f && z < 87.0f;
+}
+
+// Where each bridge's deck begins and ends (a little onto the banks), for people finding a way over.
+static Vector3 bridgeEnds[8][2];
+static int bridgeCount;
+
+int BridgeCount(void)
+{
+    return bridgeCount;
+}
+
+void BridgeEnds(int i, Vector3 *a, Vector3 *b)
+{
+    *a = bridgeEnds[i][0];
+    *b = bridgeEnds[i][1];
+}
+
 static void Bridge(float x, float z, bool alongX, float len)
 {
+    if (bridgeCount < 8) {
+        float h = len / 2 + 1.0f;
+        bridgeEnds[bridgeCount][0] = alongX ? (Vector3){ x - h, 0, z } : (Vector3){ x, 0, z - h };
+        bridgeEnds[bridgeCount][1] = alongX ? (Vector3){ x + h, 0, z } : (Vector3){ x, 0, z + h };
+        bridgeCount++;
+    }
     if (alongX) {
         AddBox(x, 0, z, len, 0.3f, 3.2f, COL_WOOD, true);
         AddBox(x, 0.3f, z - 1.5f, len - 2.0f, 0.6f, 0.12f, COL_WOOD, true);
@@ -179,6 +207,7 @@ void UpdateFields(void)
 void BuildCity(void)
 {
     fieldCount = 0;
+    bridgeCount = 0;
     BuildWaterways();
     BuildWalls();
     BuildTemple();
