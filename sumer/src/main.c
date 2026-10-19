@@ -26,9 +26,11 @@ static void Frame(void)
         }
         ready = true;
         LoadLanguage();
+        MusicInit();
         OpenLobby("");
     }
     if (InLobby()) {
+        MusicUpdate(GetFrameTime(), false);
         LobbyFrame();
         return;
     }
@@ -83,6 +85,7 @@ int main(void)
     rlSetClipPlanes(0.1, 1200.0);
 
     LoadLanguage();
+    MusicInit();
     SetSaveSlot(LastSlot());
     GameInit();
     if (LoadGame()) {
@@ -100,6 +103,7 @@ int main(void)
     }
 
     SaveGame();
+    MusicClose();
     CloseWindow();
     return 0;
 }

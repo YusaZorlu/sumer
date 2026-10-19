@@ -248,6 +248,8 @@ void LobbyFrame(void)
         Centered("Type a name to host or join a game.", cx, y, 17, dim);
     }
 
+    if (Choice((Rectangle){ panel.x + 14, panel.y + 12, 170, 26 }, TextFormat(L("Music: %s"), L(MusicLevelName())), menu))
+        MusicSetLevel((MusicLevel() + 1) % 4);
     const char *lang = Language() == LANG_TR ? "Dil / Language: Türkçe" : "Language / Dil: English";
     if (Choice((Rectangle){ panel.x + panel.width - 214, panel.y + 12, 200, 26 }, lang, menu)) {
         SetLanguage(Language() == LANG_TR ? LANG_EN : LANG_TR);

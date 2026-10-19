@@ -102,6 +102,7 @@ Playing together:
 | F5 | Save |
 | F11 or Alt+Enter | Borderless fullscreen on/off |
 | M | Map zoom (whole world, x2.5, x6 around you); the map shows the main roads, both villages and the camps |
+| N | Music volume: off, low, medium, high (also a button in the Esc menu and on the title screen) |
 | H | Controls and tips window |
 | Esc | Pause / close a panel (pause menu: save slots, language, save, new game, save & quit) |
 
@@ -112,8 +113,54 @@ Resume or Esc takes the mouse back.
 ## Language
 
 English and Turkish. In the pause menu (Esc), the "Language / Dil" button (or L) switches between them;
-the choice is kept in `sumer.lang` next to the saves. Türkçe için Esc menüsündeki "Language / Dil"
+the choice is kept in `sumer.lang` next to the saves (the music volume is in `sumer.music`). Türkçe için Esc menüsündeki "Language / Dil"
 düğmesine (ya da L'ye) bas.
+
+## Music
+
+Three tunes play, and the game makes every note itself: a small synthesizer in `src/music.c`, so there are
+no sound files, samples or recordings, and nothing to license. Press **N** (or use the button in the Esc
+menu or on the title screen) to step the volume through off, low, medium and high; the choice is kept in
+`sumer.music` next to the saves. It starts on medium.
+
+| Tune | Plays | Sounds like |
+|---|---|---|
+| **Morning in Ur** (72 beats a minute) | By day, and on the title screen | A reed pipe singing over a low drone, a lyre picking a steady pattern of notes, a soft frame drum; calm and open |
+| **Raiders at the Gate** (148) | While something is out to hurt you | Kettle drums and a rattle driving a gallop, an animal horn, a shrill pipe and a low plucked riff in a scale with a flat second; urgent and rough |
+| **Stars over the Euphrates** (50) | From dusk to dawn, and while you sleep | A slow pad of open fifths, a soft harp picking five notes with long silences, a distant flute, lots of echo; relaxed |
+
+The fight tune starts when a hostile guard, villager, raider, caravan guard, boar or wolf pack within
+50 m is after you, when you are hit, and (in a game with PvP) when another player nearby is swinging a weapon or
+aiming, or anyone is within 60 m in combat mode. It carries on for 12 seconds after the last such moment, then
+the day or night tune fades back in; being brought down ends it at once. Every player's game decides this
+for itself from what it already knows, so in a shared game each person hears their own fight, and there is
+nothing extra to send over the network.
+
+**How it is made.** The scales are built the way the Old Babylonian tuning tablets describe lyre tuning,
+from pure fifths and fourths (a whole tone is 9/8 and the small step 256/243), so the intervals are the
+old Pythagorean ones, not the piano's: morning uses a seven-note scale like Dorian, the fight one with a flat second
+and sixth, the night a five-note scale with no thirds. The instruments are a plucked string (the lyre of Ur), a reed pipe,
+a flute, an animal horn, a frame drum, a big kettle drum, a rattle, clapping and a drone, with a little room echo. Each tune is a
+handful of "parts" (an instrument and a score written in a tiny text notation); every part
+loops on its own length, so the whole tune takes about two minutes to come round again. The tunes are written
+for this game, and no one knows what Sumerian music really sounded like: no Sumerian melody survives, and the
+oldest written tune (the Hurrian hymn, about 1400 BC) is much later and read in several ways. These are imagined, in
+the spirit of what is known, not reconstructions.
+
+**Changing the music.** The tunes are the three tables of parts near the top of `src/music.c`, with the notation
+explained above them (scale degrees with `'` and `,` for octaves, `:beats` for length, `-` for a rest, `1+5` for a
+chord, letters for drums). `sh tools/music/render.sh` renders all three to WAV files and spectrograms and prints their
+loudness, so a change can be checked without playing the game; `robot.md` explains the rest.
+
+### Credits and licence
+
+The music is original to this project: no existing recording, melody or sample is used, so it carries no outside
+copyright, and it may be used, changed and shared along with the rest of the project. It was written with these in mind, as
+background reading (nothing is copied from them): the Old Babylonian tuning texts on clay tablets from Ur and Nippur
+(for example UET VII 74 and CBS 10996); the lyres from the Royal Cemetery of Ur (about 2500 BC); the Hurrian hymn to Nikkal
+(about 1400 BC); A. D. Kilmer, R. L. Crocker and R. R. Brown, *Sounds from Silence* (1976); M. L. West, "The Babylonian Musical Notation and
+the Hurrian Melodic Texts", *Music & Letters* 75 (1994); and R. Dumbrill, *The Archaeomusicology of the Ancient Near East*.
+raylib (zlib licence) draws the graphics and opens the audio device.
 
 ## Where things are
 
@@ -403,12 +450,14 @@ Animals you kill stay gone until the next spring, when their herds are full agai
 | `src/lights.c` | Torches, precomputed static light, moving hand torches |
 | `src/effects.c` | Particles, impact rings, arrow trails |
 | `src/save.c` | Compact binary save/load, save slots |
+| `src/music.c` | The synthesizer, the three tunes, picking the mood, the volume, feeding the audio stream |
 | `src/lang.c` | Language setting, text lookup, the pixel font extended with the Turkish letters |
 | `src/turkish.c` | Turkish text for every English string in the game |
+| `tools/` | Test harness and its tests, browser test suites, the music renderer, the translation checker, the prebuilt-binary script (see `robot.md`) |
 
 Balance knobs: offers and recipes at the top of `village.c`, `villages.c`, `jobs.c` and `caravan.c`;
 gather yields and food costs in `GATHER` in `game.c`; hunger rates at the top of `game.c`; herb healing
 in `game.h`; growth, water, hen and rain numbers at the top of `farm.c` and in `game.h`; animal herds in
 `HERDS`, stats in `DEFS` and boar, snake and war-mace numbers at the top of `wildlife.c`; stack sizes
 and food values in `ITEMS` in `items.c`; hills in `terrain.c`; roads in `roads.c`; health, armor,
-damage and sight for people (raiders and barbarians included) in `ROLES` in `combat.c`.
+damage and sight for people (raiders and barbarians included) in `ROLES` in `combat.c`. The tunes, their tempos, scales and instrument levels are the track tables near the top of `music.c`.

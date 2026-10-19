@@ -1,0 +1,1319 @@
+// Logic tests for the new features, driven with a fixed time step. Included by harness.c.
+static int fails, passes;
+
+static void Check(bool ok, const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    printf("%s: ", ok ? "PASS" : "FAIL");
+    vprintf(fmt, ap);
+    printf("\n");
+    va_end(ap);
+    if (ok) passes++;
+    else fails++;
+}
+
+static Animal *First(int type)
+{
+    for (int i = 0; i < G.animalCount; i++)
+        if (G.animals[i].active && (int)G.animals[i].type == type && G.animals[i].state != ST_DEAD) return &G.animals[i];
+    return NULL;
+}
+
+static void PlaceAt(float x, float z, float yaw)
+{
+    G.player.pos = (Vector3){ x, TerrainHeight(x, z), z };
+    G.player.yaw = yaw;
+    G.player.crouching = false;
+    G.player.moving = G.player.running = false;
+    G.player.grounded = true;
+    SyncSelf();
+}
+
+// The world sees the player through G.peers, synced once a frame.
+static void Wild(float dt)
+{
+    SyncSelf();
+    UpdateWildlife(dt);
+}
+
+static void Calm(Animal *a)
+{
+    a->state = ST_CALM;
+    a->speed = 0;
+    a->awareness = 0;
+    a->timer = 5;
+    a->bite = 0;
+}
+
+static void Fly(int steps)
+{
+    for (int k = 0; k < steps; k++) {
+        SyncSelf();
+        UpdateArrows(0.01f);
+        UpdateWildlife(0.01f);
+    }
+}
+
+static void TestHerds(void)
+{
+    int count[MAX_ANIMALS] = { 0 }, type[MAX_ANIMALS], west[MAX_ANIMALS], snakes = 0;
+    for (int i = 0; i < G.animalCount; i++) {
+        const Animal *a = &G.animals[i];
+        count[a->pack]++;
+        type[a->pack] = a->type;
+        west[a->pack] = a->pos.x < RIVER_X0;
+        snakes += a->type == AN_SNAKE;
+    }
+    int cityPacks = 0, westPacks = 0;
+    bool cityOk = true, westOk = true;
+    for (int p = 0; p < MAX_ANIMALS; p++) {
+        if (!count[p] || type[p] != AN_WOLF) continue;
+        if (west[p]) { westPacks++; westOk = westOk && count[p] >= 5; }
+        else { cityPacks++; cityOk = cityOk && count[p] == 4; }
+    }
+    Check(cityPacks == 5 && cityOk, "city-side wolf packs: %d packs of 4", cityPacks);
+    Check(westPacks == 3 && westOk, "west-bank wolf packs: %d packs of 5 or 6", westPacks);
+    Check(AnimalMaxHp(AN_WOLF) == 60, "wolf health %d (was 35)", AnimalMaxHp(AN_WOLF));
+    Check(AnimalMaxHp(AN_BOAR) == 135, "boar health %d (3 x 45)", AnimalMaxHp(AN_BOAR));
+    Check(snakes > 0 && snakes <= 6, "snakes: %d in the whole world", snakes);
+    bool hidden = true;
+    for (int i = 0; i < G.animalCount; i++) {
+        const Animal *a = &G.animals[i];
+        if (a->type == AN_SNAKE) hidden = hidden && Fertility(a->pos.x, a->pos.z) >= 0.45f && !InsideWalls(a->pos.x, a->pos.z, -6.0f);
+    }
+    Check(hidden, "snakes lie in green grass outside the walls");
+}
+
+// Finds an animal of 'type' and a spot 'range' metres from it (trying four directions) with an open
+// line of fire: firm open ground under the archer, nothing solid in the arrow's path (gravity included)
+// or the animal's way back, and no other animal near the line. The aim point is 'aimY' up and 'side'
+// metres to the side of the animal.
+static bool FindShot(int type, float range, float aimY, float side, Animal **out, Vector3 *spot, Vector3 *aim)
+{
+    static const float dirs[8][2] = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 }, { 0.7071f, 0.7071f }, { -0.7071f, 0.7071f }, { 0.7071f, -0.7071f }, { -0.7071f, -0.7071f } };
+    for (int i = 0; i < G.animalCount; i++) {
+        Animal *a = &G.animals[i];
+        if (!a->active || (int)a->type != type || a->state == ST_DEAD) continue;
+        for (int d = 0; d < 8; d++) {
+            float dx = dirs[d][0], dz = dirs[d][1], px = a->pos.x + dx * range, pz = a->pos.z + dz * range;
+            if (SolidAt(px, pz, 1.0f) || InWater(px, pz) || InsideWalls(px, pz, -6.0f)) continue;
+            Vector3 from = { px, TerrainHeight(px, pz) + 1.5f, pz };
+            Vector3 to = { a->pos.x - dz * side, a->pos.y + aimY, a->pos.z + dx * side };
+            float dist = Vector3Distance(from, to);
+            bool open = true;
+            for (float s = 0.0f; s < dist - 1.0f && open; s += 0.25f) {
+                float t = s / BowSpeed();
+                Vector3 p = Vector3Lerp(from, to, s / dist);
+                p.y -= 2.5f * t * t;
+                open = p.y > TerrainHeight(p.x, p.z) + 0.2f && !PointInSolid(p);
+            }
+            for (float s = 0.0f; s < range && open; s += 0.25f) {
+                float x = a->pos.x + dx * s, z = a->pos.z + dz * s;
+                open = !SolidAt(x, z, 0.5f) && !InWater(x, z);
+            }
+            for (int k = 0; k < G.animalCount && open; k++) {
+                const Animal *o = &G.animals[k];
+                if (o == a || !o->active || o->state == ST_DEAD) continue;
+                Vector2 p = { o->pos.x, o->pos.z };
+                Vector2 f = { from.x, from.z }, e = { to.x + dx * -4.0f, to.z + dz * -4.0f };
+                Vector2 fe = Vector2Subtract(e, f);
+                float u = Clamp(Vector2DotProduct(Vector2Subtract(p, f), fe) / Vector2DotProduct(fe, fe), 0.0f, 1.0f);
+                open = Vector2Distance(p, Vector2Add(f, Vector2Scale(fe, u))) > 2.5f;
+            }
+            if (!open) continue;
+            *out = a;
+            *spot = (Vector3){ px, 0, pz };
+            *aim = to;
+            return true;
+        }
+    }
+    return false;
+}
+
+static float FacingFrom(Vector3 spot, Vector3 target)
+{
+    return atan2f(spot.x - target.x, spot.z - target.z);
+}
+
+static int BoarsHunting(int pack)
+{
+    int n = 0;
+    for (int i = 0; i < G.animalCount; i++) {
+        const Animal *m = &G.animals[i];
+        n += m->active && m->type == AN_BOAR && m->pack == pack && m->state == ST_HUNT && m->target == G.self;
+    }
+    return n;
+}
+
+// Shoot one boar of a sounder: the sounder charges like a wolf pack, keeps at it, and gives up when
+// you reach the city.
+static void TestBoar(void)
+{
+    Animal *b;
+    Vector3 spot, aim;
+    if (!FindShot(AN_BOAR, 12.0f, 0.63f, 0.0f, &b, &spot, &aim)) { Check(false, "no boar with an open line of fire"); return; }
+    Vector3 dir = Vector3Normalize((Vector3){ b->pos.x - spot.x, 0, b->pos.z - spot.z });
+    int mates = 0;
+    for (int i = 0; i < G.animalCount; i++) {
+        Animal *m = &G.animals[i];
+        if (!m->active || m->type != AN_BOAR || m->pack != b->pack || m->state == ST_DEAD) continue;
+        Calm(m);
+        if (m == b || mates >= 2) continue;
+        float side = mates ? 3.0f : -3.0f;
+        m->pos.x = b->pos.x + dir.x * 5.0f + dir.z * side;
+        m->pos.z = b->pos.z + dir.z * 5.0f - dir.x * side;
+        m->pos.y = TerrainHeight(m->pos.x, m->pos.z);
+        mates++;
+    }
+    PlaceAt(spot.x, spot.z, FacingFrom(spot, b->pos));
+    G.health = HEALTH_MAX;
+    Vector3 from = { G.player.pos.x, G.player.pos.y + 1.5f, G.player.pos.z };
+    ShootArrow(from, aim, 1.0f);
+    Fly(60);
+    Check(b->state == ST_HUNT, "a boar hit by an arrow charges (state %d, hp %d/135)", b->state, b->hp);
+    int sounder = BoarsHunting(b->pack);
+    Check(sounder >= 1 + mates && strstr(G.msg, "boars") != NULL, "its sounder charges with it: %d boars (\"%s\")", sounder, G.msg);
+    float taken = 0, near = 99;
+    for (int k = 0; k < 2000; k++) {
+        G.health = HEALTH_MAX;
+        Wild(0.01f);
+        taken += HEALTH_MAX - G.health;
+        if (k == 599) Check(taken > 0, "the charging boars gore you (%.0f damage in 6 s)", taken);
+        if (k >= 1400) near = fminf(near, XZDist(b->pos, G.player.pos));
+    }
+    G.health = HEALTH_MAX;
+    Check(BoarsHunting(b->pack) == sounder && near < 3.5f, "20 s on they are all still at you (%d boars, closest %.1f m, %.0f damage)", BoarsHunting(b->pack), near, taken);
+    PlaceAt(0, 9, 0);
+    Wild(0.01f);
+    Check(BoarsHunting(b->pack) == 0, "safe in the city: the boars give up (%d still charging)", BoarsHunting(b->pack));
+    G.health = HEALTH_MAX;
+    for (int i = 0; i < G.animalCount; i++)
+        if (G.animals[i].active && G.animals[i].type == AN_BOAR && G.animals[i].state != ST_DEAD) Calm(&G.animals[i]);
+}
+
+static void TestArrows(void)
+{
+    Animal *g;
+    Vector3 spot, aim;
+    bool found = FindShot(AN_GAZELLE, 24.0f, 1.0f, 2.0f, &g, &spot, &aim);
+    Check(found, "a gazelle with an open line of fire");
+    if (found) {
+        Calm(g);
+        PlaceAt(spot.x, spot.z, FacingFrom(spot, g->pos));
+        Vector3 from = { G.player.pos.x, G.player.pos.y + 1.5f, G.player.pos.z };
+        ShootArrow(from, aim, 1.0f);
+        Fly(80);
+        Check(g->state == ST_FLEE && g->hp == AnimalMaxHp(AN_GAZELLE), "an arrow whistling past a gazelle makes it bolt (state %d)", g->state);
+    }
+    Animal *w = First(AN_WOLF);
+    if (w) {
+        Calm(w);
+        G.peers[0].aggro = 0;
+        G.peers[0].alone = false;
+        G.armor = ARMOR_NONE;
+        PlaceAt(w->pos.x + 12, w->pos.z, PI / 2);
+        Vector3 from = { G.player.pos.x, G.player.pos.y + 1.5f, G.player.pos.z };
+        Vector3 to = { w->pos.x + 3.0f, TerrainHeight(w->pos.x + 3.0f, w->pos.z), w->pos.z };
+        ShootArrow(from, to, 1.0f);
+        Fly(100);
+        Check(w->state == ST_HUNT && G.peers[0].aggro > 0, "an arrow landing near a wolf sets the pack on you (state %d, aggro %.0f)", w->state, G.peers[0].aggro);
+        CalmBeasts(-1);
+        G.peers[0].aggro = 0;
+    }
+}
+
+static int MaceRound(int equip)
+{
+    PlaceAt(260, 470, 0);
+    Animal *ws[3];
+    int n = 0;
+    for (int i = 0; i < G.animalCount && n < 3; i++)
+        if (G.animals[i].type == AN_WOLF && G.animals[i].active) ws[n++] = &G.animals[i];
+    for (int k = 0; k < n; k++) {
+        float a = -0.6f + 0.6f * (float)k;
+        ws[k]->pos = (Vector3){ 260 + sinf(a) * 1.8f, 0, 470 - cosf(a) * 1.8f };
+        ws[k]->pos.y = TerrainHeight(ws[k]->pos.x, ws[k]->pos.z);
+        ws[k]->hp = 60;
+        ws[k]->state = ST_HUNT;
+    }
+    G.equip = equip;
+    UpdateCombat(0.0001f);
+    MeleeStrike();
+    int hit = 0;
+    for (int k = 0; k < n; k++) hit += ws[k]->hp < 60;
+    for (int k = 0; k < n; k++) ws[k]->state = ST_FLEE;
+    return hit;
+}
+
+static void TestMace(void)
+{
+    G.hasMace = true;
+    int mace = MaceRound(EQ_MACE), club = MaceRound(EQ_MELEE);
+    Check(mace == 3, "one war mace swing strikes all %d wolves in front", mace);
+    Check(club == 1, "a club strikes only one (%d)", club);
+    G.equip = EQ_BOW;
+}
+
+static void TestSnake(void)
+{
+    Animal *s = First(AN_SNAKE);
+    if (!s) { Check(false, "no snake"); return; }
+    Calm(s);
+    s->lair = s->pos;
+    PlaceAt(s->pos.x + 6, s->pos.z, PI / 2);
+    G.health = HEALTH_MAX;
+    for (int k = 0; k < 100; k++) Wild(0.02f);
+    Check(s->state == ST_CALM && AnimalHidden(s), "a snake 6 m away stays hidden in its grass");
+    PlaceAt(s->pos.x + 2.0f, s->pos.z, PI / 2);
+    G.player.crouching = true;
+    for (int k = 0; k < 100; k++) Wild(0.02f);
+    Check(s->state == ST_CALM, "crouching, you can creep within 2 m unnoticed");
+    G.player.crouching = false;
+    Wild(0.02f);
+    Check(s->state == ST_ALERT, "standing up 2 m away, it rears and hisses first (state %d)", s->state);
+    for (int k = 0; k < 30; k++) Wild(0.02f);
+    Check(G.health > HEALTH_MAX - 1.0f, "no bite during the hiss (health %.0f)", G.health);
+    for (int k = 0; k < 100; k++) Wild(0.02f);
+    Check(G.health < HEALTH_MAX, "then it strikes (health %.0f)", G.health);
+    PlaceAt(s->pos.x + 20, s->pos.z, PI / 2);
+    for (int k = 0; k < 300; k++) Wild(0.02f);
+    Check(s->state == ST_CALM, "it settles back into the grass when you leave");
+    G.health = HEALTH_MAX;
+}
+
+static void TestHerbs(void)
+{
+    G.health = 50;
+    G.herbT = 0;
+    BagAdd(IT_HERB, 3);
+    int before = BagCount(IT_HERB);
+    bool used = UseHerb();
+    Check(used && G.health == 60 && G.herbT == HERB_SECONDS && BagCount(IT_HERB) == before - 1,
+          "chewing an herb: +10 health now and %d s of fast healing", (int)G.herbT);
+    G.health = HEALTH_MAX;
+    Check(!UseHerb(), "an herb is not wasted when you are not hurt");
+    BagRemove(IT_HERB, 99);
+    int herbs = 0;
+    for (int i = 0; i < G.resCount; i++) herbs += G.res[i].kind == RES_HERB;
+    int west = 0;
+    for (int i = 0; i < G.resCount; i++) west += G.res[i].kind == RES_HERB && G.res[i].pos.x < RIVER_X0;
+    Check(herbs > 40 && west > herbs / 2, "%d herb plants, %d of them across the river", herbs, west);
+    int buyers = 0;
+    for (int t = 0; t < TR_COUNT; t++)
+        for (int k = 0; k < G.traders[t].offerCount; k++)
+            if (G.traders[t].offers[k].in1 == IT_HERB) buyers++;
+    Check(buyers >= 4, "%d traders take herbs in barter", buyers);
+}
+
+static void TestPrompts(void)
+{
+    static const char *const expect[RES_KINDS] = {
+        "[E] Pick dates", "[E] Cut reeds (-1 food)", "[E] Chop wood (hard work: -8 food)", "[E] Dig clay (hard work: -2 food)",
+        "[E] Mine copper ore (hard work: -16 food)", "[E] Cast your net (-1.5 food)", "[E] Gather herbs (-1 food)",
+    };
+    for (int k = 0; k < RES_KINDS; k++) {
+        int r = -1;
+        for (int i = 0; i < G.resCount && r < 0; i++)
+            if ((int)G.res[i].kind == k && !G.res[i].farm && G.res[i].regrow <= 0 && !WestBank(G.res[i].pos.x)) r = i;
+        if (r < 0) { Check(false, "no resource of kind %d", k); continue; }
+        PlaceAt(G.res[r].pos.x + 0.6f, G.res[r].pos.z, 0);
+        G.food = 80;
+        G.panel = PANEL_NONE;
+        G.sleeping = false;
+        GameUpdate();
+        Check(strcmp(G.promptE, expect[k]) == 0, "prompt \"%s\"", G.promptE);
+    }
+}
+
+static void TestTrade(void)
+{
+    bool others = true, herder = true, shepherd = false;
+    for (int t = 0; t < TR_COUNT; t++) {
+        const Trader *tr = &G.traders[t];
+        for (int k = 0; k < tr->offerCount; k++) {
+            const Offer *o = &tr->offers[k];
+            bool fleece = o->kind == OUT_ITEM && (o->out == IT_SHEEPSKIN || o->out == IT_SHEEP);
+            if (t == TR_SHEPHERD) shepherd = shepherd || fleece;
+            else if (fleece) others = false;
+            if (t == TR_HERDER && (o->kind != OUT_ITEM || (o->out != IT_MILK && o->out != IT_COWHIDE) || o->in1 == IT_WASTE)) herder = false;
+        }
+    }
+    Check(shepherd && others, "only the herders' shepherd sells sheepskin and sheep");
+    Check(herder, "the city's cattle herder deals only in milk and cowhide, no plant waste");
+    bool mace = false;
+    for (int k = 0; k < G.traders[TR_SMITH].offerCount; k++) mace = mace || G.traders[TR_SMITH].offers[k].kind == OUT_MACE;
+    Check(mace, "the smith sells the war mace");
+    Vector3 h = VillageCenter(VIL_HUNTERS), s = VillageCenter(VIL_HERDERS);
+    Check(XZDist(G.traders[TR_HUNTER].pos, h) < 20 && XZDist(G.traders[TR_SHEPHERD].pos, s) < 20, "hunter and shepherd stand in their villages");
+}
+
+static void TestPeople(void)
+{
+    int travellers = 0;
+    bool onRoad = true;
+    for (int i = 0; i < G.villagerCount; i++) {
+        const Villager *v = &G.villagers[i];
+        if (v->kind != NPC_TRAVELLER) continue;
+        travellers++;
+        Vector3 p = VillagerPos(v);
+        onRoad = onRoad && RoadDistance(p.x, p.z) < 0.5f && !InsideWalls(p.x, p.z, 0.0f);
+    }
+    Check(travellers >= 3 && onRoad, "%d travellers, all on roads outside the walls", travellers);
+
+    // Walk them for two minutes; whoever crosses the east canal does it on the bridge deck.
+    for (int i = 0; i < G.villagerCount; i++)
+        if (G.villagers[i].road == ROAD_EAST && G.villagers[i].dir < 0) G.villagers[i].t = 45.0f / RoadLength(ROAD_EAST);
+    float t0[MAX_VILLAGERS];
+    for (int i = 0; i < G.villagerCount; i++) t0[i] = G.villagers[i].t;
+    float bridgeY = 99;
+    bool stayed = true;
+    for (int k = 0; k < 2400; k++) {
+        CollectBodies();
+        UpdateVillage(0.05f);
+        for (int i = 0; i < G.villagerCount; i++) {
+            const Villager *v = &G.villagers[i];
+            if (v->kind != NPC_TRAVELLER) continue;
+            Vector3 p = VillagerPos(v);
+            if (fabsf(p.x - 122) < 1.5f && fabsf(p.z - 9) < 3) bridgeY = fminf(bridgeY, p.y);
+            if (RoadDistance(p.x, p.z) > 0.5f) stayed = false;
+        }
+    }
+    bool moved = true;
+    for (int i = 0; i < G.villagerCount; i++)
+        if (G.villagers[i].kind == NPC_TRAVELLER) moved = moved && fabsf(G.villagers[i].t - t0[i]) > 0.05f;
+    Check(moved && stayed, "travellers keep walking their roads");
+    Check(bridgeY < 99 && bridgeY > 0.25f, "a traveller crossing the canal bridge walks on its deck (lowest y %.2f)", bridgeY);
+
+    UpdateCaravans(0.0f);
+    for (int k = 0; k < 400; k++) UpdateCaravans(0.05f);
+    UpdateCombat(0.0001f);
+    int guards = 0, active = 0, raiders = 0, barbarians = 0;
+    float raiderHp = 0, barbarianHp = 0;
+    for (int c = 0; c < MAX_CARAVANS; c++) active += G.caravans[c].state != CV_AWAY;
+    for (int i = 0; i < FighterCount(); i++) {
+        Vector3 pos;
+        float hp, maxHp;
+        const char *name;
+        bool hostile, dead;
+        FighterInfo(i, &pos, &hp, &maxHp, &name, &hostile, &dead);
+        if (strcmp(name, "Caravan guard") == 0) guards++;
+        if (strcmp(name, "Raider") == 0) { raiders++; raiderHp = maxHp; }
+        if (strcmp(name, "Barbarian") == 0) { barbarians++; barbarianHp = maxHp; }
+    }
+    Check(active > 0 && guards == 2 * active, "%d caravans on the road, %d caravan guards", active, guards);
+    Check(raiders == 8 && barbarians == 8, "%d raiders east of the river, %d barbarians (and their bowmen) west", raiders, barbarians);
+    Check(raiderHp > 190 && barbarianHp == 2 * raiderHp, "raiders tougher (%.0f, was 190), barbarians twice that (%.0f)", raiderHp, barbarianHp);
+}
+
+// Townsfolk walk the streets from crossing to crossing, keep out of the walls, and get round (or
+// turn back from) someone standing in the way, never walking through them.
+static void TestStreets(void)
+{
+    static bool seen[MAX_VILLAGERS][32];
+    int list[MAX_VILLAGERS], walkers = 0, nodes = StreetNodeCount();
+    for (int i = 0; i < G.villagerCount; i++)
+        if (G.villagers[i].from >= 0) list[walkers++] = i;
+    memset(seen, 0, sizeof(seen));
+    PlaceAt(150, 150, 0);
+    bool clear = true, inside = true;
+    Vector3 bad = { 0 }, last[MAX_VILLAGERS];
+    float jump = 0;
+    int right = 0, samples = 0;
+    for (int n = 0; n < walkers; n++) last[n] = VillagerPos(&G.villagers[list[n]]);
+    for (int k = 0; k < 6000; k++) {
+        CollectBodies();
+        UpdateVillage(0.05f);
+        for (int n = 0; n < walkers; n++) {
+            const Villager *v = &G.villagers[list[n]];
+            Vector3 p = VillagerPos(v);
+            jump = fmaxf(jump, XZDist(p, last[n]));
+            last[n] = p;
+            if (v->moving) {
+                samples++;
+                right += v->side < -0.3f;
+            }
+            seen[n][v->to] = true;
+            if (SolidAt(p.x, p.z, 0.15f)) { clear = false; bad = p; }
+            if (!InsideWalls(p.x, p.z, -2.0f)) { inside = false; bad = p; }
+        }
+    }
+    int least = 99, reached = 0;
+    for (int n = 0; n < walkers; n++) {
+        int c = 0;
+        for (int j = 0; j < nodes; j++) c += seen[n][j];
+        least = c < least ? c : least;
+    }
+    for (int j = 0; j < nodes; j++) {
+        bool any = false;
+        for (int n = 0; n < walkers; n++) any = any || seen[n][j];
+        reached += any;
+    }
+    Check(walkers >= 10 && least >= 3, "%d townsfolk walk the streets; in 5 minutes each reached %d or more crossings", walkers, least);
+    char missed[64] = "";
+    for (int j = 0; j < nodes; j++) {
+        bool any = false;
+        for (int n = 0; n < walkers; n++) any = any || seen[n][j];
+        if (!any) snprintf(missed + strlen(missed), sizeof(missed) - strlen(missed), " %d", j);
+    }
+    Check(reached >= nodes - 2, "between them they reached %d of the %d crossings (missed:%s)", reached, nodes, missed[0] ? missed : " none");
+    Check(clear && inside, "nobody walked into a wall or out of the city (%.1f,%.1f)", bad.x, bad.z);
+    Check(jump < 0.15f, "no one jumps, not even turning a corner (longest step %.3f m in 0.05 s)", jump);
+    Check(right > samples * 6 / 10, "walking, they keep to the right of the street %d%% of the time", samples ? right * 100 / samples : 0);
+
+    // Stand in a townsman's way on the main street.
+    Villager *v = &G.villagers[list[0]];
+    SetStreet(v, 1, 2);
+    v->t = 0.3f;
+    v->side = -1.0f;
+    v->wait = v->stuck = 0;
+    Villager ahead = *v;
+    ahead.t += 2.5f / 30.0f;
+    Vector3 block = VillagerLanePos(&ahead);
+    PlaceAt(block.x, block.z, 0);
+    float closest = 99;
+    bool past = false, back = false;
+    for (int k = 0; k < 400 && !past && !back; k++) {
+        CollectBodies();
+        UpdateVillage(0.05f);
+        Vector3 p = VillagerPos(v);
+        closest = fminf(closest, XZDist(p, G.player.pos));
+        if (v->from == 1 && v->to == 2) past = p.z > block.z + 1.0f;
+        else back = true;
+    }
+    Check((past || back) && closest > 0.6f, "a townsman blocked by you %s (closest %.2f m)", past ? "steps round you" : back ? "turns back" : "is stuck", closest);
+    PlaceAt(150, 150, 0);
+}
+
+// Points the third-person bow crosshair at 'at' (as the player would with the mouse) and lets fly
+// with the given draw. True when the arrow strikes person 'who'.
+static bool ShootPersonAt(int who, Vector3 at, float draw, float *miss)
+{
+    Player *p = &G.player;
+    p->aiming = true;
+    p->draw = draw;
+    G.firstPerson = false;
+    G.camShoulder = 1.0f;
+    for (int k = 0; k < 30; k++) {
+        FollowCamera(1.0f);
+        G.camShoulder = 1.0f;
+        Vector3 f = Vector3Normalize(Vector3Subtract(at, G.cam.position));
+        p->yaw = atan2f(-f.x, -f.z);
+        p->pitch = asinf(-f.y);
+    }
+    FollowCamera(1.0f);
+    Vector3 right = { cosf(p->yaw), 0, -sinf(p->yaw) }, fwd = { -sinf(p->yaw), 0, -cosf(p->yaw) };
+    Vector3 from = { p->pos.x, p->pos.y + 1.5f, p->pos.z };
+    from = Vector3Add(from, Vector3Add(Vector3Scale(right, -0.2f), Vector3Scale(fwd, 0.7f)));
+    float hp0, hp, maxHp;
+    Vector3 pos;
+    const char *name;
+    bool hostile, dead;
+    FighterInfo(who, &pos, &hp0, &maxHp, &name, &hostile, &dead);
+    int a = ShootArrow(from, AimPoint(), draw);
+    // Where the arrow passes the target: its closest approach to the aimed point.
+    *miss = 99;
+    for (int k = 0; k < 300 && a >= 0 && G.arrows[a].flying; k++) {
+        Vector3 before = G.arrows[a].pos;
+        Fly(1);
+        Vector3 after = G.arrows[a].pos, ab = Vector3Subtract(after, before);
+        float len2 = Vector3DotProduct(ab, ab);
+        float u = len2 > 0 ? Clamp(Vector3DotProduct(Vector3Subtract(at, before), ab) / len2, 0.0f, 1.0f) : 0.0f;
+        *miss = fminf(*miss, Vector3Distance(Vector3Add(before, Vector3Scale(ab, u)), at));
+    }
+    FighterInfo(who, &pos, &hp, &maxHp, &name, &hostile, &dead);
+    p->aiming = false;
+    p->draw = 0;
+    return hp < hp0;
+}
+
+// A townsman stands in the open; the crosshair on his chest must be where the arrow goes, near or far,
+// fully drawn or not.
+static void TestAim(void)
+{
+    // Open ground east of the city with nothing in the way for 40 m to the north.
+    float sx = 0, sz = 0;
+    bool found = false;
+    for (float x = 140; x < 400 && !found; x += 7)
+        for (float z = -200; z < 200 && !found; z += 7) {
+            bool open = true;
+            for (float d = -2; d <= 42 && open; d += 1.0f)
+                open = !SolidAt(x, z - d, 1.5f) && !InWater(x, z - d) && fabsf(TerrainHeight(x, z - d) - TerrainHeight(x, z)) < 1.5f &&
+                       RoadDistance(x, z - d) > 6.0f;
+            if (open) { sx = x; sz = z; found = true; }
+        }
+    if (!found) { Check(false, "no open ground for the aim test"); return; }
+    CollectBodies();
+    CollectFighters();
+    int who = FighterByOwner(OWNER_VILLAGER + 0);
+    Villager *v = &G.villagers[0];
+    static const float dists[] = { 3, 6, 10, 20, 35 };
+    static const float draws[] = { 1.0f, 0.5f };
+    int hits = 0, shots = 0;
+    char log[512] = "";
+    for (int di = 0; di < 5; di++)
+        for (int k = 0; k < 2; k++) {
+            PlaceAt(sx, sz, 0);
+            float tz = sz - dists[di];
+            v->vit = (Vitals){ .hp = 120, .target = -1, .used = true, .override = true, .at = { sx, TerrainHeight(sx, tz), tz } };
+            CollectFighters();
+            who = FighterByOwner(OWNER_VILLAGER + 0);
+            float miss;
+            bool hit = ShootPersonAt(who, (Vector3){ sx, v->vit.at.y + 1.1f, tz }, draws[k], &miss);
+            shots++;
+            hits += hit;
+            snprintf(log + strlen(log), sizeof(log) - strlen(log), " %.0fm/%.0f%%:%s(%.2f)", dists[di], draws[k] * 100, hit ? "hit" : "MISS", miss);
+        }
+    v->vit = (Vitals){ .used = false };
+    CollectFighters();
+    Check(hits == shots, "the crosshair on a person's chest hits them, near and far: %d of %d;%s", hits, shots, log);
+}
+
+
+static void RunCombat(float seconds)
+{
+    for (float t = 0; t < seconds; t += 0.05f) {
+        SyncSelf();
+        CollectBodies();
+        UpdateCombat(0.05f);
+    }
+}
+
+static int VillagerWhere(int kind, bool (*ok)(Vector3))
+{
+    for (int i = 0; i < G.villagerCount; i++)
+        if ((int)G.villagers[i].kind == kind && !G.villagers[i].vit.dead && ok(VillagerPos(&G.villagers[i]))) return i;
+    return -1;
+}
+static bool FarEast(Vector3 p) { return p.x > 160.0f; }
+static bool AtHunters(Vector3 p) { return VillageAt(p) == VIL_HUNTERS; }
+static bool Anywhere(Vector3 p) { (void)p; return true; }
+
+static void Stand(int villager, float x, float z)
+{
+    Vitals *v = &G.villagers[villager].vit;
+    CollectFighters();
+    v->override = true;
+    v->at = (Vector3){ x, GroundHeight(x, z, 2.0f), z };
+}
+
+// The law: the city's guards keep the peace inside the canals only; a village stands together for two
+// minutes; caravan and city guards do not chase far from their posts.
+static void TestLaw(void)
+{
+    G.self = G.actor = 0;
+    G.health = HEALTH_MAX;
+    RespawnPeople();
+
+    // In the city, by the temple gate's guards.
+    int t = VillagerWhere(NPC_CIVILIAN, Anywhere);
+    Stand(t, 3, 2);
+    PlaceAt(3, 4, 0);
+    CollectFighters();
+    DamagePerson(FighterByOwner(OWNER_VILLAGER + t), 5);
+    Check(G.peers[0].wanted > 0, "striking a townsman by the temple gate: wanted by the guards (\"%s\")", G.msg);
+    RunCombat(3);
+    int chasing = 0;
+    for (int i = 0; i < G.villagerCount; i++)
+        chasing += G.villagers[i].kind == NPC_GUARD && G.villagers[i].vit.hostile > 0 && G.villagers[i].vit.target == 0 && G.villagers[i].vit.override;
+    Check(chasing >= 2, "%d guards come for you", chasing);
+
+    // The guards will not follow past the canals.
+    PlaceAt(0, 97, 0);
+    G.peers[0].wanted = 100;
+    G.health = HEALTH_MAX;
+    RunCombat(25);
+    bool kept = true;
+    for (int i = 0; i < G.villagerCount; i++)
+        if (G.villagers[i].kind == NPC_GUARD && G.villagers[i].vit.override && !InCityLands(G.villagers[i].vit.at.x, G.villagers[i].vit.at.z)) kept = false;
+    Check(kept && G.health == HEALTH_MAX, "wanted but past the south canal: the guards stay in the city's lands");
+    RespawnPeople();
+
+    // Out on the east road no one tells the city.
+    int tr = VillagerWhere(NPC_TRAVELLER, FarEast);
+    if (tr < 0) { Check(false, "no traveller out east"); return; }
+    Vector3 tp = VillagerPos(&G.villagers[tr]);
+    Stand(tr, tp.x, tp.z);
+    PlaceAt(tp.x + 1.5f, tp.z, 0);
+    CollectFighters();
+    DamagePerson(FighterByOwner(OWNER_VILLAGER + tr), 5);
+    RunCombat(1);
+    int guards = 0;
+    for (int i = 0; i < G.villagerCount; i++) guards += G.villagers[i].kind == NPC_GUARD && G.villagers[i].vit.hostile > 0;
+    Check(G.peers[0].wanted <= 0 && guards == 0, "striking a traveller out east: not wanted, no guard stirs (\"%s\")", G.msg);
+    RespawnPeople();
+
+    // A village stands together, for two minutes.
+    int vv = VillagerWhere(NPC_VILLAGER, AtHunters);
+    if (vv < 0) { Check(false, "no villager in the hunters' village"); return; }
+    Vector3 vp = VillagerPos(&G.villagers[vv]);
+    PlaceAt(vp.x + 1.2f, vp.z, 0);
+    CollectFighters();
+    DamagePerson(FighterByOwner(OWNER_VILLAGER + vv), 5);
+    int roused = 0, folk = 0;
+    for (int i = 0; i < G.villagerCount; i++) {
+        if (G.villagers[i].kind != NPC_VILLAGER || VillageAt(VillagerLanePos(&G.villagers[i])) != VIL_HUNTERS) continue;
+        folk++;
+        roused += G.villagers[i].vit.hostile > 100 && G.villagers[i].vit.target == 0;
+    }
+    Check(roused == folk && folk >= 3 && G.peers[0].wanted <= 0, "the whole hunters' village turns on you: %d of %d, not wanted in the city (\"%s\")", roused, folk, G.msg);
+    float taken = 0;
+    for (int k = 0; k < 20; k++) {
+        G.health = HEALTH_MAX;
+        RunCombat(0.5f);
+        taken += HEALTH_MAX - G.health;
+    }
+    Check(taken > 0, "the villagers fight you (%.0f damage in 10 s)", taken);
+    PlaceAt(vp.x + 200, vp.z, 0);
+    RunCombat(115);
+    int still = 0;
+    for (int i = 0; i < G.villagerCount; i++) still += G.villagers[i].kind == NPC_VILLAGER && G.villagers[i].vit.hostile > 0;
+    Check(still == 0, "two minutes on, the village calms down (%d still angry)", still);
+    G.health = HEALTH_MAX;
+    RespawnPeople();
+
+    // Caravan guards keep by their caravan.
+    UpdateCaravans(0.0f);
+    for (int k = 0; k < 400; k++) UpdateCaravans(0.05f);
+    int c = -1;
+    for (int k = 0; k < MAX_CARAVANS && c < 0; k++)
+        if (G.caravans[k].state != CV_AWAY) c = k;
+    if (c < 0) { Check(false, "no caravan on the road"); return; }
+    Vector3 home;
+    float face;
+    CaravanMemberScript(c, 3, &home, &face);
+    CollectFighters();
+    Vitals *gv = &G.caravans[c].vit[1];
+    gv->hostile = 60;
+    gv->target = 0;
+    PlaceAt(home.x + 5, home.z, 0);
+    RunCombat(2);
+    Check(gv->override && XZDist(gv->at, home) > 1.0f, "a caravan guard goes for you");
+    PlaceAt(home.x + 45, home.z, 0);
+    RunCombat(12);
+    Check(XZDist(gv->at, home) < 15.0f || !gv->override, "you run off: it stays by its caravan (%.1f m from its place)", XZDist(gv->at, home));
+    RespawnPeople();
+    G.health = HEALTH_MAX;
+}
+
+// Brought down: the day's gains not put away at home are lost, what the player woke with is kept,
+// and the message says who did it.
+static void TestDeathLosses(void)
+{
+    G.role = NET_SOLO;
+    G.self = G.actor = 0;
+    for (int i = 0; i < BAG_MAX; i++) G.bag[i] = (Slot){ IT_NONE, 0 };
+    BagAdd(IT_DATES, 3);
+    G.safeDay = 0;
+    TrackGoods();
+    BagAdd(IT_DATES, 2);
+    BagAdd(IT_COPPER, 2);
+    TrackGoods();
+    for (int i = 0; i < BAG_MAX; i++)
+        if (G.bag[i].item == IT_COPPER) MoveStack(&G.bag[i], G.store, STORE_SLOTS);
+    TrackGoods();
+    BagAdd(IT_COPPER, 1);
+    int storedCopper = SlotsCount(G.store, STORE_SLOTS, IT_COPPER), wood = 0;
+    for (int i = 0; i < STORE_SLOTS; i++)
+        if (G.store[i].item == IT_WOOD) {
+            int moved = MoveStack(&G.store[i], G.bag, G.bagSlots);
+            G.safe[IT_WOOD] += moved;
+            wood += moved;
+        }
+    TrackGoods();
+    G.sleeping = false;
+    G.health = 5;
+    HurtPlayer(50, BY_VILLAGERS);
+    Check(BagCount(IT_DATES) == 3 && BagCount(IT_COPPER) == 0 && BagCount(IT_WOOD) == wood && wood > 0 &&
+          SlotsCount(G.store, STORE_SLOTS, IT_COPPER) == storedCopper,
+          "brought down: today's 2 dates and 1 copper lost, the morning's 3 dates, stored copper and wood from storage kept (\"%s\")", G.msg);
+    Check(strstr(G.msg, "villagers") != NULL && strstr(G.msg, "guards") == NULL, "the villagers did it, not the guards");
+    G.sleeping = false;
+    G.health = HEALTH_MAX;
+}
+
+
+// A townsman across water from home walks back: over a canal with a jump, round the harbor basin.
+static bool WalkHome(int t, Vector3 home, Vector3 start, Vector3 watcher, float seconds, bool *jumped, float *left)
+{
+    Villager *v = &G.villagers[t];
+    v->from = v->to = -1;
+    v->speed = 0;
+    v->a = v->b = home;
+    v->side = 0;
+    CollectFighters();
+    v->vit.override = true;
+    v->vit.hostile = 0;
+    v->vit.at = (Vector3){ start.x, GroundHeight(start.x, start.z, 2.0f), start.z };
+    PlaceAt(watcher.x, watcher.z, 0);
+    *jumped = false;
+    for (float s = 0; s < seconds && v->vit.override; s += 0.05f) {
+        SyncSelf();
+        CollectBodies();
+        UpdateCombat(0.05f);
+        *jumped = *jumped || v->vit.jumpDur > 0;
+        if (getenv("TRACE") && fmodf(s, 2.0f) < 0.05f) printf("  t %.0f at (%.1f,%.1f)\n", s, v->vit.at.x, v->vit.at.z);
+    }
+    *left = v->vit.override ? XZDist(v->vit.at, home) : 0.0f;
+    return !v->vit.override;
+}
+
+static void TestCanals(void)
+{
+    RespawnPeople();
+    int t = VillagerWhere(NPC_CIVILIAN, Anywhere);
+    Villager keep = G.villagers[t];
+    bool jumped;
+    float left;
+    bool home = WalkHome(t, (Vector3){ 6, 0, 80 }, (Vector3){ 8, 0, 96 }, (Vector3){ 12, 0, 99 }, 15, &jumped, &left);
+    Check(home && jumped, "a townsman south of the south canal jumps it on his way home (%s, %.1f m left)", jumped ? "jumped" : "no jump", left);
+    home = WalkHome(t, (Vector3){ -54.5f, 0, -10 }, (Vector3){ -80, 0, -30 }, (Vector3){ -82, 0, -32 }, 60, &jumped, &left);
+    Check(home, "one west of the harbor basin walks round it to the quay (%.1f m left)", left);
+    G.villagers[t] = keep;
+    RespawnPeople();
+}
+
+
+// The guest (slot 1) swings at the host where both stand; returns the host's health lost.
+static float GuestBlow(float gx, float gz, float hx, float hz, int weapon)
+{
+    G.peers[1].pos = (Vector3){ gx, TerrainHeight(gx, gz), gz };
+    G.peers[1].flags = PF_GROUND;
+    PlaceAt(hx, hz, 0);
+    SyncSelf();
+    G.sleeping = false;
+    G.health = HEALTH_MAX;
+    Vector3 fwd = Vector3Normalize((Vector3){ hx - gx, 0, hz - gz }), chest = { gx, G.peers[1].pos.y + 1.0f, gz };
+    G.actor = 1;
+    StrikeFor(chest, fwd, EQ_MELEE, weapon);
+    G.actor = 0;
+    return HEALTH_MAX - G.health;
+}
+
+// Players fighting players, as the host sees it: the host's rules, the guards, parries, arrows.
+static void TestPvp(void)
+{
+    G.role = NET_HOST;
+    G.self = G.actor = 0;
+    G.peers[1] = (Peer){ .active = true, .net = 1, .health = HEALTH_MAX, .flags = PF_GROUND, .equip = EQ_MELEE };
+    snprintf(G.peers[1].name, NAME_LEN, "Guest");
+    RespawnPeople();
+    ForgetFights(0);
+    ForgetFights(1);
+    G.armor = ARMOR_NONE;
+    G.combat = false;
+
+    G.pvp = false;
+    Check(GuestBlow(3, 6, 3, 4.5f, 2) == 0, "PvP off: the guest's blow does the host no harm");
+
+    G.pvp = true;
+    float lost = GuestBlow(3, 6, 3, 4.5f, 2);
+    Check(lost > 0 && G.hurtBy == BY_PLAYER + 1, "PvP on: the guest's sword hurts the host (%.0f)", lost);
+    Check(G.peers[1].wanted > 0 && G.peers[0].wanted <= 0, "the guest started it by the temple gate: the guest is wanted, the host is not");
+    RunCombat(3);
+    int after = 0;
+    for (int i = 0; i < G.villagerCount; i++)
+        after += G.villagers[i].kind == NPC_GUARD && G.villagers[i].vit.hostile > 0 && G.villagers[i].vit.target == 1;
+    Check(after >= 1, "%d guards go after the guest", after);
+
+    // The host hits back: self-defence.
+    G.actor = 0;
+    Vector3 hc = { 3, TerrainHeight(3, 4.5f) + 1.0f, 4.5f };
+    StrikeFor(hc, (Vector3){ 0, 0, 1 }, EQ_MELEE, 0);
+    Check(G.peers[0].wanted <= 0, "the host hits back: no crime");
+
+    // A parry turns the blow aside.
+    G.equip = EQ_MELEE;
+    G.parryT = 1.0f;
+    G.player.facing = 0.0f;   // facing +z, toward the guest
+    float parried = GuestBlow(3, 6, 3, 4.5f, 2);
+    G.player.facing = 0.0f;
+    G.parryT = 0;
+    Check(parried == 0, "a raised sword turns the guest's blow aside");
+
+    // An arrow from the guest.
+    G.health = HEALTH_MAX;
+    PlaceAt(3, 4.5f, 0);
+    SyncSelf();
+    G.peers[1].pos = (Vector3){ 3, TerrainHeight(3, 16), 16 };
+    Vector3 from = { 3, G.peers[1].pos.y + 1.5f, 15.3f }, to = { 3, G.player.pos.y + 1.1f, 4.5f };
+    ShootFor(1, from, Vector3Scale(Vector3Normalize(Vector3Subtract(to, from)), 50.0f), 30);
+    for (int k = 0; k < 100; k++) { SyncSelf(); UpdateArrows(0.01f); }
+    Check(G.health < HEALTH_MAX, "the guest's arrow strikes the host (health %.0f)", G.health);
+
+    // Brought down by a player: the message says by whom.
+    RespawnPeople();
+    GuestBlow(200, 1.5f, 200, 0, 2);
+    G.health = 3;
+    G.sleeping = false;
+    G.actor = 1;
+    StrikeFor((Vector3){ 200, TerrainHeight(200, 1.5f) + 1.0f, 1.5f }, (Vector3){ 0, 0, -1 }, EQ_MELEE, 2);
+    G.actor = 0;
+    Check(strstr(G.msg, "Guest beat you down") != NULL, "brought down by the guest: \"%s\"", G.msg);
+    Check(G.peers[1].kills == 1 && G.peers[0].deaths == 1 && G.peers[0].kills == 0, "a kill for the guest, a death for the host: %s / %s",
+          KillDeath(1), KillDeath(0));
+
+    // The war mace cannot parry, but hits twice as hard as before (60).
+    RespawnPeople();
+    G.sleeping = false;
+    G.equip = EQ_MACE;
+    G.parryT = 1.0f;
+    G.player.facing = 0.0f;
+    float through = GuestBlow(200, 1.5f, 200, 0, 2);
+    G.parryT = 0;
+    G.equip = EQ_MELEE;
+    Check(through > 0, "a raised war mace does not turn a blow aside (%.0f damage)", through);
+    G.health = HEALTH_MAX;
+    G.armor = ARMOR_NONE;
+    G.actor = 1;
+    G.peers[1].pos = (Vector3){ 200, TerrainHeight(200, 1.5f), 1.5f };
+    PlaceAt(200, 0, 0);
+    SyncSelf();
+    G.sleeping = false;
+    StrikeFor((Vector3){ 200, TerrainHeight(200, 1.5f) + 1.0f, 1.5f }, (Vector3){ 0, 0, -1 }, EQ_MACE, 0);
+    G.actor = 0;
+    Check(fabsf((HEALTH_MAX - G.health) - 30.0f) < 0.5f, "the war mace's blow on a player: 60, halved between players (%.0f)", HEALTH_MAX - G.health);
+    G.health = HEALTH_MAX;
+    G.sleeping = false;
+    RespawnPeople();
+    ForgetFights(0);
+    ForgetFights(1);
+
+    // Out past the canals nobody calls the guards.
+    GuestBlow(200, 1.5f, 200, 0, 1);
+    Check(G.peers[1].wanted <= 0, "a fight far out east: no one is wanted");
+
+    // Combat mode: the best of everything, unlimited arrows, and the guards keep out of it.
+    ForgetFights(0);
+    ForgetFights(1);
+    G.combat = true;
+    int bow = G.bow;
+    lost = GuestBlow(3, 6, 3, 4.5f, 2);
+    PlayerRecord r;
+    CaptureRecord(&r);
+    Check(lost > 0 && G.peers[1].wanted <= 0, "combat mode: the blow lands and no one is wanted (%.0f)", lost);
+    Check(UseBow() == 2 && UseWeapon() == 2 && UseArmor() == ARMOR_BRONZE && UseMace() && r.bow == bow,
+          "combat mode: best bow, sword, bronze armor and the war mace, while the record keeps the player's own bow");
+    G.quiver = 3;
+    G.equip = EQ_BOW;
+    G.player.aiming = true;
+    G.player.draw = 1.0f;
+    G.cursorLocked = true;
+    UpdatePlayer(0.01f, true);
+    Check(G.quiver == 3, "combat mode: a shot takes no arrow from the quiver (%d left)", G.quiver);
+    G.combat = false;
+    G.pvp = true;
+    G.peers[1] = (Peer){ 0 };
+    G.health = HEALTH_MAX;
+    G.role = NET_SOLO;
+    RespawnPeople();
+}
+
+
+// Runs combat and the arrows for 'seconds', keeping the player alive; returns the damage taken and,
+// in *moved, whether 'watch' moved while its bow was drawn.
+static float UnderFire(float seconds, Vitals *watch, bool *movedDrawing, int *by)
+{
+    float taken = 0;
+    bool wasDrawing = false;
+    Vector3 last = watch ? watch->at : (Vector3){ 0 };
+    if (movedDrawing) *movedDrawing = false;
+    *by = BY_NONE;
+    for (float t = 0; t < seconds; t += 0.02f) {
+        G.health = HEALTH_MAX;
+        G.sleeping = false;
+        SyncSelf();
+        CollectBodies();
+        UpdateCombat(0.02f);
+        UpdateArrows(0.02f);
+        if (G.health < HEALTH_MAX) { taken += HEALTH_MAX - G.health; *by = G.hurtBy; }
+        if (watch) {
+            if (watch->drawing && wasDrawing && XZDist(watch->at, last) > 0.001f && movedDrawing) *movedDrawing = true;
+            last = watch->at;
+            wasDrawing = watch->drawing;
+        }
+    }
+    G.health = HEALTH_MAX;
+    return taken;
+}
+
+static void TestArchers(void)
+{
+    G.role = NET_SOLO;
+    G.self = G.actor = 0;
+    RespawnPeople();
+    for (int i = 0; i < MAX_ARROWS; i++) G.arrows[i].active = false;
+    int by;
+    bool moved;
+
+    // The fishers' village guard, when the village turns on you, shoots from where it stands.
+    int w = -1;
+    for (int i = 0; i < G.villagerCount && w < 0; i++)
+        if (G.villagers[i].kind == NPC_WARDEN && VillageAt(G.villagers[i].a) == VIL_FISHERS) w = i;
+    int folk = VillagerWhere(NPC_VILLAGER, Anywhere);
+    for (int i = 0; i < G.villagerCount; i++)
+        if (G.villagers[i].kind == NPC_VILLAGER && VillageAt(G.villagers[i].a) == VIL_FISHERS) folk = i;
+    if (w < 0) { Check(false, "no village guard at the fishers' village"); return; }
+    Vector3 wp = G.villagers[w].a, fp = VillagerPos(&G.villagers[folk]);
+    PlaceAt(fp.x + 1.2f, fp.z, 0);
+    CollectFighters();
+    DamagePerson(FighterByOwner(OWNER_VILLAGER + folk), 5);
+    PlaceAt(wp.x - 16, wp.z + 4, 0);
+    float taken = UnderFire(12, &G.villagers[w].vit, &moved, &by);
+    Check(taken > 0 && by == BY_VILLAGERS && !moved, "the fishers' village guard shoots you from 16 m (%.0f damage in 12 s), standing still while it draws", taken);
+    RespawnPeople();
+
+    // The south gate's guards: after you, but you are over the canal, out of their reach.
+    PlaceAt(0, 97, 0);
+    for (int i = 0; i < G.villagerCount; i++) {
+        Villager *v = &G.villagers[i];
+        if (v->kind == NPC_GUARD && v->bow > 0 && v->a.z > 60) {
+            CollectFighters();
+            v->vit.hostile = 45;
+            v->vit.target = 0;
+        }
+    }
+    G.peers[0].wanted = 100;
+    taken = UnderFire(12, NULL, NULL, &by);
+    bool kept = true;
+    for (int i = 0; i < G.villagerCount; i++)
+        if (G.villagers[i].kind == NPC_GUARD && G.villagers[i].vit.override && !InCityLands(G.villagers[i].vit.at.x, G.villagers[i].vit.at.z)) kept = false;
+    Check(taken > 0 && by == BY_GUARD && kept, "over the south canal, the gate guards shoot at you from the city's side (%.0f damage in 12 s)", taken);
+    G.peers[0].wanted = 0;
+    RespawnPeople();
+
+    // A barbarian camp's bowman.
+    int bowman = -1;
+    for (int i = 0; i < MAX_RAIDERS && bowman < 0; i++)
+        if (RaiderBowman(i)) bowman = i;
+    int bowmen = 0;
+    for (int i = 0; i < MAX_RAIDERS; i++) bowmen += RaiderBowman(i);
+    Raider *b = &G.raiders[bowman];
+    Vector3 c = CampCenter(b->camp);
+    PlaceAt(c.x + 22, c.z, 0);
+    taken = UnderFire(10, &b->vit, &moved, &by);
+    Check(bowmen == 2 && taken > 0 && by == BY_BARBARIAN, "%d barbarian bowmen; one shoots you from 22 m (%.0f damage in 10 s)", bowmen, taken);
+    for (int i = 0; i < MAX_RAIDERS; i++) G.raiders[i].vit.hostile = 0;
+    RespawnPeople();
+    for (int i = 0; i < MAX_ARROWS; i++) G.arrows[i].active = false;
+    PlaceAt(11, 24, 0);
+}
+
+
+// The fishers' village across the river: its people, its fisher's trades, and the fine net.
+static void TestFishers(void)
+{
+    G.role = NET_SOLO;
+    G.self = G.actor = 0;
+    Check(VillageAt(G.traders[TR_FISHER].pos) == VIL_FISHERS && G.traders[TR_FISHER].offerCount >= 5 &&
+          XZDist(G.traders[TR_FISHER].pos, G.stations[STN_FERRY_W]) < 60.0f,
+          "the fishers' village stands across the river by the ferry, its fisher with %d offers", G.traders[TR_FISHER].offerCount);
+    int people = 0, wardens = 0;
+    for (int i = 0; i < G.villagerCount; i++) {
+        if (VillageAt(G.villagers[i].a) != VIL_FISHERS) continue;
+        people += G.villagers[i].kind == NPC_VILLAGER;
+        wardens += G.villagers[i].kind == NPC_WARDEN && G.villagers[i].bow > 0;
+    }
+    int allWardens = 0;
+    for (int i = 0; i < G.villagerCount; i++) allWardens += G.villagers[i].kind == NPC_WARDEN && G.villagers[i].bow > 0;
+    Check(people >= 2 && wardens == 1 && allWardens == 3, "%d fisherfolk and a village guard with a bow (one in each of the %d villages)", people, allWardens);
+
+    // A cast of the net: 2 fish, 4 with the fine net.
+    int r = -1;
+    for (int i = 0; i < G.resCount && r < 0; i++)
+        if (G.res[i].kind == RES_FISH && VillageAt(G.res[i].pos) == VIL_FISHERS) r = i;
+    if (r < 0) { Check(false, "no fishing spot by the fishers' village"); return; }
+    for (int i = 0; i < BAG_MAX; i++) G.bag[i] = (Slot){ IT_NONE, 0 };
+    G.food = FOOD_MAX;
+    G.tools &= ~TOOL_NET;
+    PlaceAt(G.res[r].pos.x - 3, G.res[r].pos.z, 0);
+    G.res[r].regrow = 0;
+    Act(RQ_GATHER, &r, 1);
+    int plain = BagCount(IT_FISH);
+    BagAdd(IT_REEDS, 8);
+    BagAdd(IT_COPPER, 2);
+    Barter(TR_FISHER, 0);
+    bool net = (G.tools & TOOL_NET) != 0;
+    G.res[r].regrow = 0;
+    Act(RQ_GATHER, &r, 1);
+    Check(plain == 2 && net && BagCount(IT_FISH) == 2 + 4, "a cast brings 2 fish; with the fisher's fine net (8 reeds, 2 copper ore) 4 (%d in all)", BagCount(IT_FISH));
+    G.tools &= ~TOOL_NET;
+    for (int i = 0; i < BAG_MAX; i++) G.bag[i] = (Slot){ IT_NONE, 0 };
+    PlaceAt(11, 24, 0);
+}
+
+
+static void TestSave(void)
+{
+    SetSaveSlot(2);
+    G.hasMace = true;
+    G.equip = EQ_MACE;
+    int far = G.animalCount - 1;
+    G.animals[far].active = false;
+    G.animals[far].respawn = -1.0f;
+    G.day = 7;
+    Check(SaveGame(), "saved to %s", SaveFileName(2));
+    GameInit();
+    Check(LoadGame(), "loaded it back");
+    Check(G.hasMace && G.equip == EQ_MACE, "the war mace is kept, and in hand");
+    Check(!G.animals[far].active && G.animals[far].respawn < 0, "animal #%d (past the old 64-animal limit) waits for spring", far);
+    Check(G.day == 7, "day %d", G.day);
+}
+
+bool SnapshotRoundTrip(int *size);
+
+// A host with a guest in slot 1. There is no network here: what the host sends the guest goes nowhere.
+static void TestHostWorld(void)
+{
+    G.role = NET_HOST;
+    G.self = G.actor = 0;
+    G.peers[1] = (Peer){ .active = true, .net = 1, .health = HEALTH_MAX, .flags = PF_GROUND };
+    snprintf(G.peers[1].name, NAME_LEN, "Guest");
+    PlaceAt(11, 24, 0);
+
+    // Wolves go for the guest alone out on the plain, not for the host at home.
+    Animal *w = NULL;
+    for (int i = 0; i < G.animalCount && !w; i++)
+        if (G.animals[i].active && G.animals[i].type == AN_WOLF && G.animals[i].pos.x > RIVER_X1 + 20) w = &G.animals[i];
+    if (!w) { Check(false, "no wolf east of the river"); return; }
+    Calm(w);
+    G.peers[1].pos = (Vector3){ w->pos.x + 10, TerrainHeight(w->pos.x + 10, w->pos.z), w->pos.z };
+    G.peers[1].aggro = 0;
+    G.health = HEALTH_MAX;
+    for (int k = 0; k < 50; k++) {
+        CollectBodies();
+        UpdateCombat(0.02f);
+        UpdatePlayerSafety(0.02f);
+        Wild(0.02f);
+    }
+    Check(G.peers[1].alone && !G.peers[0].alone, "the guest is alone outside the walls, the host at home is not");
+    Check(w->state == ST_HUNT && w->target == 1, "the pack hunts the guest (state %d, target %d)", w->state, w->target);
+    Check(G.health == HEALTH_MAX, "the host is left alone");
+    CalmBeasts(1);
+    Check(w->state == ST_FLEE, "a guest brought down: the pack gives up (state %d)", w->state);
+
+    // Snakes and boars watch whichever player is nearest.
+    Animal *sn = First(AN_SNAKE);
+    if (sn) {
+        Calm(sn);
+        sn->lair = sn->pos;
+        G.peers[1].pos = (Vector3){ sn->pos.x + 2.0f, sn->pos.y, sn->pos.z };
+        G.peers[1].flags = PF_GROUND;
+        Wild(0.02f);
+        Check(sn->state == ST_ALERT && sn->target == 1, "a snake rears at the guest beside it (state %d)", sn->state);
+        G.peers[1].pos.x += 30;
+        for (int k = 0; k < 300; k++) Wild(0.02f);
+    }
+
+    // Requests: the host's half refuses what is out of reach or already gone.
+    int r = -1;
+    for (int i = 0; i < G.resCount && r < 0; i++)
+        if (G.res[i].kind == RES_REEDS && G.res[i].regrow <= 0) r = i;
+    int res[REQ_ARGS], nres;
+    G.peers[1].pos = (Vector3){ G.res[r].pos.x + 30, 0, G.res[r].pos.z };
+    Check(!ServeRequest(1, RQ_GATHER, &r, 1, res, &nres), "cutting reeds from 30 m away is refused");
+    G.peers[1].pos = (Vector3){ G.res[r].pos.x + 1, 0, G.res[r].pos.z };
+    Check(ServeRequest(1, RQ_GATHER, &r, 1, res, &nres) && G.res[r].regrow > 0, "next to them the guest may cut the reeds");
+    Check(!ServeRequest(1, RQ_GATHER, &r, 1, res, &nres), "the same reeds cannot be cut twice");
+    int bad = 99999;
+    Check(!ServeRequest(1, RQ_GATHER, &bad, 1, res, &nres) && !ServeRequest(1, RQ_CARCASS, &bad, 1, res, &nres),
+          "nonsense indexes are refused");
+
+    // A carcass goes to whoever asks first, with the arrows in it.
+    Animal *g = First(AN_GAZELLE);
+    int gi = (int)(g - G.animals);
+    g->state = ST_DEAD;
+    g->timer = 100;
+    g->arrowsIn = 2;
+    G.peers[1].pos = g->pos;
+    Check(ServeRequest(1, RQ_CARCASS, &gi, 1, res, &nres) && nres == 2 && res[0] == AN_GAZELLE && res[1] == 2 && !g->active,
+          "the guest takes the gazelle carcass and its 2 arrows");
+    Check(!ServeRequest(0, RQ_CARCASS, &gi, 1, res, &nres), "the host cannot take it a second time");
+
+    // The farm is shared: a plot sown by the guest is no longer free for the host.
+    int plot[2] = { 0, PLOT_SOW };
+    G.plots[0].state = PLOT_EMPTY;
+    G.peers[1].pos = G.plots[0].pos;
+    G.day = 1;
+    G.hour = 8;
+    bool sown = ServeRequest(1, RQ_PLOT, plot, 2, res, &nres);
+    Check(sown && G.plots[0].state == PLOT_WHEAT, "the guest sows plot 1");
+    Check(!PlotServe(0, PLOT_SOW), "the host finds it already sown");
+
+    // Raiders go for the guest who walks into their camp.
+    G.peers[1].pos = CampCenter(0);
+    G.peers[1].pos.x += 6;
+    for (int k = 0; k < 20; k++) {
+        CollectBodies();
+        UpdateCombat(0.05f);
+    }
+    int after = 0;
+    for (int i = 0; i < MAX_RAIDERS; i++) after += G.raiders[i].vit.hostile > 0 && G.raiders[i].vit.target == 1;
+    Check(after >= 2, "%d raiders turn on the guest in their camp", after);
+    CalmFor(1);
+    int still = 0;
+    for (int i = 0; i < MAX_RAIDERS; i++) still += G.raiders[i].vit.hostile > 0;
+    Check(still == 0, "a guest brought down: the raiders let them go (%d still angry)", still);
+
+    // The night passes only once both lie in bed.
+    G.peers[1].pos = G.houses[1].stations[0];
+    G.peers[1].flags = PF_GROUND | PF_BED | PF_SLEEP;
+    G.hour = 21.0f;
+    G.day = 4;
+    PlaceAt(G.stations[STN_BED].x - 1, G.stations[STN_BED].z, 0);
+    G.panel = PANEL_NONE;
+    G.sleeping = false;
+    GameUpdate();
+    Check(G.day == 4 && G.hour > 20.9f, "the guest alone in bed: the night does not pass yet");
+    G.waitBed = true;
+    GameUpdate();
+    Check(G.day == 5 && fabsf(G.hour - 6.0f) < 0.1f && !G.waitBed, "both in bed: dawn of day %d (%.1f h)", G.day, G.hour);
+
+    int size = 0;
+    bool same = SnapshotRoundTrip(&size);
+    Check(same && size > 1000, "a picture of the world reads back byte for byte (%d bytes)", size);
+
+    // The host keeps every player's things in its save.
+    PlayerRecord rec = { 0 };
+    snprintf(rec.name, NAME_LEN, "Guest");
+    rec.slot = 1;
+    rec.pos = G.houses[1].door;
+    rec.bagSlots = BAG_START + 2;
+    rec.quiver = 7;
+    rec.quiverMax = QUIVER_START;
+    rec.food = 55;
+    rec.health = 90;
+    rec.bag[0] = (Slot){ IT_HERB, 3 };
+    KeepRecord(&rec);
+    Check(SaveNetGame(), "the host saves the game");
+    G.recordCount = 0;
+    int day = G.day;
+    GameInit();
+    bool loaded = LoadNetGame();
+    Check(loaded && G.day == day, "loads it back: day %d", G.day);
+    const PlayerRecord *back = FindRecord("guest");
+    Check(back && back->slot == 1 && back->bagSlots == BAG_START + 2 && back->bag[0].item == IT_HERB && back->bag[0].count == 3,
+          "the guest's baskets are kept under their name");
+    remove("sumer-mp.sav");
+    G.role = NET_SOLO;
+}
+
+// The music follows the day, the fight and the night, from facts every player's game holds.
+static int MoodAfter(float seconds)
+{
+    for (float t = 0; t < seconds; t += 0.1f) MusicUpdate(0.1f, true);
+    return MusicMood();
+}
+
+static void MoodIs(float seconds, int want, const char *what)
+{
+    int got = MoodAfter(seconds);
+    Check(got == want, "music: %s (mood %d, wanted %d)", what, got, want);
+}
+
+static void TestMusic(void)
+{
+    static float quiet[32 * 2];
+    G.role = NET_SOLO;
+    G.self = G.actor = 0;
+    RespawnPeople();
+    MusicRender(0, quiet, 32);   // gets the tunes ready without a sound device
+    G.sleeping = G.waitBed = false;
+    G.night = 0;
+    G.health = 100;
+    G.hurtT = 0;
+    G.pvp = G.combat = false;
+    PlaceAt(0, -200, 0);
+    MoodIs(15, 0, "the morning tune in a quiet day");
+
+    G.night = 0.7f;
+    MoodIs(1, 2, "the night tune at night");
+    G.night = 0.45f;
+    MoodIs(1, 2, "dusk does not flip the tune back and forth");
+    G.night = 0.3f;
+    MoodIs(1, 0, "day again once it is light");
+
+    Animal *w = First(AN_WOLF);
+    if (!w) { Check(false, "no wolf to test the music with"); return; }
+    w->pos = (Vector3){ G.player.pos.x + 20, G.player.pos.y, G.player.pos.z };
+    w->state = ST_HUNT;
+    w->target = G.self;
+    MoodIs(0.2, 1, "a wolf pack hunting you brings the fight");
+    w->state = ST_CALM;
+    MoodIs(6, 1, "the fight tune lasts a while after it ends");
+    MoodIs(8, 0, "then the morning tune returns");
+    w->state = ST_HUNT;
+    w->pos.x += 200;
+    MoodIs(0.2, 0, "a wolf 200 m away is no threat");
+    w->state = ST_CALM;
+
+    HurtPlayer(5, BY_GUARD);
+    MoodIs(0.2, 1, "a blow on you brings the fight");
+    G.sleeping = true;
+    MoodIs(0.2, 0, "being brought down ends it");
+    G.sleeping = false;
+    MoodAfter(15);
+
+    int g = VillagerWhere(NPC_GUARD, Anywhere);
+    Vector3 gp = VillagerPos(&G.villagers[g]);
+    PlaceAt(gp.x + 8, gp.z, 0);
+    G.villagers[g].vit.hostile = 5;
+    G.villagers[g].vit.target = G.self;
+    MoodIs(0.2, 1, "a guard after you brings the fight");
+    G.villagers[g].vit.hostile = 0;
+    MoodAfter(15);
+    G.villagers[g].vit.hostile = 5;
+    G.villagers[g].vit.target = 1;
+    MoodIs(0.2, 0, "a guard after someone else is no threat to you");
+    G.villagers[g].vit.hostile = 0;
+
+    PlaceAt(0, -200, 0);
+    G.peers[1].active = true;
+    G.peers[1].flags = 0;
+    G.peers[1].pos = (Vector3){ 30, 0, -200 };
+    G.pvp = true;
+    MoodIs(0.2, 0, "another player 30 m away, no fight, no combat mode");
+    G.peers[1].pos.x = 15;
+    G.peers[1].swingT = 0.3f;
+    MoodIs(0.2, 1, "a player swinging a weapon nearby brings the fight");
+    G.peers[1].swingT = 0;
+    MoodAfter(15);
+    G.combat = true;
+    G.peers[1].pos.x = 50;
+    MoodIs(0.2, 1, "in combat mode another player within 60 m brings the fight");
+    G.peers[1].active = false;
+    G.pvp = G.combat = false;
+    MoodAfter(15);
+
+    // Level choices are remembered between 0 and 3.
+    MusicSetLevel(2);
+    Check(MusicLevel() == 2, "music: volume level is kept (%d)", MusicLevel());
+    MusicSetLevel(7);
+    Check(MusicLevel() == 3, "music: volume level is clamped (%d)", MusicLevel());
+    MusicSetLevel(2);
+}
+
+static void RunTests(void)
+{
+    TestMusic();
+    TestHerds();
+    TestBoar();
+    TestArrows();
+    TestMace();
+    TestSnake();
+    TestHerbs();
+    TestTrade();
+    TestPrompts();
+    TestPeople();
+    TestStreets();
+    TestAim();
+    TestLaw();
+    TestDeathLosses();
+    TestCanals();
+    TestArchers();
+    TestFishers();
+    TestSave();
+    TestHostWorld();
+    TestPvp();
+    printf("%d passed, %d failed\n", passes, fails);
+}

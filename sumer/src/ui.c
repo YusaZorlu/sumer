@@ -334,10 +334,12 @@ static void DrawNetPausePanel(void)
     }
 
     const char *lang = Language() == LANG_TR ? "Dil / Language: Türkçe" : "Language / Dil: English";
-    if (Button((Rectangle){ r.x + r.width / 2 - 150, r.y + 274, 300, 34 }, lang, true, KEY_L)) {
+    if (Button((Rectangle){ bx, r.y + 274, 290, 34 }, lang, true, KEY_L)) {
         SetLanguage(Language() == LANG_TR ? LANG_EN : LANG_TR);
         SaveLanguage();
     }
+    if (Button((Rectangle){ bx + 300, r.y + 274, r.width - 100 - 300, 34 }, TextFormat(L("Music: %s (N)"), L(MusicLevelName())), true, KEY_N))
+        MusicSetLevel((MusicLevel() + 1) % 4);
     CenterText(RulesText(), r.x + r.width / 2, r.y + 314, 15, C_GOLD);
     y = r.y + r.height - 130;
     if (Button((Rectangle){ bx, y, bw, 40 }, "Resume (Esc)", true, 0)) SetPanel(PANEL_NONE);
@@ -374,10 +376,12 @@ static void DrawPausePanel(void)
     }
 
     const char *lang = Language() == LANG_TR ? "Dil / Language: Türkçe" : "Language / Dil: English";
-    if (Button((Rectangle){ r.x + r.width / 2 - 150, r.y + 274, 300, 34 }, lang, true, KEY_L)) {
+    if (Button((Rectangle){ bx, r.y + 274, 290, 34 }, lang, true, KEY_L)) {
         SetLanguage(Language() == LANG_TR ? LANG_EN : LANG_TR);
         SaveLanguage();
     }
+    if (Button((Rectangle){ bx + 300, r.y + 274, r.width - 100 - 300, 34 }, TextFormat(L("Music: %s (N)"), L(MusicLevelName())), true, KEY_N))
+        MusicSetLevel((MusicLevel() + 1) % 4);
 
     float y = r.y + r.height - 130;
     if (Button((Rectangle){ bx, y, bw, 40 }, "Resume (Esc)", true, 0)) SetPanel(PANEL_NONE);
@@ -462,7 +466,7 @@ static void DrawHelpPanel(void)
         { "Right mouse, Q", "parry with the melee weapon" }, { "V", "strike" },
         { "E", "use, talk, pick up, climb, search" }, { "F", "alternate action" },
         { "R", "refill the quiver" }, { "Z", "arrow camera on/off" }, { "Tab", "baskets and equipment" },
-        { "M", "map zoom" }, { "T (hold)", "fast-forward time" }, { "F5", "save" },
+        { "M", "map zoom" }, { "N", "music: off, low, medium, high" }, { "T (hold)", "fast-forward time" }, { "F5", "save" },
         { "F11", "fullscreen" }, { "Esc", "pause, save slots, language" }, { "H", "this window" },
     };
     static const char *const tips[] = {

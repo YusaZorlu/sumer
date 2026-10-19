@@ -441,6 +441,7 @@ void GameUpdate(void)
     float dt = fminf(GetFrameTime(), 0.05f);
     bool online = Online();
 
+    MusicUpdate(dt, true);
     if (!online && G.requestNew) {
         DeleteSave();
         GameInit();
@@ -495,6 +496,11 @@ void GameUpdate(void)
         if (KeyPressed(KEY_THREE)) SetEquip(EQ_MACE);
         if (KeyPressed(KEY_FOUR)) SetEquip(EQ_NONE);
         if (KeyPressed(KEY_M)) G.mapZoom = (G.mapZoom + 1) % 3;
+        if (KeyPressed(KEY_N)) {
+            static const char *const says[4] = { "Music off.", "Music low.", "Music medium.", "Music high." };
+            MusicSetLevel((MusicLevel() + 1) % 4);
+            Say("%s", L(says[MusicLevel()]));
+        }
         if (KeyPressed(KEY_Z)) {
             G.arrowCam = !G.arrowCam;
             Say(G.arrowCam ? "Arrow camera on: the view follows each shot (Z to turn off)." : "Arrow camera off.");

@@ -18,5 +18,6 @@ mkdir -p web
 emcc -std=gnu99 -O2 -Wall -Wextra -o web/index.html src/*.c -Iraylib-web/src raylib-web/src/libraylib.a \
     -DPLATFORM_WEB -sUSE_GLFW=3 -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=1048576 -sFORCE_FILESYSTEM=1 \
     -sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE='$stringToNewUTF8,$UTF8ToString' \
+    -sEXPORTED_RUNTIME_METHODS=HEAPF32 \
     -lidbfs.js -lwebsocket.js --shell-file src/shell.html
 echo "Built web/. Start the server with: python3 server.py"

@@ -2,6 +2,17 @@
 
 // Turkish text for every English string shown in the game, keyed by the English source text.
 const Phrase TR_PHRASES[] = {
+    { "Music: %s (N)", "Müzik: %s (N)" },
+    { "Music: %s", "Müzik: %s" },
+    { "off", "kapalı" },
+    { "low", "düşük" },
+    { "medium", "orta" },
+    { "high", "yüksek" },
+    { "Music off.", "Müzik kapalı." },
+    { "Music low.", "Müzik kısık." },
+    { "Music medium.", "Müzik orta." },
+    { "Music high.", "Müzik yüksek." },
+    { "music: off, low, medium, high", "müzik: kapalı, düşük, orta, yüksek" },
     { "Dilmun merchant", "Dilmun tüccarı" },
     { "Tin and copper by ship from Dilmun and Magan. Pots sell well there.", "Dilmun ve Magan'dan gemiyle kalay ve bakır. Oralarda çömlek iyi satar." },
     { "Elamite trader", "Elamlı tüccar" },

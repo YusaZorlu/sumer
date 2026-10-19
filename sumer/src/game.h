@@ -864,4 +864,16 @@ void LobbyFrame(void);
 void LeaveToLobby(const char *why);
 const char *PlayerName(void);
 
+// The music, made by a small synthesizer: the morning tune, the fight and the night (music.c).
+void MusicInit(void);
+void MusicUpdate(float dt, bool inGame);
+void MusicClose(void);
+int MusicLevel(void);              // 0 off, 1 low, 2 medium, 3 high
+void MusicSetLevel(int level);
+const char *MusicLevelName(void);
+const char *MusicTitle(int mood);
+int MusicMood(void);               // 0 morning, 1 the fight, 2 the night
+void MusicRender(int mood, float *out, int frames);
+float MusicPartBeats(int mood, int part);
+
 #endif
