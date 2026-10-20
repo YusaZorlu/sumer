@@ -34,6 +34,13 @@ static void Loft(const Ring *r, int n, int sides, float a0, float a1, Color (*pa
         float dy = r[hi].y - r[lo].y;
         slope[j] = dy > 1e-4f ? -((r[hi].rx + r[hi].rz) - (r[lo].rx + r[lo].rz)) * 0.5f / dy : 0.0f;
     }
+    float cs[33], sn[33];
+    if (sides > 32) sides = 32;
+    for (int i = 0; i <= sides; i++) {
+        float a = a0 + (a1 - a0) * (float)i / (float)sides;
+        cs[i] = cosf(a);
+        sn[i] = sinf(a);
+    }
     rlCheckRenderBatchLimit((n - 1) * sides * 4);
     VBegin(RL_QUADS);
     for (int j = 0; j + 1 < n; j++)
@@ -41,7 +48,7 @@ static void Loft(const Ring *r, int n, int sides, float a0, float a1, Color (*pa
             for (int k = 0; k < 4; k++) {
                 int jj = j + (k == 1 || k == 2), ii = i + (k >= 2);
                 const Ring *g = &r[jj];
-                float a = a0 + (a1 - a0) * (float)ii / (float)sides, ca = cosf(a), sa = sinf(a);
+                float ca = cs[ii], sa = sn[ii];
                 float f = 1.0f + ((ii & 1) ? g->ruffle : -g->ruffle);
                 Vector3 p = { g->rx * f * ca, g->y, g->rz * f * sa + g->z };
                 Vector3 nrm = Vector3Normalize((Vector3){ ca * g->rz, 0, sa * g->rx });
@@ -61,14 +68,20 @@ static void Tube(Vector3 a, Vector3 b, float ra, float rb, int sides, Color c)
     d = Vector3Scale(d, 1.0f / len);
     Vector3 helper = fabsf(d.y) < 0.9f ? (Vector3){ 0, 1, 0 } : (Vector3){ 1, 0, 0 };
     Vector3 u = Vector3Normalize(Vector3CrossProduct(d, helper)), v = Vector3CrossProduct(u, d);
-    float slope = (ra - rb) / len;
+    float slope = (ra - rb) / len, cs[17], sn[17];
+    if (sides > 16) sides = 16;
+    for (int i = 0; i <= sides; i++) {
+        cs[i] = cosf(2.0f * PI * (float)i / (float)sides);
+        sn[i] = sinf(2.0f * PI * (float)i / (float)sides);
+    }
     rlCheckRenderBatchLimit(sides * 4);
     VBegin(RL_QUADS);
     for (int i = 0; i < sides; i++)
         for (int k = 0; k < 4; k++) {
             bool top = k == 1 || k == 2;
-            float t = 2.0f * PI * (float)(i + (k >= 2)) / (float)sides, r = top ? rb : ra;
-            Vector3 out = Vector3Add(Vector3Scale(u, cosf(t)), Vector3Scale(v, sinf(t)));
+            int ii = i + (k >= 2);
+            float r = top ? rb : ra;
+            Vector3 out = Vector3Add(Vector3Scale(u, cs[ii]), Vector3Scale(v, sn[ii]));
             Vector3 p = Vector3Add(top ? b : a, Vector3Scale(out, r));
             VPaint(c, Vector3Normalize(Vector3Add(out, Vector3Scale(d, slope))));
             VVertex(p.x, p.y, p.z);
