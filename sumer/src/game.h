@@ -270,6 +270,10 @@ typedef enum { NET_SOLO, NET_HOST, NET_CLIENT } NetRole;
 #define SWING_TIME   0.45f
 #define MACE_TIME    0.55f
 #define PVP_WINDUP   0.3f
+#define NPC_WINDUP   0.55f          // a person's blow lands this long after it begins (warning to contact)
+#define NPC_SWING    0.35f          // and its follow-through takes this long
+#define CONTACT_TIME PVP_WINDUP     // a swing's weapon meets its target this long after it starts, whatever it hits
+#define HITSTOP_TIME 0.07f          // a landed blow holds the swing still this long (the mace a little longer)
 #define FLINCH_TIME  0.45f
 enum { PF_CROUCH = 1, PF_RUN = 2, PF_MOVE = 4, PF_GROUND = 8, PF_AIM = 16, PF_SLEEP = 32, PF_CLIMB = 64, PF_PARRY = 128, PF_BED = 256 };
 #define NAME_LEN 16
@@ -287,7 +291,7 @@ typedef struct {
     // The warning mark over this player's head while they swing at someone, then how it came out
     // (MARK_*, the host decides); and how long since this machine saw them hurt (a flinch).
     int mark;
-    float markT, hitT, hitX, hitZ, lastHealth;
+    float markT, hitT, hitX, hitZ, lastHealth, lastSwing;
 } Peer;
 
 // Everything a player owns and where they stand: kept by the host for each name, saved with its game.
@@ -382,6 +386,9 @@ typedef struct {
     int quiver, quiverMax, bow, tools, weapon;
     bool hasMace;
     float swingT, swingCool, hitMarkT, impactT, herbT;
+    float hitStop, shakeT, shakeAmp;   // a landed blow: the swing held still, the view kicked
+    bool strikePending;                // swinging, the weapon has not met anything yet
+    bool meleeing;                     // a swing's contact is being played out (not an arrow)
     // Where the last blow on this player came from, as red lights at the screen's edges (front, back, left,
     // right) that fade, and the flinch of the body: how long it lasts and the way it was pushed.
     float hitLight[4], flinchT, flinchX, flinchZ;
@@ -593,7 +600,12 @@ void StartClimb(int ladder, bool up);
 const char *EquipName(int eq);
 void FollowCamera(float dt);
 void DrawPlayer(void);
-float WeaponAngle(float k);
+float SwingElapsed(float swingT, bool mace);
+float WeaponAngle(float t);
+float MaceYaw(float t);
+float SwingLean(float t, bool mace);
+float BlowAngle(float windup, float swing, float rest);
+float SpearThrust(float windup, float swing);
 void BeginLean(Vector3 at, Vector2 dir, float degrees);
 void EndLean(void);
 Look Flushed(Look look, float k);
@@ -615,11 +627,13 @@ bool AnyBeastAttacking(void);
 void CalmBeasts(int slot);
 void ShootFor(int slot, Vector3 from, Vector3 vel, int damage);
 void LooseFor(Vector3 from, Vector3 to, float speed, int damage, int cause);
-void StrikeFor(Vector3 chest, Vector3 fwd, int equip, int weapon);
+enum { STRIKE_START, STRIKE_CONTACT };
+bool StrikeFor(Vector3 chest, Vector3 fwd, int equip, int weapon, int phase);
+bool StrikeWouldMeet(Vector3 chest, Vector3 fwd, int equip, Vector3 *at);
 void DrawArrow(const Arrow *ar);
 void DrawArrowTrails(const Arrow *arrows);
 int AnimalMaxHp(int type);
-void MeleeStrike(void);
+void MeleeStrike(int phase);
 const char *WeaponName(int tier);
 const char *MaceName(void);
 
@@ -829,14 +843,15 @@ void LocalSayV(const char *fmt, va_list ap);
 void NetSayV(int slot, const char *fmt, va_list ap);
 void NetHurt(int slot, float dmg, int by, const Vector3 *src);
 void NetStunned(int slot, float secs);
-void NetHitMark(int slot);
+void NetHitMark(int slot, bool arrow);
+void NetBlowLanded(int slot, Vector3 at, bool heavy);
 void NetImpact(int slot, Vector3 at);
 void NetParried(int slot);
 void NetSkip(float hours, bool rained, bool dawn);
 bool Asking(int kind, int first);
 void Ask(int kind, const int *args, int n);
 void NetShoot(Vector3 from, Vector3 vel, int damage);
-void NetStrike(Vector3 chest, Vector3 fwd, int equip, int weapon);
+void NetStrike(Vector3 chest, Vector3 fwd, int equip, int weapon, int phase);
 void NetSendRecord(void);
 void NetSaveSoon(void);
 float NetSilence(void);
@@ -913,6 +928,26 @@ const char *MusicTitle(int mood);
 int MusicMood(void);               // 0 morning, 1 the fight, 2 the night
 void MusicRender(int mood, float *out, int frames);
 float MusicPartBeats(int mood, int part);
+
+// How a blow feels (effects.c): the swing held still a moment, the view kicked, sparks and blood, the one
+// struck flashing; and the sounds (sfx.c).
+void BlowLanded(Vector3 at, bool heavy);
+void BlowTurnedAside(Vector3 at);
+void BlowTaken(void);
+Vector3 ChestAhead(void);
+void AddFlash(Vector3 at);
+float FlashAt(Vector3 p);
+void UpdateHitFeel(float dt);
+void SetDrawFlash(float k);
+void DrawSwingTrails(void);
+enum { SFX_SWING, SFX_SWING_HEAVY, SFX_HIT, SFX_HIT_HEAVY, SFX_CLANG, SFX_HURT, SFX_ARROW, SFX_COUNT };
+void SfxPlay(int id, float volume);
+void SfxPlayAt(int id, Vector3 at, float volume, float reach);
+int SfxLevel(void);
+void SfxSetLevel(int level);
+void SfxLoadSetting(void);
+const char *SfxLevelName(void);
+void SfxExport(const char *dir);
 
 // The shader renderer and its setting (gfx.c). While GfxOn() the draw code hands out plain colors
 // (Lit() leaves them as they are), a material and normals, and the shaders do the light. The vertex

@@ -19,7 +19,7 @@ async function bobSwings(ann, bob) {
   // Watch for a while what each of them sees: the marks over Bob and the red lights on Ann. This browser
   // runs about 5 frames a second and the game clamps each frame to 0.05 s, so the blow's moment (0.3 s of
   // game time) takes a second or more here: wait until it has landed or for 9 s.
-  const seen = { warn: false, hit: false, light: [0, 0, 0, 0], bobSawWarn: false };
+  const seen = { warn: false, hit: false, light: [0, 0, 0, 0], bobSawWarn: false, bobFelt: 0 };
   for (const t0 = Date.now(); Date.now() - t0 < 9000;) {
     const a = await info(ann), b = await info(bob);
     const m = a && a.peers && a.peers.find(p => p.name === 'Bob');
@@ -27,6 +27,7 @@ async function bobSwings(ann, bob) {
     if (m && m.mark === 3) seen.hit = true;
     const mb = b && b.peers && b.peers.find(p => p.name === 'Bob');
     if (mb && mb.mark === 1) seen.bobSawWarn = true;
+    if (b && b.shake > seen.bobFelt) seen.bobFelt = b.shake;
     if (a && a.hitLight) seen.light = seen.light.map((v, i) => Math.max(v, a.hitLight[i]));
     if (Date.now() - t0 > 2500 && (seen.hit || (a && a.health < before.health))) break;
     await sleep(60);
@@ -63,6 +64,7 @@ async function game(rules, name) {
   check(r.seen.warn && r.seen.hit, `Ann sees yellow over Bob while he swings, then red when it lands (warn ${r.seen.warn}, hit ${r.seen.hit})`);
   check(r.seen.light[1] > 0.5 && r.seen.light[0] < 0.2, `Bob struck her from behind: the bottom light, not the top (${r.seen.light.join(' ')})`);
   check(r.after.health < r.before.health && /Bob attacks you/.test(r.after.msg), `Bob's blow hurts Ann (${r.before.health} -> ${r.after.health}): "${r.after.msg}"`);
+  check(r.seen.bobFelt > 0, `Bob feels his blow land on Ann over the network: his view kicks (${r.seen.bobFelt.toFixed(2)})`);
   const bobAtAnn = r.after.peers.find(p => p.name === 'Bob');
   check(bobAtAnn && bobAtAnn.wanted > 0, `Bob started a fight in the city: the guards want him (${bobAtAnn ? bobAtAnn.wanted : '?'} s)`);
   // Ann hits back: no crime.

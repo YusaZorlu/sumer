@@ -385,6 +385,54 @@ int main(int argc, char **argv)
             for (float x = x0; x <= x1; x += st) printf("%6.1f", TerrainHeight(x, z));
             printf("\n");
         }
+    } else if (strcmp(argv[1], "spot") == 0 && argc > 3) {
+        // Is (x, z) a place someone could stand? spot x z
+        float x = (float)atof(argv[2]), z = (float)atof(argv[3]);
+        printf("%.1f %.1f: ground %.2f solid %d water %d inside %d keepout %d\n", x, z, TerrainHeight(x, z), SolidAt(x, z, 0.3f), InWater(x, z), InsideWalls(x, z, 0.0f), InKeepOut(x, z, 0.0f));
+    } else if (strcmp(argv[1], "swingshot") == 0 && argc > 4) {
+        // A swing seen from the side, t seconds in, with a townsman to strike: swingshot <out.png> <t> <mace 0/1>
+        float t = (float)atof(argv[3]);
+        bool mace = atoi(argv[4]) != 0;
+        G.hasMace = true;
+        G.equip = mace ? EQ_MACE : EQ_MELEE;
+        G.player.pos = (Vector3){ 38, GroundHeight(38, 20, 50.0f), 20 };
+        G.player.yaw = 0;
+        G.player.dist = 4.0f;
+        G.camDist = 4.0f;
+        G.hour = 10;
+        for (int f = 0; f < 3; f++) {
+            GameUpdate();
+            BeginDrawing();
+            GameDraw();
+            EndDrawing();
+        }
+        G.player.facing = PI;
+        G.swingT = (mace ? MACE_TIME : SWING_TIME) - t;
+        G.strikePending = false;
+        Vector3 at = G.player.pos;
+        G.cam.position = (Vector3){ at.x + 3.2f, at.y + 1.7f, at.z - 0.8f };
+        G.cam.target = (Vector3){ at.x, at.y + 1.3f, at.z - 0.8f };
+        BeginDrawing();
+        GameDraw();
+        rlDrawRenderBatchActive();
+        Image im = LoadImageFromScreen();
+        ExportImage(im, argv[2]);
+        UnloadImage(im);
+        EndDrawing();
+    } else if (strcmp(argv[1], "sfx") == 0 && argc > 2) {
+        // Every sound effect as a .wav file: sfx <dir>
+        SfxExport(argv[2]);
+    } else if (strcmp(argv[1], "guards") == 0) {
+        // Every guard's post (a) and patrol end (b), then the same after a PvP game takes the ziggurat's away.
+        for (int pass = 0; pass < 2; pass++) {
+            if (pass) RemoveZigguratGuards();
+            printf("%s: %d people\n", pass ? "PvP" : "solo", G.villagerCount);
+            for (int i = 0; i < G.villagerCount; i++) {
+                const Villager *v = &G.villagers[i];
+                if (v->kind == NPC_GUARD)
+                    printf("  guard %2d  a %6.1f %5.1f %6.1f  b %6.1f %5.1f %6.1f%s\n", i, v->a.x, v->a.y, v->a.z, v->b.x, v->b.y, v->b.z, v->templePost ? "  temple post" : "");
+            }
+        }
     } else if (strcmp(argv[1], "wetways") == 0) {
         WetWays();
     } else if (strcmp(argv[1], "textmap") == 0 && argc > 6) {

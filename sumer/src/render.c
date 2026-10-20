@@ -52,9 +52,16 @@ static Color Shade(Color c, float f, bool lit)
     return (Color){ (unsigned char)(c.r * f), (unsigned char)(c.g * f), (unsigned char)(c.b * f), c.a };
 }
 
+static float flash;   // something just struck goes pale for a moment (FlashAt)
+
+void SetDrawFlash(float k)
+{
+    flash = Clamp(k, 0.0f, 1.0f);
+}
+
 static void SetColor(Color c)
 {
-    VColor(c);
+    VColor(flash > 0 ? Mix(c, (Color){ 255, 244, 232, c.a }, flash * 0.75f) : c);
 }
 
 // Fixed per-face shading stands in for real lighting; the shaders use the face normals instead.
@@ -417,11 +424,14 @@ static bool NearCamera(Vector3 p)
 
 void DrawHuman(Vector3 pos, float facing, float stride, Look look, bool crouch, bool bow, float draw)
 {
+    float was = flash;
+    flash = fmaxf(flash, FlashAt(pos));
     rlPushMatrix();
     rlTranslatef(pos.x, pos.y, pos.z);
     rlRotatef(facing * RAD2DEG, 0, 1, 0);
     HumanModel(stride, look, crouch, bow, draw, NearCamera(pos));
     rlPopMatrix();
+    flash = was;
 }
 
 void DrawPersonBody(Vector3 pos, float facing, Look look)

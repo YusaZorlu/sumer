@@ -271,9 +271,7 @@ void DrawRaiders(void)
             DrawHuman(p, f, stride, look, sitting, false, 0);
         }
 
-        float k = Clamp(r->vit.swing / 0.35f, 0.0f, 1.0f);
-        float angle = r->vit.swing > 0 ? -80.0f + 120.0f * (1.0f - k) : (r->vit.override ? -40.0f : 30.0f);
-        if (r->vit.windup > 0) angle = -40.0f - 80.0f * (1.0f - r->vit.windup / 0.55f);
+        float angle = BlowAngle(r->vit.windup, r->vit.swing, r->vit.override ? -40.0f : 30.0f);
         rlPushMatrix();
         rlTranslatef(p.x, p.y + (sitting ? 1.04f : 1.42f), p.z);
         rlRotatef(f * RAD2DEG, 0, 1, 0);

@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define NET_VERSION   5
+#define NET_VERSION   6
 #define SNAP_EVERY    0.1f
 #define STATE_EVERY   0.066f
 #define RECORD_EVERY  15.0f
@@ -21,7 +21,7 @@
 #define MAX_ARGS      REQ_ARGS
 
 enum { M_HELLO = 1, M_WELCOME, M_ROSTER, M_SNAP, M_STATE, M_REQ, M_REPLY, M_EVENT, M_RECORD, M_KICK };
-enum { EV_HURT = 1, EV_SAY, EV_HIT, EV_IMPACT, EV_SKIP, EV_PARRIED, EV_STUNNED };
+enum { EV_HURT = 1, EV_SAY, EV_HIT, EV_IMPACT, EV_SKIP, EV_PARRIED, EV_STUNNED, EV_LANDED };
 
 typedef struct { int id, kind, args[MAX_ARGS], nargs; float age; } Pending;
 typedef struct { Vector3 pos; Color color; int count; float speed; bool ring; } Effect;
@@ -786,10 +786,23 @@ void NetStunned(int slot, float secs)
     SendGuest(slot, &w);
 }
 
-void NetHitMark(int slot)
+// The guest's blow or arrow struck home; 'arrow' when it was an arrow (it cracks as it strikes; a
+// swing's thud the guest's own game plays at contact).
+void NetHitMark(int slot, bool arrow)
 {
     Writer w = Begin(M_EVENT);
     W8(&w, EV_HIT);
+    W8(&w, arrow ? 1u : 0u);
+    SendGuest(slot, &w);
+}
+
+// The guest's swing at another player landed on them at 'at': the guest feels it as it lands.
+void NetBlowLanded(int slot, Vector3 at, bool heavy)
+{
+    Writer w = Begin(M_EVENT);
+    W8(&w, EV_LANDED);
+    WF(&w, at.x); WF(&w, at.y); WF(&w, at.z);
+    W8(&w, heavy ? 1u : 0u);
     SendGuest(slot, &w);
 }
 
@@ -856,7 +869,7 @@ void NetShoot(Vector3 from, Vector3 vel, int damage)
     SendHost(&w);
 }
 
-void NetStrike(Vector3 chest, Vector3 fwd, int equip, int weapon)
+void NetStrike(Vector3 chest, Vector3 fwd, int equip, int weapon, int phase)
 {
     Writer w = Begin(M_REQ);
     W16(&w, 0);
@@ -865,6 +878,7 @@ void NetStrike(Vector3 chest, Vector3 fwd, int equip, int weapon)
     WF(&w, fwd.x); WF(&w, fwd.z);
     W8(&w, (unsigned)equip);
     W8(&w, (unsigned)weapon);
+    W8(&w, (unsigned)phase);
     SendHost(&w);
 }
 
@@ -890,9 +904,10 @@ static void HostRequest(int slot, Reader *r)
         Vector3 chest = RVec(r), fwd = { 0, 0, 0 };
         fwd.x = RF(r);
         fwd.z = RF(r);
-        int equip = (int)R8(r), weapon = (int)R8(r);
+        int equip = (int)R8(r), weapon = (int)R8(r), phase = (int)R8(r);
         fwd = Vector3Normalize(fwd);
-        if (!r->bad && Vector3Distance(chest, G.peers[slot].pos) < 5.0f) StrikeFor(chest, fwd, equip, weapon);
+        if (!r->bad && Vector3Distance(chest, G.peers[slot].pos) < 5.0f && (phase == STRIKE_START || phase == STRIKE_CONTACT))
+            StrikeFor(chest, fwd, equip, weapon, phase);
     } else {
         int args[MAX_ARGS], res[MAX_ARGS], n = (int)R8(r), nres = 0;
         if (n > MAX_ARGS) n = MAX_ARGS;
@@ -1377,11 +1392,23 @@ static void ClientEvent(Reader *r)
     }
     case EV_STUNNED: {
         float secs = RF(r);
-        if (!r->bad && secs >= 0 && secs < 5.0f) G.swingCool += secs;
+        if (!r->bad && secs >= 0 && secs < 5.0f) {
+            G.swingCool += secs;
+            BlowTurnedAside(ChestAhead());
+        }
+        break;
+    }
+    case EV_LANDED: {
+        Vector3 at = RVec(r);
+        bool heavy = R8(r) != 0;
+        if (!r->bad) BlowLanded(at, heavy);
         break;
     }
     case EV_SAY: ShowSay(r); break;
-    case EV_HIT: G.hitMarkT = 0.3f; break;
+    case EV_HIT:
+        G.hitMarkT = 0.3f;
+        if (R8(r) == 1) SfxPlay(SFX_ARROW, 0.8f);
+        break;
     case EV_IMPACT: {
         Vector3 at = RVec(r);
         if (!r->bad) {
@@ -1393,6 +1420,7 @@ static void ClientEvent(Reader *r)
     case EV_PARRIED:
         G.parryT = 0;
         G.parryCool = 0;
+        BlowTurnedAside(ChestAhead());
         break;
     case EV_SKIP: {
         float hours = RF(r);

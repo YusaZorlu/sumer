@@ -269,13 +269,10 @@ static void DrawSpear(Vector3 g, float f, float swing, float windup)
     rlPushMatrix();
     rlTranslatef(g.x, g.y, g.z);
     rlRotatef(f * RAD2DEG, 0, 1, 0);
-    if (swing > 0) {
-        float k = swing / 0.35f;
-        Part(0.3f, 1.35f, 0.9f - 0.5f * k, 0.05f, 0.05f, 2.4f, COL_WOOD);
-        Part(0.3f, 1.35f, 2.2f - 0.5f * k, 0.08f, 0.08f, 0.26f, COL_BRONZE);
-    } else if (windup > 0) {
-        Part(0.3f, 1.45f, 0.35f, 0.05f, 0.05f, 2.4f, COL_WOOD);
-        Part(0.3f, 1.45f, 1.65f, 0.08f, 0.08f, 0.26f, COL_BRONZE);
+    if (swing > 0 || windup > 0) {
+        float z = SpearThrust(windup, swing), y = windup > 0.1f ? 1.45f : 1.35f;
+        Part(0.3f, y, z, 0.05f, 0.05f, 2.4f, COL_WOOD);
+        Part(0.3f, y, z + 1.3f, 0.08f, 0.08f, 0.26f, COL_BRONZE);
     } else {
         Part(0.36f, 1.2f, 0.12f, 0.05f, 2.4f, 0.05f, COL_WOOD);
         Part(0.36f, 2.5f, 0.12f, 0.08f, 0.26f, 0.08f, COL_BRONZE);

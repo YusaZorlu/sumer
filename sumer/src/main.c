@@ -27,6 +27,7 @@ static void Frame(void)
         ready = true;
         LoadLanguage();
         GfxLoadSetting();
+        SfxLoadSetting();
         MusicInit();
         OpenLobby("");
     }
@@ -87,6 +88,7 @@ int main(void)
 
     LoadLanguage();
     GfxLoadSetting();
+    SfxLoadSetting();
     MusicInit();
     SetSaveSlot(LastSlot());
     GameInit();

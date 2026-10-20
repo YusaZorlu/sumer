@@ -58,6 +58,7 @@ void SetEquip(int eq)
     G.player.aiming = false;
     G.player.draw = 0;
     G.swingT = 0;
+    G.strikePending = false;
     if (eq == EQ_NONE) Say("You put your weapons away.");
     else Say("%s in hand.", EquipName(eq));
 }
@@ -197,7 +198,8 @@ void UpdatePlayer(float dt, bool input)
         return;
     }
     HandleBow(p, dt, input);
-    if (G.swingT > 0) G.swingT -= dt;
+    // A landed blow holds the weapon where it struck for a moment (G.hitStop).
+    if (G.swingT > 0 && G.hitStop <= 0) G.swingT -= dt;
     if (G.swingCool > 0) G.swingCool -= dt;
     if (G.parryT > 0) G.parryT -= dt;
     if (G.parryCool > 0) G.parryCool -= dt;
@@ -214,7 +216,13 @@ void UpdatePlayer(float dt, bool input)
     if (input && armed && G.swingCool <= 0 && G.parryT <= 0 && (strike || KeyPressed(KEY_V))) {
         G.swingT = mace ? MACE_TIME : SWING_TIME;
         G.swingCool = (mace ? MACE_COOL : SWING_COOL) / Boost();
-        MeleeStrike();
+        G.strikePending = true;
+        MeleeStrike(STRIKE_START);
+    }
+    // The blow lands when the weapon comes down on its target, not when the button is pressed.
+    if (G.strikePending && (!armed || G.swingT <= 0 || SwingElapsed(G.swingT, mace) >= CONTACT_TIME)) {
+        G.strikePending = false;
+        if (armed) MeleeStrike(STRIKE_CONTACT);
     }
 
     Vector3 move = { 0 };
@@ -347,6 +355,13 @@ static void PlaceCamera(float dt)
 void FollowCamera(float dt)
 {
     PlaceCamera(dt);
+    // A landed blow kicks the view, more sharply for the mace.
+    if (G.shakeT > 0) {
+        float k = G.shakeT * G.shakeAmp / 0.2f, t = (float)GetTime();
+        Vector3 kick = { sinf(t * 71.0f) * k, sinf(t * 89.0f + 1.0f) * k * 0.7f, sinf(t * 79.0f + 2.0f) * k };
+        G.cam.position = Vector3Add(G.cam.position, kick);
+        G.cam.target = Vector3Add(G.cam.target, Vector3Scale(kick, 0.5f));
+    }
     if (G.flinchT > 0) {
         float k = G.flinchT / FLINCH_TIME, t = (float)GetTime();
         Vector3 jolt = { sinf(t * 47.0f) * 0.09f * k, sinf(t * 61.0f + 1.0f) * 0.07f * k, sinf(t * 53.0f + 2.0f) * 0.09f * k };
@@ -360,19 +375,81 @@ static void WPart(float x, float y, float z, float w, float h, float d, Color c)
     DrawShadedBox((Vector3){ x, y, z }, (Vector3){ w, h, d }, c);
 }
 
-// Raised for the first part of a swing (as long as a blow on another player takes to land), then struck
-// down. k counts the swing down from 1 to 0; 0 is at rest.
-float WeaponAngle(float k)
+// Seconds since a swing began, from what is left of it; -1 when not swinging.
+float SwingElapsed(float swingT, bool mace)
 {
-    const float strike = 1.0f - PVP_WINDUP / SWING_TIME;   // where in the swing the weapon starts down
-    if (k <= 0.0f) return 25.0f;
-    return k > strike ? -80.0f : -80.0f + 140.0f * (1.0f - k / strike);
+    return swingT > 0 ? (mace ? MACE_TIME : SWING_TIME) - swingT : -1.0f;
+}
+
+static float EaseOut(float u)
+{
+    return 1.0f - (1.0f - u) * (1.0f - u);
+}
+
+// The sword or club over a swing, by the time since it began (t < 0: at rest): raised quickly, cocked
+// a moment, then struck down fast to meet the target at CONTACT_TIME, and followed through.
+float WeaponAngle(float t)
+{
+    const float rest = 25.0f, top = -100.0f, cocked = -108.0f, hit = 20.0f;
+    if (t < 0.0f || t >= SWING_TIME) return rest;
+    if (t < 0.12f) return Lerp(rest, top, EaseOut(t / 0.12f));
+    if (t < 0.22f) return Lerp(top, cocked, (t - 0.12f) / 0.10f);
+    if (t < CONTACT_TIME) {
+        float u = (t - 0.22f) / (CONTACT_TIME - 0.22f);
+        return Lerp(cocked, hit, u * u);
+    }
+    float u = (t - CONTACT_TIME) / (SWING_TIME - CONTACT_TIME);
+    return u < 0.35f ? Lerp(hit, 45.0f, u / 0.35f) : Lerp(45.0f, rest, (u - 0.35f) / 0.65f);
+}
+
+// The war mace's sweep, turned about the body (degrees, left is negative): drawn back to the right,
+// then swept hard across the front, crossing straight ahead at CONTACT_TIME, and carried through.
+float MaceYaw(float t)
+{
+    if (t < 0.18f) return Lerp(50.0f, 95.0f, EaseOut(Clamp(t / 0.18f, 0.0f, 1.0f)));
+    if (t < 0.38f) return 95.0f - 165.0f * powf((t - 0.18f) / 0.20f, 1.2f);
+    return Lerp(-70.0f, -82.0f, Clamp((t - 0.38f) / (MACE_TIME - 0.38f), 0.0f, 1.0f));
+}
+
+// A person's blow, from its windup (counting down to the moment it lands) and then its swing (counting
+// down the follow-through): raised through the windup, struck down in its last moment so the weapon
+// meets the target as the blow lands, and carried through back to 'rest'.
+float BlowAngle(float windup, float swing, float rest)
+{
+    const float down = 0.12f, top = -120.0f, hit = 25.0f;
+    if (windup > down) return Lerp(rest, top, EaseOut(Clamp((NPC_WINDUP - windup) / (NPC_WINDUP - down - 0.1f), 0.0f, 1.0f)));
+    if (windup > 0.0f) {
+        float u = 1.0f - windup / down;
+        return Lerp(top, hit, u * u);
+    }
+    if (swing > 0.0f) {
+        float k = Clamp(swing / NPC_SWING, 0.0f, 1.0f);
+        return Lerp(rest, hit + 15.0f * k, k);
+    }
+    return rest;
+}
+
+// A spear's reach forward (where its shaft's middle is): drawn back through the windup, thrust out in
+// its last moment to strike as the blow lands, then drawn back in.
+float SpearThrust(float windup, float swing)
+{
+    const float back = 0.35f, out = 1.0f, thrust = 0.1f;
+    if (windup > thrust) return back;
+    if (windup > 0.0f) return Lerp(back, out, 1.0f - windup / thrust);
+    return Lerp(0.4f, out, Clamp(swing / NPC_SWING, 0.0f, 1.0f));
+}
+
+// How far the body leans into a swing (negative: drawn back while the weapon is raised).
+float SwingLean(float t, bool mace)
+{
+    if (t < 0.0f) return 0.0f;
+    float d = (t - CONTACT_TIME) / (mace ? 0.12f : 0.09f);
+    return expf(-d * d) - (t < CONTACT_TIME ? 0.35f * Clamp(t / 0.15f, 0.0f, 1.0f) : 0.0f);
 }
 
 static void DrawWeapon(const Player *p)
 {
-    float k = Clamp(G.swingT / SWING_TIME, 0.0f, 1.0f);
-    float angle = WeaponAngle(G.swingT > 0 ? k : 0.0f);
+    float angle = WeaponAngle(SwingElapsed(G.swingT, false));
     bool guard = G.parryT > 0;
     float shoulder = p->crouching ? 1.04f : 1.42f;
 
@@ -408,7 +485,6 @@ static void DrawWeapon(const Player *p)
 // Rests on the shoulder; a strike sweeps it flat across the front from one side to the other.
 static void DrawMace(const Player *p)
 {
-    float k = Clamp(G.swingT / MACE_TIME, 0.0f, 1.0f);
     float shoulder = p->crouching ? 1.04f : 1.42f;
 
     rlPushMatrix();
@@ -420,7 +496,7 @@ static void DrawMace(const Player *p)
         rlRotatef(-25.0f, 1, 0, 0);
     } else if (G.swingT > 0) {
         rlTranslatef(0, -0.15f, 0.15f);
-        rlRotatef(Lerp(-80.0f, 80.0f, k), 0, 1, 0);
+        rlRotatef(MaceYaw(SwingElapsed(G.swingT, true)), 0, 1, 0);
         rlRotatef(-6.0f, 1, 0, 0);
     } else {
         rlTranslatef(0.32f, 0, 0.1f);
@@ -486,10 +562,7 @@ void DrawPlayer(void)
     }
     // Struck, the body flinches away from the blow and flushes red; swinging, it leans into the stroke.
     float hit = Clamp(G.flinchT / FLINCH_TIME, 0.0f, 1.0f), swing = 0;
-    if (G.swingT > 0 && (G.equip == EQ_MELEE || G.equip == EQ_MACE)) {
-        float k = Clamp(G.swingT / (G.equip == EQ_MACE ? MACE_TIME : SWING_TIME), 0.0f, 1.0f);
-        swing = G.equip == EQ_MACE ? sinf(PI * (1.0f - k)) : Clamp((0.45f - k) / 0.45f, 0.0f, 1.0f);
-    }
+    if (G.equip == EQ_MELEE || G.equip == EQ_MACE) swing = SwingLean(SwingElapsed(G.swingT, G.equip == EQ_MACE), G.equip == EQ_MACE);
     Vector2 ahead = { sinf(p->facing), cosf(p->facing) };
     Vector2 lean = { G.flinchX * 24.0f * hit + ahead.x * 12.0f * swing, G.flinchZ * 24.0f * hit + ahead.y * 12.0f * swing };
     float degrees = Vector2Length(lean);

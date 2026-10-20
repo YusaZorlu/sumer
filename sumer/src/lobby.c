@@ -253,6 +253,8 @@ void LobbyFrame(void)
         MusicSetLevel((MusicLevel() + 1) % 4);
     if (Choice((Rectangle){ panel.x + 14, panel.y + 44, 214, 26 }, TextFormat(L("Graphics: %s"), GfxLabel()), menu))
         GfxSetChoice(GfxChoice() + 1);
+    if (Choice((Rectangle){ panel.x + 14, panel.y + 76, 214, 26 }, TextFormat(L("Sounds: %s"), L(SfxLevelName())), menu))
+        SfxSetLevel((SfxLevel() + 1) % 4);
     const char *lang = Language() == LANG_TR ? "Dil / Language: Türkçe" : "Language / Dil: English";
     if (Choice((Rectangle){ panel.x + panel.width - 214, panel.y + 12, 200, 26 }, lang, menu)) {
         SetLanguage(Language() == LANG_TR ? LANG_EN : LANG_TR);

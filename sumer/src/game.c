@@ -313,6 +313,7 @@ void HurtPlayerFrom(float dmg, int by, const Vector3 *src)
     G.health -= dmg * (1.0f - ArmorReduction(UseArmor()));
     G.hurtT = 0.45f;
     NoteHit(dmg, src);
+    BlowTaken();
     G.safeT = 0;
     G.hurtBy = by;
     if (G.panel == PANEL_BAG || G.panel == PANEL_STORAGE || G.panel == PANEL_TRADE) SetPanel(PANEL_NONE);
@@ -490,6 +491,7 @@ static void UpdateWorld(float dt)
     }
     UpdateArrows(dt);
     UpdateEffects(dt);
+    UpdateHitFeel(dt);
 }
 
 void GameUpdate(void)

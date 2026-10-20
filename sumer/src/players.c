@@ -123,8 +123,13 @@ void HurtSlotFrom(int s, float dmg, int by, const Vector3 *src)
 // The acting player's blow or arrow landed.
 void HitMark(void)
 {
-    if (G.actor == G.self) G.hitMarkT = 0.3f;
-    else NetHitMark(G.actor);
+    bool arrow = !G.meleeing;
+    if (G.actor != G.self) {
+        NetHitMark(G.actor, arrow);
+        return;
+    }
+    G.hitMarkT = 0.3f;
+    if (arrow) SfxPlay(SFX_ARROW, 0.8f);
 }
 
 void ShowImpact(Vector3 at)
@@ -193,6 +198,10 @@ void UpdatePeers(float dt)
             p->hitZ = -cosf(p->shownFacing);
         }
         p->lastHealth = p->health;
+        // A new swing nearby: you hear it whoosh.
+        if (p->swingT > p->lastSwing + 0.05f && (p->equip == EQ_MELEE || p->equip == EQ_MACE))
+            SfxPlayAt(p->equip == EQ_MACE ? SFX_SWING_HEAVY : SFX_SWING, p->shown, 0.7f, 25.0f);
+        p->lastSwing = p->swingT;
         if (p->hitT > 0) p->hitT -= dt;
         float k = fminf(1.0f, dt * 12.0f);
         if (Vector3Distance(p->shown, p->pos) > 6.0f) p->shown = p->pos;
@@ -231,7 +240,7 @@ static void PeerWeapon(const Peer *p, Vector3 at)
 {
     float shoulder = (p->flags & PF_CROUCH) ? 1.04f : 1.42f;
     bool mace = p->equip == EQ_MACE, guard = (p->flags & PF_PARRY) && !mace;
-    float k = Clamp(p->swingT / (mace ? MACE_TIME : SWING_TIME), 0.0f, 1.0f);
+    float t = SwingElapsed(p->swingT, mace);
     rlPushMatrix();
     rlTranslatef(at.x, at.y + shoulder, at.z);
     rlRotatef(p->shownFacing * RAD2DEG, 0, 1, 0);
@@ -241,11 +250,11 @@ static void PeerWeapon(const Peer *p, Vector3 at)
         rlRotatef(-25.0f, 1, 0, 0);
     } else if (mace && p->swingT > 0) {
         rlTranslatef(0, -0.15f, 0.15f);
-        rlRotatef(Lerp(-80.0f, 80.0f, k), 0, 1, 0);
+        rlRotatef(MaceYaw(t), 0, 1, 0);
         rlRotatef(-6.0f, 1, 0, 0);
     } else {
         rlTranslatef(0.32f, 0, 0.1f);
-        rlRotatef(mace ? -35.0f : WeaponAngle(p->swingT > 0 ? k : 0.0f), 1, 0, 0);
+        rlRotatef(mace ? -35.0f : WeaponAngle(t), 1, 0, 0);
     }
     if (mace) {
         DrawShadedBox((Vector3){ 0, 0, 0.45f }, (Vector3){ 0.06f, 0.06f, 0.95f }, COL_WOOD);
@@ -289,10 +298,7 @@ void DrawPeers(void)
         bool aim = (p->flags & PF_AIM) != 0;
         // Hit, they flinch back and flush red; swinging, they lean into the stroke.
         float hit = Clamp(p->hitT / FLINCH_TIME, 0.0f, 1.0f), swing = 0;
-        if (p->swingT > 0 && (p->equip == EQ_MELEE || p->equip == EQ_MACE)) {
-            float k = Clamp(p->swingT / (p->equip == EQ_MACE ? MACE_TIME : SWING_TIME), 0.0f, 1.0f);
-            swing = p->equip == EQ_MACE ? sinf(PI * (1.0f - k)) : Clamp((0.45f - k) / 0.45f, 0.0f, 1.0f);
-        }
+        if (p->equip == EQ_MELEE || p->equip == EQ_MACE) swing = SwingLean(SwingElapsed(p->swingT, p->equip == EQ_MACE), p->equip == EQ_MACE);
         Vector2 ahead = { sinf(p->shownFacing), cosf(p->shownFacing) };
         Vector2 lean = { p->hitX * 24.0f * hit + ahead.x * 12.0f * swing, p->hitZ * 24.0f * hit + ahead.y * 12.0f * swing };
         float degrees = Vector2Length(lean);

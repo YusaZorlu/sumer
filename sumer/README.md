@@ -146,7 +146,7 @@ touch controls yet: play with a keyboard (a USB-C or Bluetooth one works; WASD t
 | N | Music volume: off, low, medium, high (also a button in the Esc menu and on the title screen) |
 | G | Graphics: auto, high, low, classic (also a button in the Esc menu and on the title screen) |
 | H | Controls and tips window |
-| Esc | Pause / close a panel (pause menu: save slots, language, save, new game, save & quit) |
+| Esc | Pause / close a panel (pause menu: save slots, language, music, graphics, sounds, save, new game, save & quit) |
 
 Panels also take number keys (barter offer N, with 0, - and = for offers 10-12; use basket N; coop actions
 1-4), so nothing depends on a click landing. The game pauses when the window loses focus (a screenshot tool, switching apps);
@@ -155,7 +155,7 @@ Resume or Esc takes the mouse back.
 ## Language
 
 English and Turkish. In the pause menu (Esc), the "Language / Dil" button (or L) switches between them;
-the choice is kept in `sumer.lang` next to the saves (the music volume is in `sumer.music`, the graphics setting in `sumer.gfx`). Türkçe için Esc menüsündeki "Language / Dil"
+the choice is kept in `sumer.lang` next to the saves (the music volume is in `sumer.music`, the graphics setting in `sumer.gfx`, the sounds' volume in `sumer.sfx`). Türkçe için Esc menüsündeki "Language / Dil"
 düğmesine (ya da L'ye) bas.
 
 ## Music
@@ -258,8 +258,10 @@ fields outside. Gates: south (main road), east, west, north, plus the harbor wat
   pond with fish. Gazelles, onagers, boars and two wolf packs live there, and two barbarian war camps,
   north-west and south-west
 - Ladders lead up to the wall walk at seven points around the city
-- Guards at the temple gate, the south city gate and on patrol in the east and west quarters; clerics in
-  the temple courtyard and on the ziggurat
+- Guards: two at the temple gate and two inside each of the city's five gates (south, north, east, west and
+  on the quays of the harbor's water gate), more on patrol in the east and west quarters and about the
+  temple; clerics in the temple courtyard and on the ziggurat. A PvP game only takes away the three on the
+  ziggurat's first terrace; every gate keeps its guards
 - Torches line the streets, gates and temple at night; guards and caravans carry torches
 - At night distant things fade into the dark; torchlit places stay visible
 - Townsfolk walk all over the city: along the streets from crossing to crossing, keeping to the right,
@@ -363,6 +365,17 @@ seed, so it is never stored.
   is no shield yet. Other players give the same warning, over their head, with less time to react
   (see Playing together).
 - Only what is in your hand is drawn and used: 1 bow, 2 melee weapon, 3 war mace, 4 hands free.
+- A swing lands when the weapon comes down on its target, 0.3 seconds after you press: you raise it,
+  bring it down hard, and the blow meets whatever is in front of you at that moment (the war mace
+  sweeps across and meets everything in front as it passes straight ahead). People's own swings and
+  spear thrusts come down, or out, the moment their blow lands on you.
+- A blow that lands is felt: your swing holds still for a split second where it struck, the view
+  kicks (harder with the war mace), blood and dust fly, whoever was struck flashes pale and is driven
+  back a step, and you hear it thud. A swing leaves a pale streak through the air; a blow turned aside
+  rings like bronze on bronze and throws sparks; one you take thumps. Arrows crack as they strike.
+- Sounds are made by the game itself, like the music (no sound files). "Sounds" in the Esc menu and on
+  the title screen sets their volume (off, low, medium, high) apart from the music's; it is kept in
+  `sumer.sfx`.
 
 ## People, crime and raiders
 
@@ -398,7 +411,7 @@ copper mace and leather armor you lose unless you parry well; with the bronze si
 armor you win, narrowly unless you parry. Chewing herbs mid-fight helps. Killing them is no crime. Guards (and caravan guards) attack any raider that has left its
 camp, so leading raiders back to the city brings help; the guards return to their posts afterwards.
 
-The four gate guards (at the temple gate and the south gate) also carry composite bows. They chase you
+The gate guards (at the temple gate and every city gate) also carry composite bows. They chase you
 on foot as far as their reach; once you are past it (over a canal, say) they stand and shoot instead.
 Archers stop to draw: a second or so before each shot, which is your moment to step aside.
 Each camp's chest holds bronze, tin, ore, arrows and the like; it is restocked each dawn, and dead
@@ -493,7 +506,7 @@ Animals you kill stay gone until the next spring, when their herds are full agai
 | `src/shaders.c` | The GLSL: world materials and light, sky, shadow depth, glow, smoothing and the final picture |
 | `src/people.c` | Solid bodies for everyone: player pushout, NPC blocking checks |
 | `src/lights.c` | Torches, precomputed static light (classic drawing), moving hand torches |
-| `src/effects.c` | Particles, impact rings, arrow trails |
+| `src/effects.c` | Particles, impact rings, arrow trails, swing trails, how a landed blow feels (hold, kick, flash) |
 | `src/save.c` | Compact binary save/load, save slots |
 | `src/main.c` | The program: window, the frame loop on the desktop and in the browser |
 | `src/actions.c` | Prompts and the actions behind E and F, taking from the shared world (a guest asks the host first) |
@@ -504,6 +517,7 @@ Animals you kill stay gone until the next spring, when their herds are full agai
 | `src/web.c` | What differs in a browser: saves in IndexedDB, the captured mouse, taps and clicks, the canvas's pixels, phone detection |
 | `src/shell.html` | The page around the browser game |
 | `src/music.c` | The synthesizer, the three tunes, picking the mood, the volume, feeding the audio stream |
+| `src/sfx.c` | Sound effects made at start (swishes, thuds, a clang, a thump, an arrow's crack), their volume |
 | `src/lang.c` | Language setting, text lookup, the pixel font extended with the Turkish letters |
 | `src/turkish.c` | Turkish text for every English string in the game |
 | `tools/` | Test harness and its tests, browser test suites, the music renderer, the translation checker, the prebuilt-binary script (see `robot.md`) |

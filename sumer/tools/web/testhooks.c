@@ -23,10 +23,10 @@ EMSCRIPTEN_KEEPALIVE const char *TestInfo(void)
     Esc(failure, sizeof(failure), NetFailure());
     int n = snprintf(buf, sizeof(buf),
         "{\"lobby\":%d,\"role\":%d,\"self\":%d,\"players\":%d,\"day\":%d,\"hour\":%.3f,\"x\":%.2f,\"y\":%.2f,\"z\":%.2f,"
-        "\"yaw\":%.3f,\"pitch\":%.3f,\"captured\":%d,\"lang\":%d,\"health\":%.1f,\"food\":%.1f,\"quiver\":%d,\"henCount\":%d,\"eggs\":%d,\"waitBed\":%d,\"sleeping\":%d,\"panel\":%d,\"swing\":%.2f,\"cool\":%.2f,\"equip\":%d,\"pvp\":%d,\"combat\":%d,\"mood\":%d,\"musicLevel\":%d,\"hitLight\":[%.2f,%.2f,%.2f,%.2f],\"flinch\":%.2f,\"villagers\":%d,\"gfx\":%d,\"ui\":%.3f,"
+        "\"yaw\":%.3f,\"pitch\":%.3f,\"captured\":%d,\"lang\":%d,\"health\":%.1f,\"food\":%.1f,\"quiver\":%d,\"henCount\":%d,\"eggs\":%d,\"waitBed\":%d,\"sleeping\":%d,\"panel\":%d,\"swing\":%.2f,\"cool\":%.2f,\"equip\":%d,\"pvp\":%d,\"combat\":%d,\"mood\":%d,\"musicLevel\":%d,\"hitLight\":[%.2f,%.2f,%.2f,%.2f],\"flinch\":%.2f,\"villagers\":%d,\"gfx\":%d,\"ui\":%.3f,\"shake\":%.2f,"
         "\"target\":%d,\"targetIndex\":%d,\"promptE\":\"%s\",\"msg\":\"%s\",\"failure\":\"%s\",\"peers\":[",
         InLobby(), G.role, G.self, PlayerCount(), G.day, G.hour, G.player.pos.x, G.player.pos.y, G.player.pos.z,
-        G.player.yaw, G.player.pitch, PointerCaptured(), Language(), G.health, G.food, G.quiver, G.henCount, G.coopEggs, G.waitBed, G.sleeping, G.panel, G.swingT, G.swingCool, G.equip, G.pvp, G.combat, MusicMood(), MusicLevel(), G.hitLight[0], G.hitLight[1], G.hitLight[2], G.hitLight[3], G.flinchT, G.villagerCount, GfxTier(), UiScale(), G.target.kind, G.target.index,
+        G.player.yaw, G.player.pitch, PointerCaptured(), Language(), G.health, G.food, G.quiver, G.henCount, G.coopEggs, G.waitBed, G.sleeping, G.panel, G.swingT, G.swingCool, G.equip, G.pvp, G.combat, MusicMood(), MusicLevel(), G.hitLight[0], G.hitLight[1], G.hitLight[2], G.hitLight[3], G.flinchT, G.villagerCount, GfxTier(), UiScale(), G.shakeT, G.target.kind, G.target.index,
         G.promptE, msg, failure);
     for (int s = 0, first = 1; s < MAX_PLAYERS; s++) {
         const Peer *p = &G.peers[s];
@@ -48,6 +48,14 @@ EMSCRIPTEN_KEEPALIVE const char *TestInfo(void)
     n += snprintf(buf + n, sizeof(buf) - (size_t)n, "],\"plots\":[");
     for (int i = 0; i < MAX_PLOTS; i++)
         n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%s%d", i ? "," : "", G.plots[i].state);
+    n += snprintf(buf + n, sizeof(buf) - (size_t)n, "],\"guards\":[");
+    for (int i = 0, first = 1; i < G.villagerCount; i++) {
+        const Villager *v = &G.villagers[i];
+        if (v->kind != NPC_GUARD) continue;
+        Vector3 p = VillagerPos(v);
+        n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%s[%.1f,%.1f,%.1f,%d]", first ? "" : ",", p.x, p.y, p.z, v->vit.dead ? 1 : 0);
+        first = 0;
+    }
     n += snprintf(buf + n, sizeof(buf) - (size_t)n, "],\"villager0\":[%.2f,%.2f]}", VillagerPos(&G.villagers[0]).x, VillagerPos(&G.villagers[0]).z);
     return buf;
 }
@@ -79,7 +87,7 @@ EMSCRIPTEN_KEEPALIVE void TestCommand(int cmd, float a, float b)
         ShootArrow(from, AimPoint(), 1.0f);
         break;
     }
-    case 6: MeleeStrike(); break;
+    case 6: MeleeStrike(STRIKE_START); MeleeStrike(STRIKE_CONTACT); break;
     case 7: BagAdd((int)a, (int)b); break;
     case 9: G.hour = a; break;
     case 10: {

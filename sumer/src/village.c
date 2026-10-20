@@ -462,9 +462,13 @@ static void BuildTempleStaff(void)
     const Color guard = { 150, 128, 96, 255 }, cleric = { 238, 234, 224, 255 };
     const float cz = ZIG_Z;
 
-    // The gate guards carry composite bows as well as spears.
-    static const float gates[4][2] = { { -7.2f, -4.2f }, { 7.2f, -4.2f }, { -4.8f, 70.5f }, { 4.8f, 70.5f } };
-    for (int k = 0; k < 4; k++) {
+    // The gate guards carry composite bows as well as spears: two at the temple yard's gate and two just
+    // inside each of the city's gates (south, north, east, west, and on the quays of the harbor's water gate).
+    static const float gates[][2] = {
+        { -7.2f, -4.2f }, { 7.2f, -4.2f }, { -4.8f, 70.5f }, { 4.8f, 70.5f }, { -39.5f, -79.5f }, { -33.5f, -79.5f },
+        { 91.0f, 4.8f }, { 91.0f, 13.2f }, { -85.0f, 21.8f }, { -85.0f, 30.2f }, { -94.0f, -17.5f }, { -94.0f, -2.5f },
+    };
+    for (int k = 0; k < (int)(sizeof(gates) / sizeof(gates[0])); k++) {
         int g = AddNpc(NPC_GUARD, (Vector3){ gates[k][0], 0, gates[k][1] }, (Vector3){ gates[k][0], 0, gates[k][1] }, 0, guard, 0);
         if (g >= 0) G.villagers[g].bow = 2;
     }
@@ -967,13 +971,10 @@ void DrawVillage(void)
             if (v->vit.drawing) {
                 // The spear slung on the back while the bow is drawn.
                 Part(0.1f, 1.3f, -0.25f, 0.05f, 2.4f, 0.05f, COL_WOOD);
-            } else if (v->vit.swing > 0) {
-                float k = v->vit.swing / 0.35f;
-                Part(0.3f, 1.35f, 0.9f - 0.5f * k, 0.05f, 0.05f, 2.4f, COL_WOOD);
-                Part(0.3f, 1.35f, 2.2f - 0.5f * k, 0.08f, 0.08f, 0.26f, COL_BRONZE);
-            } else if (v->vit.windup > 0) {
-                Part(0.3f, 1.45f, 0.35f, 0.05f, 0.05f, 2.4f, COL_WOOD);
-                Part(0.3f, 1.45f, 1.65f, 0.08f, 0.08f, 0.26f, COL_BRONZE);
+            } else if (v->vit.swing > 0 || v->vit.windup > 0) {
+                float z = SpearThrust(v->vit.windup, v->vit.swing), y = v->vit.windup > 0.1f ? 1.45f : 1.35f;
+                Part(0.3f, y, z, 0.05f, 0.05f, 2.4f, COL_WOOD);
+                Part(0.3f, y, z + 1.3f, 0.08f, 0.08f, 0.26f, COL_BRONZE);
             } else {
                 Part(0.36f, 1.2f, 0.12f, 0.05f, 2.4f, 0.05f, COL_WOOD);
                 Part(0.36f, 2.5f, 0.12f, 0.08f, 0.26f, 0.08f, COL_BRONZE);

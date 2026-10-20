@@ -239,17 +239,86 @@ static int MaceRound(int equip)
     }
     G.equip = equip;
     UpdateCombat(0.0001f);
-    MeleeStrike();
+    MeleeStrike(STRIKE_START);
+    MeleeStrike(STRIKE_CONTACT);
     int hit = 0;
     for (int k = 0; k < n; k++) hit += ws[k]->hp < 60;
     for (int k = 0; k < n; k++) ws[k]->state = ST_FLEE;
     return hit;
 }
 
+// A swing lands when the weapon comes down on its target (CONTACT_TIME in), not when it starts, and the
+// drawn weapon is down at that moment: raised before it, low and forward when it meets.
+static void TestSwingContact(void)
+{
+    PlaceAt(260, 470, 0);
+    Animal *w = NULL;
+    for (int i = 0; i < G.animalCount && !w; i++)
+        if (G.animals[i].type == AN_WOLF && G.animals[i].active) w = &G.animals[i];
+    if (!w) {
+        Check(false, "a wolf to swing at");
+        return;
+    }
+    w->pos = (Vector3){ 260, TerrainHeight(260, 468.4f), 468.4f };
+    w->hp = 60;
+    w->state = ST_HUNT;
+    G.equip = EQ_MELEE;
+    G.swingCool = 0;
+    G.hitStop = G.shakeT = 0;
+    G.swingT = SWING_TIME;
+    G.strikePending = true;
+    MeleeStrike(STRIKE_START);
+    Check(w->hp == 60, "a club swing does nothing yet as it starts (wolf hp %d)", w->hp);
+    float t = 0, landed = -1;
+    while (t < SWING_TIME + 0.2f && landed < 0) {
+        UpdatePlayer(0.01f, false);
+        t += 0.01f;
+        w->pos = (Vector3){ 260, TerrainHeight(260, 468.4f), 468.4f };
+        if (w->hp < 60) landed = t;
+    }
+    Check(fabsf(landed - CONTACT_TIME) < 0.025f, "it lands as the club comes down, %.2f s in (contact at %.2f)", landed, CONTACT_TIME);
+    Check(G.hitStop > 0 || G.swingT > 0, "the swing holds a moment where it struck");
+    Check(WeaponAngle(0.15f) < -80.0f && WeaponAngle(CONTACT_TIME) > 0.0f, "the club is raised before contact (%.0f) and down when it meets (%.0f)",
+          WeaponAngle(0.15f), WeaponAngle(CONTACT_TIME));
+    Check(fabsf(MaceYaw(CONTACT_TIME)) < 15.0f, "the war mace crosses straight ahead at contact (%.0f degrees)", MaceYaw(CONTACT_TIME));
+    w->state = ST_FLEE;
+    G.swingT = 0;
+    G.hitStop = G.shakeT = 0;
+    G.strikePending = false;
+}
+
+// Every gate of the city has guards standing at it, and keeps them in a PvP game: only the guards on the
+// ziggurat's terrace go.
+static void TestGateGuards(void)
+{
+    static const float gates[5][2] = { { 0, 72 }, { -36.5f, -80 }, { 92, 9 }, { -86, 26 }, { -94, -10 } };
+    static Villager saved[MAX_VILLAGERS];
+    int count = G.villagerCount;
+    memcpy(saved, G.villagers, sizeof(saved));
+    for (int pass = 0; pass < 2; pass++) {
+        if (pass) RemoveZigguratGuards();
+        int guarded = 0, high = 0;
+        for (int g = 0; g < 5; g++) {
+            int n = 0;
+            for (int i = 0; i < G.villagerCount; i++) {
+                const Villager *v = &G.villagers[i];
+                if (v->kind == NPC_GUARD && v->speed <= 0 && XZDist(v->a, (Vector3){ gates[g][0], 0, gates[g][1] }) < 10.0f) n++;
+            }
+            guarded += n >= 2;
+        }
+        for (int i = 0; i < G.villagerCount; i++) high += G.villagers[i].kind == NPC_GUARD && G.villagers[i].a.y >= 5.0f;
+        Check(guarded == 5, "%s: two guards stand at each of the city's 5 gates (%d gates guarded)", pass ? "PvP" : "alone", guarded);
+        if (pass) Check(high == 0, "PvP: no guards left on the ziggurat's terrace (%d)", high);
+    }
+    G.villagerCount = count;
+    memcpy(G.villagers, saved, sizeof(saved));
+}
+
 static void TestMace(void)
 {
     G.hasMace = true;
     int mace = MaceRound(EQ_MACE), club = MaceRound(EQ_MELEE);
+    G.hitStop = G.shakeT = 0;   // the blows' feel, which GameUpdate would let fade
     Check(mace == 3, "one war mace swing strikes all %d wolves in front", mace);
     Check(club == 1, "a club strikes only one (%d)", club);
     G.equip = EQ_BOW;
@@ -784,6 +853,13 @@ static void Settle(float seconds)
     }
 }
 
+// Both halves of a swing at once: its start (a blow at a player is set going) and its contact.
+static bool WholeSwing(Vector3 chest, Vector3 fwd, int equip, int weapon)
+{
+    StrikeFor(chest, fwd, equip, weapon, STRIKE_START);
+    return StrikeFor(chest, fwd, equip, weapon, STRIKE_CONTACT);
+}
+
 // The guest swings at the host (who is placed at hx, hz); the blow is on its way, not yet landed.
 static void GuestSwing(float gx, float gz, float hx, float hz, int weapon)
 {
@@ -795,7 +871,7 @@ static void GuestSwing(float gx, float gz, float hx, float hz, int weapon)
     G.health = HEALTH_MAX;
     Vector3 fwd = Vector3Normalize((Vector3){ hx - gx, 0, hz - gz }), chest = { gx, G.peers[1].pos.y + 1.0f, gz };
     G.actor = 1;
-    StrikeFor(chest, fwd, EQ_MELEE, weapon);
+    WholeSwing(chest, fwd, EQ_MELEE, weapon);
     G.actor = 0;
 }
 
@@ -836,7 +912,7 @@ static void TestPvp(void)
     // The host hits back: self-defence.
     G.actor = 0;
     Vector3 hc = { 3, TerrainHeight(3, 4.5f) + 1.0f, 4.5f };
-    StrikeFor(hc, (Vector3){ 0, 0, 1 }, EQ_MELEE, 0);
+    WholeSwing(hc, (Vector3){ 0, 0, 1 }, EQ_MELEE, 0);
     Settle(PVP_WINDUP + 0.3f);
     Check(G.peers[0].wanted <= 0, "the host hits back: no crime");
 
@@ -865,7 +941,7 @@ static void TestPvp(void)
     G.health = 3;
     G.sleeping = false;
     G.actor = 1;
-    StrikeFor((Vector3){ 200, TerrainHeight(200, 1.5f) + 1.0f, 1.5f }, (Vector3){ 0, 0, -1 }, EQ_MELEE, 2);
+    WholeSwing((Vector3){ 200, TerrainHeight(200, 1.5f) + 1.0f, 1.5f }, (Vector3){ 0, 0, -1 }, EQ_MELEE, 2);
     G.actor = 0;
     Settle(PVP_WINDUP + 0.3f);
     Check(strstr(G.msg, "Guest beat you down") != NULL, "brought down by the guest: \"%s\"", G.msg);
@@ -889,7 +965,7 @@ static void TestPvp(void)
     PlaceAt(200, 0, 0);
     SyncSelf();
     G.sleeping = false;
-    StrikeFor((Vector3){ 200, TerrainHeight(200, 1.5f) + 1.0f, 1.5f }, (Vector3){ 0, 0, -1 }, EQ_MACE, 0);
+    WholeSwing((Vector3){ 200, TerrainHeight(200, 1.5f) + 1.0f, 1.5f }, (Vector3){ 0, 0, -1 }, EQ_MACE, 0);
     G.actor = 0;
     Settle(PVP_WINDUP + 0.3f);
     Check(fabsf((HEALTH_MAX - G.health) - 30.0f) < 0.5f, "the war mace's blow on a player: 60, halved between players (%.0f)", HEALTH_MAX - G.health);
@@ -1376,7 +1452,7 @@ static void TestPlayerMarks(void)
     G.health = HEALTH_MAX;
     G.swingCool = 0;
     G.actor = 0;
-    StrikeFor((Vector3){ 200, G.player.pos.y + 1.0f, 0 }, (Vector3){ 0, 0, 1 }, EQ_MELEE, 2);
+    WholeSwing((Vector3){ 200, G.player.pos.y + 1.0f, 0 }, (Vector3){ 0, 0, 1 }, EQ_MELEE, 2);
     Settle(PVP_WINDUP + 0.3f);
     Check(G.peers[0].mark == MARK_PARRIED && G.swingCool >= 0.85f, "the host's blow is parried: green and stunned (mark %d, cooldown %.2f)", G.peers[0].mark, G.swingCool);
 
@@ -1518,6 +1594,8 @@ static void RunTests(void)
     TestBoar();
     TestArrows();
     TestMace();
+    TestSwingContact();
+    TestGateGuards();
     TestSnake();
     TestHerbs();
     TestTrade();

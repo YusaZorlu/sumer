@@ -393,8 +393,10 @@ static void DrawNetPausePanel(void)
     }
     if (Button((Rectangle){ bx + 300, r.y + 274, r.width - 100 - 300, 34 }, TextFormat(L("Music: %s (N)"), L(MusicLevelName())), true, KEY_N))
         MusicSetLevel((MusicLevel() + 1) % 4);
-    if (Button((Rectangle){ bx, r.y + 316, r.width - 100, 34 }, TextFormat(L("Graphics: %s (G)"), GfxLabel()), true, KEY_G))
+    if (Button((Rectangle){ bx, r.y + 316, 290, 34 }, TextFormat(L("Graphics: %s (G)"), GfxLabel()), true, KEY_G))
         GfxSetChoice(GfxChoice() + 1);
+    if (Button((Rectangle){ bx + 300, r.y + 316, r.width - 100 - 300, 34 }, TextFormat(L("Sounds: %s"), L(SfxLevelName())), true, 0))
+        SfxSetLevel((SfxLevel() + 1) % 4);
     CenterText(RulesText(), r.x + r.width / 2, r.y + 358, 15, C_GOLD);
     y = r.y + r.height - 130;
     if (Button((Rectangle){ bx, y, bw, 40 }, "Resume (Esc)", true, 0)) SetPanel(PANEL_NONE);
@@ -437,8 +439,10 @@ static void DrawPausePanel(void)
     }
     if (Button((Rectangle){ bx + 300, r.y + 274, r.width - 100 - 300, 34 }, TextFormat(L("Music: %s (N)"), L(MusicLevelName())), true, KEY_N))
         MusicSetLevel((MusicLevel() + 1) % 4);
-    if (Button((Rectangle){ bx, r.y + 316, r.width - 100, 34 }, TextFormat(L("Graphics: %s (G)"), GfxLabel()), true, KEY_G))
+    if (Button((Rectangle){ bx, r.y + 316, 290, 34 }, TextFormat(L("Graphics: %s (G)"), GfxLabel()), true, KEY_G))
         GfxSetChoice(GfxChoice() + 1);
+    if (Button((Rectangle){ bx + 300, r.y + 316, r.width - 100 - 300, 34 }, TextFormat(L("Sounds: %s"), L(SfxLevelName())), true, 0))
+        SfxSetLevel((SfxLevel() + 1) % 4);
 
     float y = r.y + r.height - 130;
     if (Button((Rectangle){ bx, y, bw, 40 }, "Resume (Esc)", true, 0)) SetPanel(PANEL_NONE);

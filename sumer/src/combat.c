@@ -19,7 +19,7 @@ static const RoleDef ROLES[ROLE_COUNT] = {
     [ROLE_BARBARIAN] = { 520, 0.20f, 38, 1.1f,  2.0f, 5.4f, 26, true },
 };
 
-#define WINDUP       0.55f
+#define WINDUP       NPC_WINDUP
 #define MARK_TIME    0.8f
 #define PARRY_STUN   0.9f
 #define RIPOSTE      1.25f
@@ -316,7 +316,7 @@ static void Strike(const Fighter *f, int s)
     Vector3 pp = PlayerAt(s);
 
     v->cool = r->cooldown;
-    v->swing = 0.35f;
+    v->swing = NPC_SWING;
     if (!PlayerAwake(s) || XZDist(v->at, pp) > r->range * 1.3f || fabsf(v->at.y - pp.y) > 1.5f) {
         v->mark = MARK_NONE;
         return;
@@ -328,6 +328,7 @@ static void Strike(const Fighter *f, int s)
         if (s == G.self) {
             G.parryT = 0;
             G.parryCool = 0;
+            BlowTurnedAside(ChestAhead());
         } else {
             NetParried(s);
         }
@@ -344,7 +345,7 @@ static void StrikeFoe(const Fighter *f, const Fighter *t)
     Vector3 tp = FPos(t);
 
     v->cool = ROLES[f->role].cooldown;
-    v->swing = 0.35f;
+    v->swing = NPC_SWING;
     v->mark = MARK_NONE;
     if (XZDist(v->at, tp) > ROLES[f->role].range * 1.3f || fabsf(v->at.y - tp.y) > 1.5f) return;
     tv->hp -= ROLES[f->role].damage * FOE_DAMAGE * (1.0f - ROLES[t->role].armor);
@@ -672,6 +673,14 @@ void DamagePerson(int i, float dmg)
         v->at = pos;
         v->face = f->homeFace;
     }
+    // A blow (not an arrow) drives them back a step.
+    Vector3 from = PlayerAt(G.actor);
+    Vector3 away = { v->at.x - from.x, 0, v->at.z - from.z };
+    float gap = Vector3Length(away);
+    if (G.meleeing && gap > 0.1f && gap < 4.0f) {
+        Vector3 to = Vector3Add(v->at, Vector3Scale(away, 0.35f / gap));
+        if (!SolidAt(to.x, to.z, 0.3f) && !InWater(to.x, to.z)) v->at = to;
+    }
     v->hostile = fmaxf(v->hostile, 40.0f);
     v->target = G.actor;
     if (IsRaider(f->role)) RallyRaiders(f);
@@ -873,7 +882,7 @@ static void StartBlow(int a, int s, float dmg)
 
 // The blow's damage reaches player s, from player a. Whoever starts a fight in the city's lands is wanted
 // by the guards, unless the game is in combat mode; hitting back, or hitting someone wanted, is no crime.
-static void Hurt(int a, int s, float dmg, bool opened)
+static void Hurt(int a, int s, float dmg, bool opened, bool melee)
 {
     Vector3 sp = G.peers[s].pos;
     bool provoked = G.peers[s].wanted > 0 || struck[s][a] > 0, fresh = struck[a][s] <= 0;
@@ -881,7 +890,16 @@ static void Hurt(int a, int s, float dmg, bool opened)
     // The warning first: a blow that brings them down leaves its own message.
     if (fresh && !provoked) SayTo(s, "%s attacks you!", G.peers[a].name);
     HurtSlotFrom(s, dmg * PVP_SCALE * (opened ? RIPOSTE : 1.0f), BY_PLAYER + a, &G.peers[a].pos);
+    G.meleeing = melee;
     HitMark();
+    G.meleeing = false;
+    // The one who swung feels the blow land as it lands.
+    if (melee) {
+        Vector3 at = { sp.x, sp.y + 1.2f, sp.z };
+        bool heavy = G.peers[a].equip == EQ_MACE;
+        if (a == G.self) BlowLanded(at, heavy);
+        else NetBlowLanded(a, at, heavy);
+    }
     SpawnBurst((Vector3){ sp.x, sp.y + 1.2f, sp.z }, (Color){ 170, 30, 30, 255 }, 10, 2.2f);
     if (!G.combat && !provoked && InCityLands(G.peers[a].pos.x, G.peers[a].pos.z)) {
         if (G.peers[a].wanted <= 0) Say("You attacked %s in the city. Guards will hunt you!", G.peers[s].name);
@@ -902,16 +920,21 @@ static void LandBlow(const Blow *b)
         if (s == G.self) {
             G.parryT = 0;
             G.parryCool = 0;
+            BlowTurnedAside(ChestAhead());
         } else {
             NetParried(s);
         }
-        if (a == G.self) G.swingCool += PARRY_STUN;
-        else NetStunned(a, PARRY_STUN);
+        if (a == G.self) {
+            G.swingCool += PARRY_STUN;
+            BlowTurnedAside(ChestAhead());
+        } else {
+            NetStunned(a, PARRY_STUN);
+        }
         SetMark(a, MARK_PARRIED, MARK_TIME);
         SpawnBurst((Vector3){ (from.x + sp.x) / 2, sp.y + 1.3f, (from.z + sp.z) / 2 }, (Color){ 255, 230, 150, 255 }, 8, 2.5f);
         Say("%s turned your blow aside!", G.peers[s].name);
     } else {
-        Hurt(a, s, b->dmg, b->opened);
+        Hurt(a, s, b->dmg, b->opened, true);
         SetMark(a, MARK_HIT, MARK_TIME);
     }
     G.actor = saved;
@@ -945,7 +968,7 @@ void HitPlayer(int s, float dmg, Vector3 from, bool melee)
     (void)from;
     if (!G.pvp || !Hittable(s, a) || !PlayerIn(a)) return;
     if (melee) StartBlow(a, s, dmg);
-    else Hurt(a, s, dmg, false);
+    else Hurt(a, s, dmg, false, false);
 }
 
 // A player brought down (or gone): old fights with them are over.

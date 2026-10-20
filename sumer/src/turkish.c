@@ -17,6 +17,7 @@ const Phrase TR_PHRASES[] = {
     { " Tip: the priest on top of the ziggurat gives you a boost: +20% speed for a day. Its stairs are unguarded here.", " İpucu: ziggurat'ın tepesindeki rahip sana güç verir: bir gün boyunca %20 hız. Buradaki merdivenleri kimse beklemiyor." },
     { "Music: %s (N)", "Müzik: %s (N)" },
     { "Graphics: %s (G)", "Grafik: %s (G)" },
+    { "Sounds: %s", "Sesler: %s" },
     { "Graphics: %s", "Grafik: %s" },
     { "Graphics: %s.", "Grafik: %s." },
     { "Auto (%s)", "Otomatik (%s)" },

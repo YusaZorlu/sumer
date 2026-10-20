@@ -364,10 +364,8 @@ void DrawWorkers(void)
             continue;
         }
         if (w->vit.override) {
-            float k = Clamp(w->vit.swing / 0.35f, 0.0f, 1.0f);
             DrawHuman(pos, w->vit.face, time * 8.0f, look, false, false, 0);
-            float angle = w->vit.swing > 0 ? -80.0f + 120.0f * (1.0f - k) : -20.0f;
-            if (w->vit.windup > 0) angle = -20.0f - 90.0f * (1.0f - w->vit.windup / 0.55f);
+            float angle = BlowAngle(w->vit.windup, w->vit.swing, -20.0f);
             if (tool >= 0) DrawTool(pos, w->vit.face, 1.42f, angle, tool);
             continue;
         }

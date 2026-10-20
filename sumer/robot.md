@@ -49,6 +49,9 @@ All from the repository root. `tools/out/` is for build products and is git-igno
 | Screenshot a view (shaders on by default; `SUMER_GFX=Low` or `Classic` for the others) | `tools/out/harness shot out.png x z yaw pitch dist hour [frames] [rain]` |
 | Mesh sizes and build times of the shader renderer | `GFX_STATS=1 tools/out/harness shot ...` (prints to stderr) |
 | A phone held sideways: lobby, tap, HUD, panels (screenshots in `tools/web/shots/phone-*.png`) | `node tools/web/phone.js` (test build on :8123) |
+| A swing frozen at t seconds, seen from the side (weapon and trail) | `tools/out/harness swingshot out.png <t> <mace 0/1>` |
+| The sound effects as .wav files | `tools/out/harness sfx <dir>` |
+| Every guard's post, alone and after PvP takes the ziggurat's away | `tools/out/harness guards` |
 | Free patches in the city (for placing a house) | `tools/out/harness spots x0 z0 x1 z1 step half [skip]`; also test a spot against what is built before the city houses (see the sixth house's history in `git log`) |
 
 The harness has more modes (`shot`, `citymap`, `textmap`, `wetways`, `canals`, `pvp`, `archers`, `aim`,
@@ -113,7 +116,7 @@ in `src/game.h`) holds the whole world.
   by `TrackGoods`; storage deposits count as kept).
 - **PvP rules** come from the host (`NetRules`, sent in the welcome message): `G.pvp`, `G.combat`. Combat mode gives
   everyone the best gear through the `Use*()` accessors in `items.c`, never by changing their own records.
-  In PvP the world also changes: `RemoveZigguratGuards()` (village.c) drops the guards on the ziggurat (host and
+  In PvP the world also changes: `RemoveZigguratGuards()` (village.c) drops the three guards on the ziggurat's terrace (posts 5 m up or more; every gate keeps its pair) (host and
   guests both call it right after the rules are known, so their villager lists stay identical), and `CitySpawn()`
   picks where players start and come to after being brought down (the welcome message also carries the spawn).
 - **Blows between players** (`combat.c`: `HitPlayer`, `StartBlow`, `UpdateBlows`, `LandBlow`): a melee swing at a player is
@@ -122,6 +125,21 @@ in `src/game.h`) holds the whole world.
   left open to a 1.25x answer, `RIPOSTE`) or `MARK_HIT` (red). The host decides and replicates `mark` in the peers'
   snapshot data; `ui.c` draws the diamond over the head. Arrows still land at once. The swing animation
   (`WeaponAngle` in player.c, `PeerWeapon` in players.c) is timed so the weapon comes down when the blow lands.
+- **When a swing lands** (`MeleeStrike(phase)` in wildlife.c, timed in `UpdatePlayer`): a swing has two halves.
+  `STRIKE_START` (the button) only sets a blow at another player going (it is queued for `PVP_WINDUP` and gives the
+  yellow mark); `STRIKE_CONTACT`, `CONTACT_TIME` (0.3 s) later as the weapon comes down, hits the person or animal in
+  front (`StrikeFor`, the host's half; a guest sends both halves as `RQ_STRIKE` with the phase). `WeaponAngle(t)` and
+  `MaceYaw(t)` (player.c) are drawn by elapsed time so the weapon visibly meets the target at contact; people use
+  `BlowAngle`/`SpearThrust`, which come down in the last moment of their `NPC_WINDUP`. Keep all of these in step when
+  changing a timing.
+- **How a blow feels** (effects.c): `BlowLanded` (hit-stop `G.hitStop` that holds the swing, view kick `G.shakeT`,
+  local blood/dust, `AddFlash` that makes whoever stands there pale for a moment, a thud), `BlowTurnedAside` (clang,
+  sparks), `BlowTaken` (thump, from `HurtPlayerFrom`). The swinger's own game predicts contact with `StrikeWouldMeet`,
+  so it feels at once even as a guest; a blow on a player is felt when the host says it landed (`EV_LANDED`), a parry
+  through `EV_PARRIED`/`EV_STUNNED`. `G.meleeing` tells `HitMark` a blow from an arrow (arrows crack, `EV_HIT` kind).
+- **Sound effects** (`src/sfx.c`): made at the first `SfxPlay` from formulas (no files), three voices each (raylib sound
+  aliases), pitch varied a little. `SfxPlayAt` fades with distance from the camera. `tools/out/harness sfx <dir>` writes
+  them as .wav files; keep most of the energy above 150 Hz or phone and laptop speakers lose it.
 - **Where a blow came from**: every damage source passes its position (`HurtSlotFrom(slot, dmg, by, &pos)`, `NetHurt`
   carries it to a guest); `HurtPlayerFrom` turns it into the red edge lights (`G.hitLight[4]`: front, back, left, right
   relative to the camera) and the body's flinch (`G.flinchT`, camera jolt in `FollowCamera`). Other players' flinch is
@@ -234,9 +252,9 @@ no sound files. Read the comment at the top of the file and the notation comment
 - **Stream** (`MusicUpdate`): 16384-frame buffers, made a slice at a time (2048 frames per game frame) and all at once only
   when the stream runs dry, so slow frames do not make gaps; volume is raylib's stream volume (instant), not baked in.
   In the browser it runs on the main thread (ScriptProcessor), which is why the buffers are large.
-- **Settings file** `sumer.music` (0 off .. 3 high) is written next to the saves and ignored by git.
-- New sound effects do not exist yet. If you add some, reuse the voices in `music.c` (plucks, drums) and mix them through
-  the same stream, or add a second stream; keep the "no files, nothing to license" property unless told otherwise.
+- **Settings file** `sumer.music` (0 off .. 3 high) is written next to the saves and ignored by git; the sound effects'
+  volume is `sumer.sfx`.
+- Sound effects live in `sfx.c` (see "When a swing lands" above); keep the "no files, nothing to license" property.
 
 ## Ideas that were mentioned and not done
 
@@ -244,5 +262,5 @@ no sound files. Read the comment at the top of the file and the notation comment
   the phone controls after the graphics work is done (the UI already fits phones and takes taps on its buttons).
 - Graphics, later steps: shadows for distant buildings (a second, coarser shadow map), smoother models for people and
   animals (they are still boxes and blobs), ambient occlusion in corners, reflections of the town in the water.
-- Sound effects (steps, blows, bow, ambience); the music is the only audio.
+- More sound effects: footsteps, the bow, animals, ambience (blows, parries and arrows have theirs).
 - The prebuilt binary and `web/` are rebuilt by hand; there is no CI.
