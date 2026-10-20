@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds the native test harness: every file in src/ except main.c, plus harness.c, into tools/out/harness.
-# Needs the native raylib in raylib-linux/ (sh run.sh builds it; this script does the same if it is missing).
+# Needs the native raylib in raylib-linux/ (built here if it is missing).
 set -e
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 RL=${RAYLIB:-$ROOT/raylib-linux}

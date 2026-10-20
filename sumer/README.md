@@ -6,27 +6,12 @@ fog and glow (see Graphics).
 
 ## Run
 
-**Ubuntu 20.04 or newer (x86_64)**
+The game runs in a web browser: `python3 server.py`, then open the address it prints (see below).
+`web/` holds the built game; `sh build-web.sh` rebuilds it (needs Emscripten).
 
-    ./sumer-prebuilt
-
-or build from source:
-
-    sh run.sh
-
-The first build installs the needed packages with apt (asks for your sudo password), builds raylib 5.5 into `raylib-linux/`, then compiles and launches. Later runs only recompile the game.
-
-Old GPU or a VM without OpenGL 3.3 (the game prints a hint if it can't open a window):
-
-    GL21=1 sh run.sh
-
-(with OpenGL 2.1 the game draws the classic way, without the shaders).
-
-**macOS (Apple Silicon)**
-
-    sh run.sh
-
-Installs raylib with Homebrew if missing (or builds it from source without Homebrew), compiles `src/*.c`, launches.
+The desktop version (Linux and macOS, `run.sh` and the ready-built `sumer-prebuilt`) is kept on the
+`desktop` branch, as it was on 20 October 2026, with the Sumerian characters. Work goes on in the browser
+version only; the desktop branch is not updated for now.
 
 ## Play in a browser, alone or together
 
@@ -41,7 +26,7 @@ version is already built in `web/`; `sh build-web.sh` rebuilds it (needs Emscrip
 
 The title screen asks for your name, then:
 
-- **Play alone**: the same game as the desktop version. Its three save slots are kept in the browser.
+- **Play alone**: your own world. Its three save slots are kept in the browser.
 - **Host a game**: starts the shared world, or carries on the one you hosted before. The host's
   browser runs the world and keeps its save: the world and every player's things, saved every
   minute, when a night passes, when someone leaves, and on F5. Keep the host's tab open and in front
@@ -329,8 +314,7 @@ seeds, the hunter arrows, the shepherd sheepskin and the Dilmun merchant tin.
 
 ## Saving
 
-Three save slots: `sumer.sav`, `sumer2.sav`, `sumer3.sav` in the folder you run the game from
-(`run.sh` always runs it from the game folder). The game saves to the slot in play when you sleep,
+Three save slots: `sumer.sav`, `sumer2.sav`, `sumer3.sav`, kept in the browser's storage. The game saves to the slot in play when you sleep,
 when you quit, and on F5, and loads the last slot used at start. The pause menu shows each slot's day
 and time: "Switch to this" saves the current game and loads that slot; on an empty slot a new game
 begins there. "New game" (click twice) erases only the slot in play.
@@ -536,7 +520,7 @@ Animals you kill stay gone until the next spring, when their herds are full agai
 | `src/lights.c` | Torches, precomputed static light (classic drawing), moving hand torches |
 | `src/effects.c` | Particles, impact rings, arrow trails, swing trails, how a landed blow feels (hold, kick, flash) |
 | `src/save.c` | Compact binary save/load, save slots |
-| `src/main.c` | The program: window, the frame loop on the desktop and in the browser |
+| `src/main.c` | The program: window and the browser's frame loop |
 | `src/actions.c` | Prompts and the actions behind E and F, taking from the shared world (a guest asks the host first) |
 | `src/players.c` | Every player as the world sees them: positions, damage to a player on another machine, other players drawn |
 | `src/mp.c` | Multiplayer messages: the host's snapshots, guests' requests and replies, messages in each player's language |
@@ -548,7 +532,7 @@ Animals you kill stay gone until the next spring, when their herds are full agai
 | `src/sfx.c` | Sound effects made at start (swishes, thuds, a clang, a thump, an arrow's crack), their volume |
 | `src/lang.c` | Language setting, text lookup, the pixel font extended with the Turkish letters |
 | `src/turkish.c` | Turkish text for every English string in the game |
-| `tools/` | Test harness and its tests, browser test suites, the music renderer, the translation checker, the prebuilt-binary script (see `robot.md`) |
+| `tools/` | Test harness and its tests, browser test suites, the music renderer, the translation checker (see `robot.md`) |
 
 Balance knobs: offers and recipes at the top of `village.c`, `villages.c`, `jobs.c` and `caravan.c`;
 gather yields and food costs in `GATHER` in `game.c`; hunger rates at the top of `game.c`; herb healing

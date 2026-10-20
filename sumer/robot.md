@@ -6,10 +6,12 @@ build and test, how the code is organised, what to update with every change, and
 ## The project in one paragraph
 
 An open-world prototype of Ur, about 2100 BC: C99 and raylib 5.5, everything built from primitive shapes and
-lit by the game's own shaders (`src/gfx.c`, `src/shaders.c`), about 19,000 lines in `src/`. It runs as a desktop program (Linux, macOS) and in the browser (Emscripten),
+lit by the game's own shaders (`src/gfx.c`, `src/shaders.c`), about 19,000 lines in `src/`. It runs in the browser (Emscripten),
 where up to six people share one world: one player's browser is the **host** and runs the whole world,
 `server.py` only relays messages. English and Turkish. The player who writes the requests plays in the
-browser with friends and tests by playing, so the browser build has to work, not just the desktop one.
+browser with friends and tests by playing. **This branch is browser-only** (the owner's choice, to speed up
+testing): the desktop program, `run.sh` and `sumer-prebuilt` are frozen on the `desktop` branch; do not
+rebuild or update them unless asked. The native test harness still builds against `raylib-linux/`.
 
 ## Working with the person who owns the project
 
@@ -33,7 +35,6 @@ All from the repository root. `tools/out/` is for build products and is git-igno
 
 | What | Command |
 |---|---|
-| Run the desktop game (installs packages, builds raylib into `raylib-linux/`) | `sh run.sh` |
 | Build the browser version into `web/` (needs Emscripten on PATH: `source emsdk_env.sh`) | `sh build-web.sh` |
 | Play the browser version, alone or together | `python3 server.py` then open the address it prints |
 | Logic tests (native, about 150 checks, needs `xvfb` or a display) | `sh tools/harness/run.sh` |
@@ -43,7 +44,6 @@ All from the repository root. `tools/out/` is for build products and is git-igno
 | Real-click tests of the production build (serve `web/` on :8124 first) | `node tools/web/click/click3.js`, `flow.js`, `tap.js`, `swing2.js` |
 | Strings without a Turkish entry | `python3 tools/trcheck.py src` (only non-text literals such as file names and "WASD" may remain) |
 | Render and check the music | `sh tools/music/render.sh` |
-| Rebuild `sumer-prebuilt` (zig, glibc 2.29) | `sh tools/prebuilt.sh` (`pip install ziglang`) |
 | Screenshot a panel without playing | `tools/out/harness ui out.png <panel> <lang 0/1>` (panel numbers = `Panel` enum: 4 pause, 5 help) |
 | Screenshot another player mid-fight, and the red hit lights | `tools/out/harness pvpshot out.png <0-4>` (raising, striking, flinching + lights, mace, parrying) |
 | Screenshot a view (shaders on by default; `SUMER_GFX=Low` or `Classic` for the others) | `tools/out/harness shot out.png x z yaw pitch dist hour [frames] [rain]` |
@@ -81,9 +81,8 @@ if there is no display. The test build and servers die when the sandbox restarts
    (migrate, do not refuse). The hosted world has its own version in `mp.c`/`save.c`.
 5. **Tests.** Add a check in `tools/harness/tests.c` for the new rule; a browser check in `tools/web/*.js` if it
    involves two players or a real click; run everything.
-6. **Rebuild the products.** `web/index.*` (needs emsdk) and `sumer-prebuilt` (zig) are committed; rebuild
-   both when `src/` changed, so people who just pull get the new version. Smoke-test the prebuilt (it should
-   run until stopped: `timeout 10 ./sumer-prebuilt`).
+6. **Rebuild the product.** `web/index.*` (needs emsdk) is committed; rebuild it when `src/` changed, so
+   people who just pull get the new version.
 7. **Commit** on the feature branch with a plain-language message; push the branch.
 
 Code style: C99, 4 spaces, braces on the same line for control flow and on a new line for functions, `static`
@@ -186,7 +185,6 @@ in `src/game.h`) holds the whole world.
 - Test hooks for the browser (`tools/web/testhooks.c`): `TestInfo()` returns the state as JSON, `TestCommand(n, a, b)`
   drives the game (1 teleport, 2 E, 3 F, 4 look, 5 shoot, 6 swing, 7 add item, 9 set hour, 13 hurt, 14 equip ...). Add
   fields there when a test needs to see something new.
-- The prebuilt binary must stay linkable on old systems: build it with `tools/prebuilt.sh`, not with the system compiler.
 - Headless Chromium has no GPU: it runs about 5 frames a second, and the game clamps each frame to 0.05 s, so game time
   runs at a quarter of real time there (a 0.3 s windup takes over a second). Time-based checks need generous waits; use
   `waitFor` in `tools/web/lib.js` instead of fixed sleeps, and poll for what you expect.
@@ -281,4 +279,4 @@ no sound files. Read the comment at the top of the file and the notation comment
 - A body choice (man or woman) for players: the townsfolk have it (`Look.woman`), the "Your look" window does not;
   the owner asked for few options.
 - More sound effects: footsteps, the bow, animals, ambience (blows, parries and arrows have theirs).
-- The prebuilt binary and `web/` are rebuilt by hand; there is no CI.
+- `web/` is rebuilt by hand; there is no CI. The desktop branch needs its own catching up if it is ever revived.
