@@ -289,6 +289,27 @@ static void TestSwingContact(void)
 
 // Every gate of the city has guards standing at it, and keeps them in a PvP game: only the guards on the
 // ziggurat's terrace go.
+// A chosen look survives packing for the network, and the townsfolk are not all alike.
+static void TestLooks(void)
+{
+    Look l = PlayerLook(1, PackStyle(HAIR_BUN, BEARD_LONG, DRESS_SHAWL, JEWEL_BEADS), ARMOR_BRONZE);
+    Check(l.hairStyle == HAIR_BUN && l.beard == BEARD_LONG && l.dress == DRESS_SHAWL && l.jewel == JEWEL_BEADS && l.armor == ARMOR_BRONZE,
+          "a chosen look comes back from its packed byte (hair %d beard %d dress %d jewel %d armor %d)", l.hairStyle, l.beard, l.dress, l.jewel, l.armor);
+    int dresses[DRESS_KINDS] = { 0 }, women = 0, beards = 0;
+    for (unsigned i = 0; i < 60; i++) {
+        Look t = PersonLook(LOOK_TOWN, i, (Color){ 150, 90, 70, 255 });
+        dresses[t.dress]++;
+        women += t.woman;
+        beards += t.beard != BEARD_NONE;
+        if (t.woman && t.beard != BEARD_NONE) beards += 1000;
+    }
+    int kinds = 0;
+    for (int k = 0; k < DRESS_KINDS; k++) kinds += dresses[k] > 0;
+    Check(kinds == DRESS_KINDS && women >= 12 && women <= 40 && beards < 1000, "60 townsfolk wear all %d kinds of dress, %d are women, no woman has a beard", kinds, women);
+    Look g = PersonLook(LOOK_GUARD, 3, (Color){ 120, 100, 80, 255 });
+    Check(g.head == HEAD_HELMET && g.armor == ARMOR_BRONZE, "a guard wears a bronze helmet and the studded cloak");
+}
+
 static void TestGateGuards(void)
 {
     static const float gates[5][2] = { { 0, 72 }, { -36.5f, -80 }, { 92, 9 }, { -86, 26 }, { -94, -10 } };
@@ -1596,6 +1617,7 @@ static void RunTests(void)
     TestMace();
     TestSwingContact();
     TestGateGuards();
+    TestLooks();
     TestSnake();
     TestHerbs();
     TestTrade();

@@ -365,7 +365,7 @@ static void DrawTradePanel(void)
 // host's browser keeps the game.
 static void DrawNetPausePanel(void)
 {
-    Rectangle r = PanelRect(620, 516);
+    Rectangle r = PanelRect(620, 530);
     float bx = r.x + 50, bw = 240, gap = r.width - 100 - 2 * bw, y = r.y + 128;
     bool host = G.role == NET_HOST;
 
@@ -397,8 +397,9 @@ static void DrawNetPausePanel(void)
         GfxSetChoice(GfxChoice() + 1);
     if (Button((Rectangle){ bx + 300, r.y + 316, r.width - 100 - 300, 34 }, TextFormat(L("Sounds: %s"), L(SfxLevelName())), true, 0))
         SfxSetLevel((SfxLevel() + 1) % 4);
-    CenterText(RulesText(), r.x + r.width / 2, r.y + 358, 15, C_GOLD);
-    y = r.y + r.height - 130;
+    if (Button((Rectangle){ bx, r.y + 358, r.width - 100, 34 }, "Your look", true, 0)) SetPanel(PANEL_LOOK);
+    CenterText(RulesText(), r.x + r.width / 2, r.y + 398, 15, C_GOLD);
+    y = r.y + r.height - 96;
     if (Button((Rectangle){ bx, y, bw, 40 }, "Resume (Esc)", true, 0)) SetPanel(PANEL_NONE);
     if (Button((Rectangle){ bx + bw + gap, y, bw, 40 }, host ? "Save (F5)" : "Hand in my things (F5)", true, 0)) SaveNow();
     if (Button((Rectangle){ bx, y + 54, r.width - 100, 40 }, host ? "Save and end the game for everyone (Q)" : "Leave the game (Q)", true, 0)) G.quit = true;
@@ -410,7 +411,7 @@ static void DrawPausePanel(void)
         DrawNetPausePanel();
         return;
     }
-    Rectangle r = PanelRect(620, 516);
+    Rectangle r = PanelRect(620, 530);
     float bx = r.x + 50, bw = 240, gap = r.width - 100 - 2 * bw;
     int active = SaveSlot();
 
@@ -443,8 +444,9 @@ static void DrawPausePanel(void)
         GfxSetChoice(GfxChoice() + 1);
     if (Button((Rectangle){ bx + 300, r.y + 316, r.width - 100 - 300, 34 }, TextFormat(L("Sounds: %s"), L(SfxLevelName())), true, 0))
         SfxSetLevel((SfxLevel() + 1) % 4);
+    if (Button((Rectangle){ bx, r.y + 358, r.width - 100, 34 }, "Your look", true, 0)) SetPanel(PANEL_LOOK);
 
-    float y = r.y + r.height - 130;
+    float y = r.y + r.height - 110;
     if (Button((Rectangle){ bx, y, bw, 40 }, "Resume (Esc)", true, 0)) SetPanel(PANEL_NONE);
     if (Button((Rectangle){ bx + bw + gap, y, bw, 40 }, "Save (F5)", true, 0)) {
         if (SaveGame()) Say("Game saved to %s.", SaveFileName(active));
@@ -456,6 +458,45 @@ static void DrawPausePanel(void)
         else G.confirmNew = true;
     }
     if (Button((Rectangle){ bx + bw + gap, y + 54, bw, 40 }, "Save & quit (Q)", true, 0)) G.quit = true;
+}
+
+// Choosing how you look: hair, beard, what you wear and your jewellery, shown on your own body
+// beside the choices (the armor you have on goes over it). Each change is kept at once.
+static void DrawLookPanel(void)
+{
+    static const char *const rows[4] = { "Hair", "Beard", "Clothes", "Jewellery" };
+    static const int counts[4] = { HAIR_KINDS, BEARD_KINDS, DRESS_KINDS, JEWEL_KINDS };
+    unsigned char style = ChosenStyle();
+    int v[4] = { style & 3, style >> 2 & 3, style >> 4 & 3, style >> 6 & 3 };
+    float h = 392, w = 400;
+    Rectangle r = { 20, (UiHeight() - h) / 2, w, h };
+    DrawRectangleRec(r, C_PANEL);
+    DrawRectangleLinesEx(r, 2, C_EDGE);
+    CenterText("Your look", r.x + w / 2, r.y + 16, 28, C_GOLD);
+    CenterText("Everyone sees you like this, in your own color.", r.x + w / 2, r.y + 52, 14, C_DIM);
+
+    bool changed = false;
+    for (int k = 0; k < 4; k++) {
+        float y = r.y + 82 + 58.0f * (float)k;
+        const char *name = k == 0 ? HairName(v[k]) : k == 1 ? BeardName(v[k]) : k == 2 ? DressName(v[k]) : JewelName(v[k]);
+        Text(TextFormat("%d  %s", k + 1, L(rows[k])), r.x + 20, y, 16, C_DIM);
+        if (Button((Rectangle){ r.x + 20, y + 20, 40, 30 }, "<", true, 0)) {
+            v[k] = (v[k] + counts[k] - 1) % counts[k];
+            changed = true;
+        }
+        DrawRectangle((int)r.x + 66, (int)y + 20, (int)w - 152, 30, C_SLOT);
+        CenterText(name, r.x + w / 2, y + 26, 17, C_TEXT);
+        if (Button((Rectangle){ r.x + w - 80, y + 20, 40 + 20, 30 }, ">", true, KEY_ONE + k)) {
+            v[k] = (v[k] + 1) % counts[k];
+            changed = true;
+        }
+    }
+    if (changed) ChooseStyle(PackStyle(v[0], v[1], v[2], v[3]));
+    CenterText("1-4: next choice    Left/Right arrows: turn the view", r.x + w / 2, r.y + h - 76, 14, C_DIM);
+    if (Button((Rectangle){ r.x + 20, r.y + h - 52, w - 40, 38 }, "Done (Enter)", true, KEY_ENTER)) {
+        ChooseStyle(PackStyle(v[0], v[1], v[2], v[3]));
+        SetPanel(PANEL_NONE);
+    }
 }
 
 static void DrawCoopPanel(void)
@@ -528,7 +569,7 @@ static void DrawHelpPanel(void)
         { "E", "use, talk, pick up, climb, search" }, { "F", "alternate action" },
         { "R", "refill the quiver" }, { "Z", "arrow camera on/off" }, { "Tab", "baskets and equipment" },
         { "M", "map zoom" }, { "N", "music: off, low, medium, high" }, { "G", "graphics: auto, high, low, classic" }, { "T (hold)", "fast-forward time" }, { "F5", "save" },
-        { "F11", "fullscreen" }, { "Esc", "pause, save slots, language" }, { "H", "this window" },
+        { "F11", "fullscreen" }, { "Esc", "pause, save slots, language, your look" }, { "H", "this window" },
     };
     static const char *const tips[] = {
         "Parry: a yellow mark means a blow is coming, over a person or a player swinging at you (a player gives you less "
@@ -957,6 +998,7 @@ void DrawUI(void)
     case PANEL_PAUSE:   DrawPausePanel(); break;
     case PANEL_HELP:    DrawHelpPanel(); break;
     case PANEL_COOP:    DrawCoopPanel(); break;
+    case PANEL_LOOK:    DrawLookPanel(); break;
     default: break;
     }
 

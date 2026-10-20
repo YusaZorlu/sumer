@@ -195,8 +195,7 @@ static Vector3 WeaponPoint(Vector3 pos, float facing, float shoulder, bool mace,
         float y = -len * sinf(tilt), z = len * cosf(tilt);
         p = (Vector3){ z * sinf(yaw), -0.15f + y, 0.15f + z * cosf(yaw) };
     } else {
-        float a = WeaponAngle(t) * DEG2RAD, len = 0.85f * along;
-        p = (Vector3){ 0.32f, -len * sinf(a), 0.1f + len * cosf(a) };
+        p = Vector3Transform((Vector3){ 0, 0, 0.85f * along }, SwordFrame(t));
     }
     float c = cosf(facing), sn = sinf(facing);
     return (Vector3){ pos.x + p.x * c + p.z * sn, pos.y + shoulder + p.y, pos.z - p.x * sn + p.z * c };

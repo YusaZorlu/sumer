@@ -244,7 +244,7 @@ typedef enum {
     STN_BED, STN_STORAGE, STN_QUERN, STN_TROUGH, STN_OVEN, STN_KILN, STN_SMELTER, STN_BENCH, STN_ALTAR, STN_STASH, STN_STASH2,
     STN_STASH3, STN_STASH4, STN_WELL, STN_DITCH, STN_FERRY_E, STN_FERRY_W, STN_COUNT
 } StationId;
-typedef enum { PANEL_NONE, PANEL_BAG, PANEL_STORAGE, PANEL_TRADE, PANEL_PAUSE, PANEL_HELP, PANEL_COOP } Panel;
+typedef enum { PANEL_NONE, PANEL_BAG, PANEL_STORAGE, PANEL_TRADE, PANEL_PAUSE, PANEL_HELP, PANEL_COOP, PANEL_LOOK } Panel;
 typedef enum { TGT_NONE, TGT_CARCASS, TGT_RES, TGT_STATION, TGT_PLOT, TGT_COOP, TGT_TRADER, TGT_BODY, TGT_OFFER, TGT_LADDER, TGT_WATER } TargetKind;
 enum { SPRING, SUMMER, FALL, WINTER };
 typedef struct { TargetKind kind; int index; } Target;
@@ -257,7 +257,21 @@ typedef struct {
     bool grounded, crouching, aiming, moving, running;
 } Player;
 
-typedef struct { Color skin, cloth, top, hair; } Look;
+// How a person looks: colors, then hair, beard, dress, jewellery, headgear and armor (the enums below).
+typedef struct {
+    Color skin, cloth, trim, hair;
+    unsigned char hairStyle, beard, dress, jewel, head, armor;
+    bool woman;
+} Look;
+enum { HAIR_SHAVED, HAIR_SHORT, HAIR_LONG, HAIR_BUN, HAIR_KINDS };
+enum { BEARD_NONE, BEARD_SHORT, BEARD_FULL, BEARD_LONG, BEARD_KINDS };
+enum { DRESS_KILT, DRESS_FLEECE, DRESS_SHAWL, DRESS_ROBE, DRESS_KINDS };
+enum { JEWEL_NONE, JEWEL_BEADS, JEWEL_GOLD, JEWEL_BANDS, JEWEL_KINDS };
+enum { HEAD_NONE, HEAD_HELMET, HEAD_CAP, HEAD_STONECAP, HEAD_HORNS, HEAD_TALL };
+enum { LOOK_TOWN, LOOK_VILLAGER, LOOK_TRAVELLER, LOOK_MERCHANT, LOOK_WORKER, LOOK_PRIEST, LOOK_GUARD, LOOK_WARDEN, LOOK_SOLDIER,
+       LOOK_RAIDER, LOOK_BARBARIAN };
+enum { HAND_WEAPON, HAND_OTHER };
+enum { WEAPON_CLUB, WEAPON_COPPER, WEAPON_SWORD, WEAPON_MACE };
 
 // Every player has a house of their own: bed, storage, quern, trough, workbench and oven.
 typedef struct { Vector3 center, door; Vector3 stations[HOUSE_STN]; float bedFacing; } House;
@@ -287,6 +301,7 @@ typedef struct {
     Vector3 pos, shown;
     float facing, shownFacing, stride, draw, health, swingT, wanted, aggro, heard;
     int flags, equip, weapon, bow, armor, net;
+    unsigned char style;   // how they chose to look (PackStyle)
     int kills, deaths;   // players brought down by this one, and times brought down by a player
     // The warning mark over this player's head while they swing at someone, then how it came out
     // (MARK_*, the host decides); and how long since this machine saw them hurt (a flinch).
@@ -456,7 +471,22 @@ void DrawShadedBlobFar(Vector3 c, Vector3 r, Color col);
 void DrawShadedBlobFine(Vector3 c, Vector3 r, Color col);
 void DrawBeveledBox(Vector3 c, Vector3 s, Color col, float bevel);
 Color Clothe(Color cloth, Color skin);
+void VPaint(Color c, Vector3 n);
+float DrawFlash(void);
 void DrawHuman(Vector3 pos, float facing, float stride, Look look, bool crouch, bool bow, float draw);
+extern void (*ExtraFigures)(void);
+void GripHere(int hand, float x, float y, float z);
+void GripAt(int hand, float x, float y, float z);
+Look PlayerLook(int slot, unsigned char style, int armor);
+Look PersonLook(int role, unsigned seed, Color robe);
+unsigned char PackStyle(int hair, int beard, int dress, int jewel);
+unsigned char ChosenStyle(void);
+bool StyleChosen(void);
+void ChooseStyle(unsigned char style);
+const char *HairName(int k);
+const char *BeardName(int k);
+const char *DressName(int k);
+const char *JewelName(int k);
 
 void AddTorch(float x, float y, float z, bool pole);
 void AddFireLight(float x, float y, float z);
@@ -602,6 +632,11 @@ void FollowCamera(float dt);
 void DrawPlayer(void);
 float SwingElapsed(float swingT, bool mace);
 float WeaponAngle(float t);
+Matrix ArmFrame(float arm, float reach, float blade);
+Matrix SwordFrame(float t);
+Matrix BlowFrame(float blade);
+void HoldWeapon(Vector3 pos, float facing, bool crouching, bool mace, float t, bool guard);
+void DrawWeaponPart(int kind);
 float MaceYaw(float t);
 float SwingLean(float t, bool mace);
 float BlowAngle(float windup, float swing, float rest);

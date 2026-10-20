@@ -516,8 +516,11 @@ void GameUpdate(void)
     G.requestSlot = 0;
     HandleMenus(HandleWindow());
     // Alone, the world waits while a menu is open; in company it goes on.
-    bool menu = G.panel == PANEL_PAUSE || G.panel == PANEL_HELP;
-    if (menu && !online) return;
+    bool menu = G.panel == PANEL_PAUSE || G.panel == PANEL_HELP || G.panel == PANEL_LOOK;
+    if (menu && !online) {
+        if (G.panel == PANEL_LOOK) FollowCamera(dt);
+        return;
+    }
 
     bool play = G.panel == PANEL_NONE && !G.sleeping && !G.waitBed;
     CollectBodies();
@@ -604,6 +607,7 @@ void GameDraw(void)
     DrawNetArrows();
     DrawPeers();
     DrawPlayer();
+    if (ExtraFigures) ExtraFigures();
     DrawEffects();
     DrawRain();
     EndMode3D();

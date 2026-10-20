@@ -96,7 +96,7 @@ int main(void)
         Say("Welcome back. Day %d. Slot %d was loaded from %s.", G.day, SaveSlot() + 1, SaveFileName(SaveSlot()));
         G.msgT = 6.0f;
     }
-    SetPanel(PANEL_NONE);
+    SetPanel(StyleChosen() ? PANEL_NONE : PANEL_LOOK);
     G.ignoreClick = false;
 
     while (!WindowShouldClose() && !G.quit) {

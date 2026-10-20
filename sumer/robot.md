@@ -51,6 +51,8 @@ All from the repository root. `tools/out/` is for build products and is git-igno
 | A phone held sideways: lobby, tap, HUD, panels (screenshots in `tools/web/shots/phone-*.png`) | `node tools/web/phone.js` (test build on :8123) |
 | A swing frozen at t seconds, seen from the side (weapon and trail) | `tools/out/harness swingshot out.png <t> <mace 0/1>` |
 | The sound effects as .wav files | `tools/out/harness sfx <dir>` |
+| A line-up of people: players' choices with armor (0), townsfolk and other roles (1), poses (2), heads up close (3) | `tools/out/harness lineup out.png <0-3> [hour]` |
+| The "Your look" window on the player | `tools/out/harness ui out.png 7 <lang 0/1>` |
 | Every guard's post, alone and after PvP takes the ziggurat's away | `tools/out/harness guards` |
 | Free patches in the city (for placing a house) | `tools/out/harness spots x0 z0 x1 z1 step half [skip]`; also test a spot against what is built before the city houses (see the sixth house's history in `git log`) |
 
@@ -124,7 +126,7 @@ in `src/game.h`) holds the whole world.
   `MARK_PARRIED` (green: the victim's raised weapon was in time; the swinger is stunned by `NetStunned`/`swingCool` and
   left open to a 1.25x answer, `RIPOSTE`) or `MARK_HIT` (red). The host decides and replicates `mark` in the peers'
   snapshot data; `ui.c` draws the diamond over the head. Arrows still land at once. The swing animation
-  (`WeaponAngle` in player.c, `PeerWeapon` in players.c) is timed so the weapon comes down when the blow lands.
+  (`WeaponAngle` and `SwordFrame` in player.c, drawn for everyone by `HoldWeapon`) is timed so the weapon comes down when the blow lands.
 - **When a swing lands** (`MeleeStrike(phase)` in wildlife.c, timed in `UpdatePlayer`): a swing has two halves.
   `STRIKE_START` (the button) only sets a blow at another player going (it is queued for `PVP_WINDUP` and gives the
   yellow mark); `STRIKE_CONTACT`, `CONTACT_TIME` (0.3 s) later as the weapon comes down, hits the person or animal in
@@ -144,6 +146,18 @@ in `src/game.h`) holds the whole world.
   carries it to a guest); `HurtPlayerFrom` turns it into the red edge lights (`G.hitLight[4]`: front, back, left, right
   relative to the camera) and the body's flinch (`G.flinchT`, camera jolt in `FollowCamera`). Other players' flinch is
   guessed from a drop in `Peer.health` (`UpdatePeers`). New damage sources should use `HurtSlotFrom`.
+- **People** (`src/figures.c`; `src/people.c` is the unrelated body-collision code): `DrawHuman(pos, facing, stride,
+  look, crouch, bow, draw)` draws a body from a `Look` (colors, then `hairStyle`, `beard`, `dress`, `jewel`, `head`,
+  `armor`, `woman`). Every role gets its look from `PersonLook(LOOK_*, seed, robe)` (the seed is the person's index,
+  so host and guests agree without sending anything); players from `PlayerLook(slot, style, armor)`, where `style` is
+  the byte from `PackStyle` that the "Your look" window (`DrawLookPanel` in ui.c, `PANEL_LOOK`) saves in `sumer.look`
+  and that goes to the others in `Peer.style` (state and snapshot messages). Shapes: `Loft` (rings stacked up, a
+  garment painted by `TorsoPaint`), `Tube` (limbs), blobs; three levels of detail by distance (26 m, 80 m), about
+  the same vertex count as the old block people. Legs bend (a step, a crouch on bent knees), and the lower foot stays
+  on the ground (`lift`). **Hands**: draw what a person holds first and call `GripHere(hand, x, y, z)` inside its
+  transform (or `GripAt` with a point on the body); the next `DrawHuman` reaches that hand there (two-bone `Reach`).
+  The player's and other players' weapons go through `HoldWeapon`/`DrawWeaponPart` (player.c), whose frames
+  (`SwordFrame`, `ArmFrame`, `BlowFrame` for people's tools and axes) the swing trail also uses: change them together.
 - **Music** (`src/music.c`): see its own section below.
 - **Drawing**: see "Graphics: how drawing works" below.
 - **Web specifics:** `src/web.c` (storage in IndexedDB: call `SyncStorage()` after writing a file), `src/shell.html`
@@ -260,7 +274,11 @@ no sound files. Read the comment at the top of the file and the notation comment
 
 - Firefox and Safari are untested (only Chromium here). Touch/gamepad input does not exist; the owner wants to decide
   the phone controls after the graphics work is done (the UI already fits phones and takes taps on its buttons).
-- Graphics, later steps: shadows for distant buildings (a second, coarser shadow map), smoother models for people and
-  animals (they are still boxes and blobs), ambient occlusion in corners, reflections of the town in the water.
+- Graphics, later steps (the owner wants CC0-only art, a 25-50 MB download at most, and to weigh each effect's cost):
+  buildings and props, then effects (wind on cloth and palms, light shafts, ambient occlusion, water reflections,
+  sharper far shadows, grass and reeds). Animals are still boxes and blobs. Free model sites (poly.pizza, kenney.nl,
+  quaternius.com, opengameart.org) were blocked from the cloud sandbox, so people were made in code instead.
+- A body choice (man or woman) for players: the townsfolk have it (`Look.woman`), the "Your look" window does not;
+  the owner asked for few options.
 - More sound effects: footsteps, the bow, animals, ambience (blows, parries and arrows have theirs).
 - The prebuilt binary and `web/` are rebuilt by hand; there is no CI.

@@ -308,6 +308,7 @@ static void ShotPanel(const char *out, int panel, int lang, int trader)
     G.msgT = 0;
     for (int f = 0; f < 3; f++) {
         G.panel = (Panel)panel;
+        if (panel == PANEL_LOOK) FollowCamera(0.016f);
         BeginDrawing();
         GameDraw();
         EndDrawing();
@@ -355,6 +356,71 @@ static void ShotCaravan(const char *out)
 {
     for (int k = 0; k < 600 && G.caravans[0].state != CV_TRADE; k++) UpdateCaravans(0.05f);
     Shot(out, -3, -15, 2.03f, 0.3f, 7.0f, 11.0f, 3, false);
+}
+
+// A line-up of people to look at: lineup <out.png> <variant> [hour]
+//   0 the player's choices (hair, beard, dress, jewellery) on six players' colors, with armor on the last three
+//   1 the townsfolk, priests, guards, merchants, workers and raiders
+//   2 poses: walking, crouching, drawing a bow, a sword raised, struck down, the mace swept, a spear thrust
+//   3 close up: three heads
+static int lineupVariant;
+static Vector3 lineupAt;
+
+static void Lineup(void)
+{
+    Vector3 at = lineupAt;
+    float t = (float)GetTime();
+    for (int k = 0; k < 7; k++) {
+        Vector3 p = { at.x - 4.5f + 1.5f * (float)k, at.y, at.z + 3.0f };
+        LightFor(p);
+        if (lineupVariant == 0) {
+            static const unsigned char styles[7][4] = {
+                { HAIR_SHORT, BEARD_FULL, DRESS_FLEECE, JEWEL_NONE }, { HAIR_LONG, BEARD_LONG, DRESS_SHAWL, JEWEL_GOLD },
+                { HAIR_SHAVED, BEARD_NONE, DRESS_KILT, JEWEL_BEADS }, { HAIR_BUN, BEARD_SHORT, DRESS_ROBE, JEWEL_BANDS },
+                { HAIR_SHORT, BEARD_SHORT, DRESS_KILT, JEWEL_NONE }, { HAIR_LONG, BEARD_FULL, DRESS_FLEECE, JEWEL_BEADS },
+                { HAIR_BUN, BEARD_LONG, DRESS_ROBE, JEWEL_GOLD },
+            };
+            static const int armor[7] = { 0, 0, 0, 0, ARMOR_WOLF, ARMOR_LEATHER, ARMOR_BRONZE };
+            Look l = PlayerLook(k % MAX_PLAYERS, PackStyle(styles[k][0], styles[k][1], styles[k][2], styles[k][3]), armor[k]);
+            DrawHuman(p, PI, 0, l, false, false, 0);
+        } else if (lineupVariant == 1) {
+            static const int roles[7] = { LOOK_TOWN, LOOK_TOWN, LOOK_PRIEST, LOOK_GUARD, LOOK_MERCHANT, LOOK_WORKER, LOOK_BARBARIAN };
+            static const unsigned seeds[7] = { 3, 8, 1, 4, 2, 5, 6 };
+            Look l = PersonLook(roles[k], seeds[k], (Color){ 150, 90, 70, 255 });
+            if (k == 1) l = PersonLook(LOOK_TOWN, 11, (Color){ 70, 100, 150, 255 });
+            for (unsigned s = 0; k <= 1 && s < 40 && l.woman != (k == 1); s++) l = PersonLook(LOOK_TOWN, 20 + s, (Color){ 70, 100, 150, 255 });
+            if (k == 2) for (unsigned s = 0; s < 40 && !l.woman; s++) l = PersonLook(LOOK_PRIEST, 40 + s, (Color){ 200, 180, 140, 255 });
+            DrawHuman(p, PI, 0, l, false, false, 0);
+        } else if (lineupVariant == 2) {
+            Look l = PlayerLook(k % MAX_PLAYERS, PackStyle(HAIR_LONG, BEARD_FULL, k & 1 ? DRESS_KILT : DRESS_FLEECE, JEWEL_BANDS), k == 6 ? ARMOR_BRONZE : 0);
+            float f = PI * 0.62f;
+            switch (k) {
+            case 0: DrawHuman(p, f, 1.2f, l, false, false, 0); break;
+            case 1: DrawHuman(p, f, 0, l, true, false, 0); break;
+            case 2: DrawHuman(p, f, 0, l, false, true, 0.9f); break;
+            case 3: HoldWeapon(p, f, false, false, 0.2f, false); DrawWeaponPart(WEAPON_SWORD); DrawHuman(p, f, 0, l, false, false, 0); break;
+            case 4: HoldWeapon(p, f, false, false, CONTACT_TIME, false); DrawWeaponPart(WEAPON_SWORD); DrawHuman(p, f, 0, l, false, false, 0); break;
+            case 5: HoldWeapon(p, f, false, true, CONTACT_TIME - 0.05f, false); DrawWeaponPart(WEAPON_MACE); DrawHuman(p, f, 0, l, false, false, 0); break;
+            default: {
+                rlPushMatrix();
+                rlTranslatef(p.x, p.y, p.z);
+                rlRotatef(f * RAD2DEG, 0, 1, 0);
+                GripHere(HAND_WEAPON, 0.3f, 1.35f, 0.85f - 0.2f);
+                DrawShadedBox((Vector3){ 0.3f, 1.35f, 0.85f }, (Vector3){ 0.05f, 0.05f, 2.4f }, COL_WOOD);
+                rlPopMatrix();
+                DrawHuman(p, f, 0, PersonLook(LOOK_GUARD, 4, (Color){ 120, 100, 80, 255 }), false, false, 0);
+            }
+            }
+        } else if (k >= 2 && k <= 4) {
+            static const unsigned char styles[3] = { 0 };
+            (void)styles;
+            Look l = k == 2 ? PlayerLook(0, PackStyle(HAIR_BUN, BEARD_LONG, DRESS_SHAWL, JEWEL_GOLD), 0)
+                   : k == 3 ? PersonLook(LOOK_TOWN, 21, (Color){ 70, 100, 150, 255 }) : PlayerLook(1, PackStyle(HAIR_SHAVED, BEARD_NONE, DRESS_FLEECE, JEWEL_BEADS), 0);
+            for (unsigned s = 0; k == 3 && s < 40 && !l.woman; s++) l = PersonLook(LOOK_TOWN, 20 + s, (Color){ 70, 100, 150, 255 });
+            DrawHuman((Vector3){ at.x - 0.45f * (float)(3 - k), at.y, at.z + 3.0f }, PI, 0, l, false, false, 0);
+        }
+    }
+    (void)t;
 }
 
 int main(int argc, char **argv)
@@ -419,6 +485,34 @@ int main(int argc, char **argv)
         ExportImage(im, argv[2]);
         UnloadImage(im);
         EndDrawing();
+    } else if (strcmp(argv[1], "lineup") == 0 && argc > 3) {
+        lineupVariant = atoi(argv[3]);
+        G.player.pos = (Vector3){ 38, GroundHeight(38, 20, 50.0f), 20 };
+        G.hour = argc > 4 ? (float)atof(argv[4]) : 10.0f;
+        G.camDist = 4.0f;
+        for (int f = 0; f < 3; f++) {
+            GameUpdate();
+            BeginDrawing();
+            GameDraw();
+            EndDrawing();
+        }
+        ExtraFigures = Lineup;
+        Vector3 at = lineupAt = G.player.pos;
+        bool close = lineupVariant == 3;
+        G.cam.position = (Vector3){ at.x + (close ? 0.0f : 0.0f), at.y + (close ? 1.8f : 1.55f), at.z + 3.0f - (close ? 1.25f : 6.2f) };
+        G.cam.target = (Vector3){ at.x, at.y + (close ? 1.74f : 1.0f), at.z + 3.0f };
+        G.player.pos.z -= 30.0f;
+        for (int f = 0; f < 2; f++) {
+            BeginDrawing();
+            GameDraw();
+            rlDrawRenderBatchActive();
+            if (f == 1) {
+                Image im = LoadImageFromScreen();
+                ExportImage(im, argv[2]);
+                UnloadImage(im);
+            }
+            EndDrawing();
+        }
     } else if (strcmp(argv[1], "sfx") == 0 && argc > 2) {
         // Every sound effect as a .wav file: sfx <dir>
         SfxExport(argv[2]);

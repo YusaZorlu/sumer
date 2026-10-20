@@ -146,7 +146,7 @@ touch controls yet: play with a keyboard (a USB-C or Bluetooth one works; WASD t
 | N | Music volume: off, low, medium, high (also a button in the Esc menu and on the title screen) |
 | G | Graphics: auto, high, low, classic (also a button in the Esc menu and on the title screen) |
 | H | Controls and tips window |
-| Esc | Pause / close a panel (pause menu: save slots, language, music, graphics, sounds, save, new game, save & quit) |
+| Esc | Pause / close a panel (pause menu: save slots, language, music, graphics, sounds, your look, save, new game, save & quit) |
 
 Panels also take number keys (barter offer N, with 0, - and = for offers 10-12; use basket N; coop actions
 1-4), so nothing depends on a click landing. The game pauses when the window loses focus (a screenshot tool, switching apps);
@@ -423,6 +423,33 @@ of 38) and wear horned helmets and carry bronze axes; each camp also has a bowma
 shoots from range. Fight them from range, parry, wear your best armor, or bring the war mace. No guards come out there. Their bodies and chests hold about twice the
 loot.
 
+## People and your look
+
+Everyone is drawn in code, like the rest of the world (no model files): shaped bodies whose knees and
+elbows bend as they walk, crouch and fight, the large eyes and strong nose of Sumerian statues, and the
+clothes of the time.
+
+- **Clothes:** the tufted fleece skirt (kaunakes), a short linen kilt, a fringed shawl wrapped over the left
+  shoulder, a long robe.
+- **Hair and beards:** shaved, short, long with a band round the head, a bun at the nape; no beard, short,
+  full, or the long waved beard of the statues.
+- **Jewellery:** lapis and carnelian beads, a gold band with earrings, gold arm rings.
+- **Townsfolk** differ one from the next in all of these, in skin, and in hair (some grey). About four in ten
+  are women, in shawls and robes. Priests are shaved and bare-chested in fleece; priestesses wear a robe and a
+  tall headdress. Merchants wear robes, gold and the long beard. City guards wear a bronze helmet and a cloak
+  studded with bronze, carry a spear, and a shield by day; village wardens wear leather and a cap. Raiders
+  from the east wear leather and a grey cap; barbarians from the west, wolf pelts or leather and horned
+  helmets.
+- **Hands hold things:** the arm follows the sword, club and mace through a swing (both hands on the mace), the
+  bow, a spear, a staff, a tool or a torch.
+
+**Your look:** the first time you play on a computer or in a browser, a "Your look" window comes up before
+the game: hair, beard, clothes and jewellery, four choices each, shown on your own body (the arrow keys turn
+the view; 1-4 step through a row). Change it any time with "Your look" in the Esc menu. It is kept in
+`sumer.look`; the other players see it, in your player color. Armor is worn over the clothes: the wolf pelt
+over the shoulders with its head as a hood, leather in laced bands, bronze armor as the soldiers' studded
+cloak (and helmet in combat mode).
+
 ## Armor
 
 | Armor | Made | Blows hurt |
@@ -501,7 +528,8 @@ Animals you kill stay gone until the next spring, when their herds are full agai
 | `src/items.c` | Item table and stack sizes, baskets, storage, barter checks, armor table |
 | `src/player.c` | Movement, jumping, stairs, crouch, ladders, equipment, bow, camera |
 | `src/ui.c` | HUD, minimap, inventory, storage, trade, coop, help and pause panels; the UI's scale on small and sharp screens |
-| `src/render.c` | Shaded box, cylinder and blob primitives (with normals for the shaders), humanoid model, fog, colour helpers |
+| `src/render.c` | Shaded box, cylinder and blob primitives (with normals for the shaders), fog, colour helpers |
+| `src/figures.c` | People's bodies, faces, hair, beards, clothes, jewellery and armor; every role's look; hands that hold things; the player's chosen look |
 | `src/gfx.c` | The shader renderer: the vertex stream every primitive draws through, the still world cut into chunks on the GPU at three levels of detail, what moves caught each frame, the sun's shadow, sky and light by the hour, glow and smoothing, the graphics setting |
 | `src/shaders.c` | The GLSL: world materials and light, sky, shadow depth, glow, smoothing and the final picture |
 | `src/people.c` | Solid bodies for everyone: player pushout, NPC blocking checks |

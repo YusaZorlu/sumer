@@ -29,6 +29,7 @@ void SyncSelf(void)
     p->weapon = UseWeapon();
     p->bow = UseBow();
     p->armor = UseArmor();
+    p->style = ChosenStyle();
     p->heard = 0;
 }
 
@@ -231,42 +232,10 @@ Look Flushed(Look look, float k)
 {
     const Color red = { 220, 40, 34, 255 };
     k = Clamp(k, 0.0f, 1.0f) * 0.55f;
-    return (Look){ Mix(look.skin, red, k), Mix(look.cloth, red, k), Mix(look.top, red, k), look.hair };
-}
-
-// Another player's weapon, held and swung as the one in your own hands is: raised and struck down, the
-// mace swept across, the melee weapon held up to parry.
-static void PeerWeapon(const Peer *p, Vector3 at)
-{
-    float shoulder = (p->flags & PF_CROUCH) ? 1.04f : 1.42f;
-    bool mace = p->equip == EQ_MACE, guard = (p->flags & PF_PARRY) && !mace;
-    float t = SwingElapsed(p->swingT, mace);
-    rlPushMatrix();
-    rlTranslatef(at.x, at.y + shoulder, at.z);
-    rlRotatef(p->shownFacing * RAD2DEG, 0, 1, 0);
-    if (guard) {
-        rlTranslatef(0.3f, 0.12f, 0.38f);
-        rlRotatef(-75.0f, 0, 1, 0);
-        rlRotatef(-25.0f, 1, 0, 0);
-    } else if (mace && p->swingT > 0) {
-        rlTranslatef(0, -0.15f, 0.15f);
-        rlRotatef(MaceYaw(t), 0, 1, 0);
-        rlRotatef(-6.0f, 1, 0, 0);
-    } else {
-        rlTranslatef(0.32f, 0, 0.1f);
-        rlRotatef(mace ? -35.0f : WeaponAngle(t), 1, 0, 0);
-    }
-    if (mace) {
-        DrawShadedBox((Vector3){ 0, 0, 0.45f }, (Vector3){ 0.06f, 0.06f, 0.95f }, COL_WOOD);
-        DrawShadedBlob((Vector3){ 0, 0, 0.98f }, (Vector3){ 0.17f, 0.17f, 0.2f }, (Color){ 120, 112, 100, 255 });
-    } else if (p->weapon >= 2) {
-        DrawShadedBox((Vector3){ 0, 0, 0.12f }, (Vector3){ 0.05f, 0.05f, 0.25f }, COL_WOOD);
-        DrawShadedBox((Vector3){ 0, 0, 0.5f }, (Vector3){ 0.03f, 0.08f, 0.6f }, COL_BRONZE);
-    } else {
-        DrawShadedBox((Vector3){ 0, 0, 0.35f }, (Vector3){ 0.06f, 0.06f, 0.7f }, COL_WOOD);
-        DrawShadedBox((Vector3){ 0, 0, 0.72f }, (Vector3){ 0.13f, 0.13f, 0.22f }, p->weapon ? (Color){ 184, 115, 70, 255 } : COL_PALM_TRUNK);
-    }
-    rlPopMatrix();
+    look.skin = Mix(look.skin, red, k);
+    look.cloth = Mix(look.cloth, red, k);
+    look.trim = Mix(look.trim, red, k);
+    return look;
 }
 
 // A player waiting for the night lies on their own bed, head on the pillow, if they are beside it.
@@ -288,8 +257,7 @@ void DrawPeers(void)
     for (int s = 0; s < MAX_PLAYERS; s++) {
         const Peer *p = &G.peers[s];
         if (!p->active || s == G.self || XZDist(p->shown, G.cam.position) > 240.0f) continue;
-        Color own = PlayerColor(s);
-        Look look = { COL_SKIN, own, Mix(own, COL_LINEN, 0.2f), COL_HAIR };
+        Look look = PlayerLook(s, p->style, p->armor);
         LightFor(p->shown);
         if (p->flags & PF_BED) {
             DrawInBed(s, p->shown, p->shownFacing, look);
@@ -303,8 +271,14 @@ void DrawPeers(void)
         Vector2 lean = { p->hitX * 24.0f * hit + ahead.x * 12.0f * swing, p->hitZ * 24.0f * hit + ahead.y * 12.0f * swing };
         float degrees = Vector2Length(lean);
         if (degrees > 0.5f) BeginLean(p->shown, Vector2Scale(lean, 1.0f / degrees), degrees);
+        // The weapon first: the hands reach for it.
+        bool mace = p->equip == EQ_MACE;
+        if ((p->equip == EQ_MELEE || mace) && !(p->flags & PF_CLIMB)) {
+            HoldWeapon(p->shown, p->shownFacing, (p->flags & PF_CROUCH) != 0, mace, SwingElapsed(p->swingT, mace), (p->flags & PF_PARRY) && !mace);
+            DrawWeaponPart(mace ? WEAPON_MACE : p->weapon);
+        }
+        if (G.night >= 0.3f) GripAt(HAND_OTHER, -0.36f, 1.36f, 0.28f);
         DrawHuman(p->shown, p->shownFacing, p->stride, hit > 0 ? Flushed(look, hit) : look, (p->flags & PF_CROUCH) != 0, aim, p->draw);
-        if ((p->equip == EQ_MELEE || p->equip == EQ_MACE) && !(p->flags & PF_CLIMB)) PeerWeapon(p, p->shown);
         if (degrees > 0.5f) EndLean();
         if (G.night >= 0.3f) DrawHandTorch(p->shown, p->shownFacing);
     }

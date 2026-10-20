@@ -352,8 +352,29 @@ static void PlaceCamera(float dt)
 }
 
 // A blow on the player jolts the view for a moment.
+// Choosing a look: the camera turns to face the player, who stands on the right of the screen beside the
+// choices; the arrow keys walk the camera round them.
+static void LookCamera(float dt)
+{
+    static float turn;
+    const Player *p = &G.player;
+    if (IsKeyDown(KEY_LEFT)) turn -= dt * 1.6f;
+    if (IsKeyDown(KEY_RIGHT)) turn += dt * 1.6f;
+    float a = p->facing + turn;
+    Vector3 chest = { p->pos.x, p->pos.y + (p->crouching ? 0.75f : 1.15f), p->pos.z };
+    G.cam.position = (Vector3){ chest.x + sinf(a) * 2.7f, chest.y + 0.35f, chest.z + cosf(a) * 2.7f };
+    Vector3 d = Vector3Normalize(Vector3Subtract(chest, G.cam.position));
+    Vector3 left = Vector3Normalize(Vector3CrossProduct((Vector3){ 0, 1, 0 }, d));
+    G.cam.target = Vector3Add(chest, Vector3Scale(left, 0.75f));
+    G.cam.fovy = 55.0f;
+}
+
 void FollowCamera(float dt)
 {
+    if (G.panel == PANEL_LOOK) {
+        LookCamera(dt);
+        return;
+    }
     PlaceCamera(dt);
     // A landed blow kicks the view, more sharply for the mace.
     if (G.shakeT > 0) {
@@ -447,65 +468,103 @@ float SwingLean(float t, bool mace)
     return expf(-d * d) - (t < CONTACT_TIME ? 0.35f * Clamp(t / 0.15f, 0.0f, 1.0f) : 0.0f);
 }
 
-static void DrawWeapon(const Player *p)
+// The sword or club arm over a swing (degrees below straight ahead; how far the hand is from the
+// shoulder): raised up and back with the weapon, then brought down and out to meet the target at
+// CONTACT_TIME, and back to the hip.
+static void SwordArm(float t, float *arm, float *reach)
 {
-    float angle = WeaponAngle(SwingElapsed(G.swingT, false));
-    bool guard = G.parryT > 0;
-    float shoulder = p->crouching ? 1.04f : 1.42f;
-
-    rlPushMatrix();
-    rlTranslatef(p->pos.x, p->pos.y + shoulder, p->pos.z);
-    rlRotatef(p->facing * RAD2DEG, 0, 1, 0);
-    if (guard) {
-        rlTranslatef(0.3f, 0.12f, 0.38f);
-        rlRotatef(-75.0f, 0, 1, 0);
-        rlRotatef(-25.0f, 1, 0, 0);
+    const float rest = 62.0f, top = -122.0f, cocked = -130.0f, hit = 6.0f, follow = 40.0f;
+    if (t < 0.0f || t >= SWING_TIME) {
+        *arm = rest;
+        *reach = 0.44f;
+    } else if (t < 0.12f) {
+        float u = EaseOut(t / 0.12f);
+        *arm = Lerp(rest, top, u);
+        *reach = Lerp(0.44f, 0.5f, u);
+    } else if (t < 0.22f) {
+        *arm = Lerp(top, cocked, (t - 0.12f) / 0.10f);
+        *reach = 0.5f;
+    } else if (t < CONTACT_TIME) {
+        float u = (t - 0.22f) / (CONTACT_TIME - 0.22f);
+        *arm = Lerp(cocked, hit, u * u);
+        *reach = Lerp(0.5f, 0.56f, u);
     } else {
-        rlTranslatef(0.32f, 0, 0.1f);
-        rlRotatef(angle, 1, 0, 0);
+        float u = (t - CONTACT_TIME) / (SWING_TIME - CONTACT_TIME);
+        *arm = u < 0.35f ? Lerp(hit, follow, u / 0.35f) : Lerp(follow, rest, (u - 0.35f) / 0.65f);
+        *reach = Lerp(0.56f, 0.44f, u);
     }
-    switch (UseWeapon()) {
-    case 0:
-        WPart(0, 0, 0.35f, 0.06f, 0.06f, 0.7f, COL_WOOD);
-        WPart(0, 0, 0.72f, 0.13f, 0.13f, 0.22f, COL_PALM_TRUNK);
-        break;
-    case 1:
-        WPart(0, 0, 0.35f, 0.05f, 0.05f, 0.7f, COL_WOOD);
-        WPart(0, 0, 0.75f, 0.16f, 0.16f, 0.18f, (Color){ 184, 115, 70, 255 });
-        break;
-    default:
+}
+
+// A weapon in the hand, seen from shoulder height (facing +z): the hand 'reach' out from the shoulder
+// along 'arm' (degrees below straight ahead), the weapon pointing along 'blade' the same way.
+Matrix ArmFrame(float arm, float reach, float blade)
+{
+    float a = arm * DEG2RAD;
+    return MatrixMultiply(MatrixRotateX(blade * DEG2RAD), MatrixTranslate(0.215f, 0.025f - reach * sinf(a), reach * cosf(a)));
+}
+
+// The sword or club 't' seconds into a swing (t < 0: at rest).
+Matrix SwordFrame(float t)
+{
+    float arm, reach;
+    SwordArm(t, &arm, &reach);
+    return ArmFrame(arm, reach, WeaponAngle(t));
+}
+
+// A tool or weapon held by someone else at 'blade' (see BlowAngle): the arm follows it up and down.
+Matrix BlowFrame(float blade)
+{
+    float arm = blade >= 0.0f ? 12.0f + blade * 0.9f : blade * 1.1f;
+    return ArmFrame(arm, blade >= 0.0f ? 0.5f : 0.47f, blade);
+}
+
+// Held up across the body to turn a blow aside.
+static Matrix GuardFrame(void)
+{
+    return MatrixMultiply(MatrixMultiply(MatrixRotateX(-25.0f * DEG2RAD), MatrixRotateY(-75.0f * DEG2RAD)), MatrixTranslate(0.3f, 0.12f, 0.38f));
+}
+
+// Resting in the hand at the hip, its head up over the shoulder behind.
+static Matrix MaceRestFrame(void)
+{
+    return ArmFrame(70.0f, 0.42f, -125.0f);
+}
+
+// Swept across the front in both hands, turned about the chest.
+static Matrix MaceSweepFrame(float t)
+{
+    return MatrixMultiply(MatrixMultiply(MatrixRotateX(-6.0f * DEG2RAD), MatrixRotateY(MaceYaw(t) * DEG2RAD)), MatrixTranslate(0, -0.15f, 0.15f));
+}
+
+// Where a held weapon is: the hands take hold of it there (GripHere), so draw it before the body.
+void HoldWeapon(Vector3 pos, float facing, bool crouching, bool mace, float t, bool guard)
+{
+    rlPushMatrix();
+    rlTranslatef(pos.x, pos.y + (crouching ? 1.04f : 1.42f), pos.z);
+    rlRotatef(facing * RAD2DEG, 0, 1, 0);
+    Matrix m = guard ? GuardFrame() : !mace ? SwordFrame(t) : t >= 0.0f ? MaceSweepFrame(t) : MaceRestFrame();
+    rlMultMatrixf(MatrixToFloat(m));
+    GripHere(HAND_WEAPON, 0, 0, mace && t >= 0.0f && !guard ? 0.32f : 0.0f);
+    if (mace && (t >= 0.0f || guard)) GripHere(HAND_OTHER, 0, 0, guard ? 0.3f : 0.17f);
+}
+
+// The weapon itself, where HoldWeapon put it; this ends what HoldWeapon began.
+void DrawWeaponPart(int kind)
+{
+    if (kind == WEAPON_MACE) {
+        WPart(0, 0, 0.45f, 0.06f, 0.06f, 0.95f, COL_WOOD);
+        DrawShadedBlob((Vector3){ 0, 0, 0.98f }, (Vector3){ 0.17f, 0.17f, 0.2f }, (Color){ 120, 112, 100, 255 });
+        WPart(0, 0, 0.98f, 0.4f, 0.05f, 0.05f, COL_BRONZE);
+        WPart(0, 0, 0.98f, 0.05f, 0.4f, 0.05f, COL_BRONZE);
+    } else if (kind >= WEAPON_SWORD) {
         WPart(0, 0, 0.12f, 0.05f, 0.05f, 0.25f, COL_WOOD);
         WPart(0, 0, 0.5f, 0.03f, 0.08f, 0.6f, COL_BRONZE);
         WPart(0, -0.1f, 0.84f, 0.03f, 0.22f, 0.12f, COL_BRONZE);
-        break;
-    }
-    rlPopMatrix();
-}
-
-// Rests on the shoulder; a strike sweeps it flat across the front from one side to the other.
-static void DrawMace(const Player *p)
-{
-    float shoulder = p->crouching ? 1.04f : 1.42f;
-
-    rlPushMatrix();
-    rlTranslatef(p->pos.x, p->pos.y + shoulder, p->pos.z);
-    rlRotatef(p->facing * RAD2DEG, 0, 1, 0);
-    if (G.parryT > 0) {
-        rlTranslatef(0.3f, 0.12f, 0.38f);
-        rlRotatef(-75.0f, 0, 1, 0);
-        rlRotatef(-25.0f, 1, 0, 0);
-    } else if (G.swingT > 0) {
-        rlTranslatef(0, -0.15f, 0.15f);
-        rlRotatef(MaceYaw(SwingElapsed(G.swingT, true)), 0, 1, 0);
-        rlRotatef(-6.0f, 1, 0, 0);
     } else {
-        rlTranslatef(0.32f, 0, 0.1f);
-        rlRotatef(-35.0f, 1, 0, 0);
+        WPart(0, 0, 0.35f, 0.06f - 0.01f * (float)kind, 0.06f - 0.01f * (float)kind, 0.7f, COL_WOOD);
+        WPart(0, 0, 0.72f + 0.03f * (float)kind, 0.13f + 0.03f * (float)kind, 0.13f + 0.03f * (float)kind, 0.22f - 0.04f * (float)kind,
+              kind ? (Color){ 184, 115, 70, 255 } : COL_PALM_TRUNK);
     }
-    WPart(0, 0, 0.45f, 0.06f, 0.06f, 0.95f, COL_WOOD);
-    DrawShadedBlob((Vector3){ 0, 0, 0.98f }, (Vector3){ 0.17f, 0.17f, 0.2f }, (Color){ 120, 112, 100, 255 });
-    WPart(0, 0, 0.98f, 0.4f, 0.05f, 0.05f, COL_BRONZE);
-    WPart(0, 0, 0.98f, 0.05f, 0.4f, 0.05f, COL_BRONZE);
     rlPopMatrix();
 }
 
@@ -517,6 +576,7 @@ static void DrawHeldBow(const Player *p)
     rlRotatef(p->facing * RAD2DEG, 0, 1, 0);
     rlTranslatef(-0.4f, 0, 0.12f);
     rlRotatef(-12.0f, 1, 0, 0);
+    GripHere(HAND_OTHER, 0, 0, 0);
     WPart(0, 0, 0, 0.05f, 0.9f, 0.06f, COL_WOOD);
     WPart(0, 0.5f, 0.05f, 0.04f, 0.16f, 0.05f, COL_WOOD);
     WPart(0, -0.5f, 0.05f, 0.04f, 0.16f, 0.05f, COL_WOOD);
@@ -524,36 +584,12 @@ static void DrawHeldBow(const Player *p)
     rlPopMatrix();
 }
 
-static void DrawArmor(const Player *p)
-{
-    float drop = p->crouching ? 0.38f : 0.0f;
-    rlPushMatrix();
-    rlTranslatef(p->pos.x, p->pos.y - drop, p->pos.z);
-    rlRotatef(p->facing * RAD2DEG, 0, 1, 0);
-    if (UseArmor() == ARMOR_WOLF) {
-        const Color fur = { 120, 114, 104, 255 }, dark = { 80, 76, 70, 255 };
-        WPart(0, 1.2f, -0.19f, 0.56f, 0.9f, 0.08f, fur);
-        WPart(0, 1.62f, -0.05f, 0.58f, 0.14f, 0.36f, fur);
-        WPart(0, 1.98f, -0.04f, 0.36f, 0.14f, 0.36f, dark);
-        WPart(-0.1f, 2.07f, 0.05f, 0.07f, 0.1f, 0.06f, dark);
-        WPart(0.1f, 2.07f, 0.05f, 0.07f, 0.1f, 0.06f, dark);
-    } else if (UseArmor() == ARMOR_LEATHER) {
-        const Color hide = { 128, 88, 56, 255 }, strap = { 84, 56, 36, 255 };
-        WPart(0, 1.36f, 0, 0.5f, 0.44f, 0.3f, hide);
-        WPart(-0.29f, 1.52f, 0, 0.16f, 0.14f, 0.2f, hide);
-        WPart(0.29f, 1.52f, 0, 0.16f, 0.14f, 0.2f, hide);
-        WPart(0, 1.16f, 0, 0.52f, 0.06f, 0.32f, strap);
-    }
-    rlPopMatrix();
-}
-
 void DrawPlayer(void)
 {
     const Player *p = &G.player;
-    Color own = PlayerColor(G.self);
-    Look look = { COL_SKIN, own, Mix(own, COL_LINEN, 0.2f), COL_HAIR };
+    Look look = PlayerLook(G.self, ChosenStyle(), UseArmor());
 
-    if (G.camDist < 1.3f) return;
+    if (G.camDist < 1.3f && G.panel != PANEL_LOOK) return;
     LightFor(p->pos);
     if (G.waitBed) {
         DrawInBed(G.self, p->pos, p->facing, look);
@@ -567,11 +603,13 @@ void DrawPlayer(void)
     Vector2 lean = { G.flinchX * 24.0f * hit + ahead.x * 12.0f * swing, G.flinchZ * 24.0f * hit + ahead.y * 12.0f * swing };
     float degrees = Vector2Length(lean);
     if (degrees > 0.5f) BeginLean(p->pos, Vector2Scale(lean, 1.0f / degrees), degrees);
-    DrawHuman(p->pos, p->facing, p->stride, hit > 0 ? Flushed(look, hit) : look, p->crouching, p->aiming, p->draw);
-    DrawArmor(p);
-    if (G.climb == 0 && G.equip == EQ_MELEE) DrawWeapon(p);
-    if (G.climb == 0 && G.equip == EQ_MACE) DrawMace(p);
+    if (G.climb == 0 && (G.equip == EQ_MELEE || G.equip == EQ_MACE)) {
+        bool mace = G.equip == EQ_MACE;
+        HoldWeapon(p->pos, p->facing, p->crouching, mace, SwingElapsed(G.swingT, mace), G.parryT > 0);
+        DrawWeaponPart(mace ? WEAPON_MACE : UseWeapon());
+    }
     if (G.climb == 0 && G.equip == EQ_BOW && !p->aiming) DrawHeldBow(p);
+    DrawHuman(p->pos, p->facing, p->stride, hit > 0 ? Flushed(look, hit) : look, p->crouching, p->aiming, p->draw);
     if (degrees > 0.5f) EndLean();
     G.drawTorch = G.drawFog = 0;
 }

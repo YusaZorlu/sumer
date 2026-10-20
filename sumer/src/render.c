@@ -59,6 +59,11 @@ void SetDrawFlash(float k)
     flash = Clamp(k, 0.0f, 1.0f);
 }
 
+float DrawFlash(void)
+{
+    return flash;
+}
+
 static void SetColor(Color c)
 {
     VColor(flash > 0 ? Mix(c, (Color){ 255, 244, 232, c.a }, flash * 0.75f) : c);
@@ -113,6 +118,18 @@ void DrawGlowBox(Vector3 c, Vector3 s, Color col)
 static float NormalShade(float nx, float ny, float nz)
 {
     return Clamp(0.74f + 0.26f * ny + 0.08f * nz + 0.08f * nx, 0.45f, 1.0f);
+}
+
+// A point's color and the way it faces: the shaders light it by the normal, the classic drawing by a
+// fixed shade from it.
+void VPaint(Color c, Vector3 n)
+{
+    if (GfxOn()) {
+        VNormal(n.x, n.y, n.z);
+        SetColor(c);
+    } else {
+        SetColor(Lit(c, NormalShade(n.x, n.y, n.z)));
+    }
 }
 
 // The top cap is a fan of degenerate quads. The sides carry smooth normals, so a column looks round
@@ -326,11 +343,6 @@ void DrawBeveledBox(Vector3 c, Vector3 s, Color col, float b)
     VEnd();
 }
 
-static void Limb(float x, float y0, float z, float r, float h, Color c, int sides)
-{
-    DrawShadedCylinder((Vector3){ x, y0, z }, r, r, h, 0.85f, sides, c);
-}
-
 static float Luma(Color c)
 {
     return 0.299f * (float)c.r + 0.587f * (float)c.g + 0.114f * (float)c.b;
@@ -354,92 +366,4 @@ Color Clothe(Color cloth, Color skin)
         if (ColorGap(c, skin) >= need) return c;
     }
     return toward;
-}
-
-static bool SameColor(Color a, Color b)
-{
-    return a.r == b.r && a.g == b.g && a.b == b.b;
-}
-
-// Up close a person gets twice the facets, hands, a belt and eyes.
-static void HumanModel(float stride, Look look, bool crouch, bool bow, float draw, bool fine)
-{
-    const int limb = fine ? 12 : 6, body = fine ? 16 : 8;
-    const BlobMesh *bm = &blobs[fine ? BLOB_FINE : BLOB_MID];
-    float swing = sinf(stride) * (crouch ? 0.1f : 0.18f);
-    float drop = crouch ? 0.38f : 0.0f;
-    float legH = 0.84f - drop;
-    Color skin = look.skin, foot = Mix(skin, COL_HAIR, 0.35f);
-
-    if (!SameColor(look.top, skin)) look.top = Clothe(look.top, skin);
-    look.cloth = Clothe(look.cloth, skin);
-
-    Limb(-0.11f, 0, swing, 0.085f, legH + 0.05f, skin, limb);
-    Limb(0.11f, 0, -swing, 0.085f, legH + 0.05f, skin, limb);
-    if (fine) {
-        BlobQuads(bm, (Vector3){ -0.11f, 0.05f, swing + 0.06f }, (Vector3){ 0.075f, 0.05f, 0.13f }, foot);
-        BlobQuads(bm, (Vector3){ 0.11f, 0.05f, -swing + 0.06f }, (Vector3){ 0.075f, 0.05f, 0.13f }, foot);
-    } else {
-        DrawShadedBox((Vector3){ -0.11f, 0.04f, swing + 0.05f }, (Vector3){ 0.15f, 0.08f, 0.26f }, foot);
-        DrawShadedBox((Vector3){ 0.11f, 0.04f, -swing + 0.05f }, (Vector3){ 0.15f, 0.08f, 0.26f }, foot);
-    }
-    rlTranslatef(0, -drop, crouch ? 0.06f : 0.0f);
-    DrawShadedCylinder((Vector3){ 0, 0.68f, 0 }, 0.28f, 0.19f, 0.56f, 0.78f, body, look.cloth);
-    DrawShadedCylinder((Vector3){ 0, 1.16f, 0 }, 0.23f, 0.15f, 0.42f, 0.95f, body, look.top);
-    BlobQuads(bm, (Vector3){ 0, 1.56f, 0 }, (Vector3){ 0.27f, 0.08f, 0.15f }, look.top);
-    if (fine) DrawShadedCylinder((Vector3){ 0, 1.15f, 0 }, 0.232f, 0.158f, 0.07f, 1.0f, body, Mix(look.cloth, COL_HAIR, 0.5f));
-
-    if (bow) {
-        float string = 0.6f - 0.42f * draw;
-        DrawShadedBox((Vector3){ -0.22f, 1.48f, 0.3f }, (Vector3){ 0.11f, 0.11f, 0.6f }, skin);
-        DrawShadedBox((Vector3){ 0.02f, 1.48f, fmaxf(string, 0.2f) / 2 }, (Vector3){ 0.11f, 0.11f, fmaxf(string, 0.2f) }, skin);
-        DrawShadedBox((Vector3){ -0.22f, 1.48f, 0.64f }, (Vector3){ 0.05f, 0.8f, 0.06f }, COL_WOOD);
-        DrawShadedBox((Vector3){ -0.22f, 1.95f, 0.58f }, (Vector3){ 0.04f, 0.2f, 0.06f }, COL_WOOD);
-        DrawShadedBox((Vector3){ -0.22f, 1.01f, 0.58f }, (Vector3){ 0.04f, 0.2f, 0.06f }, COL_WOOD);
-        DrawShadedBox((Vector3){ -0.22f, 1.48f, string }, (Vector3){ 0.02f, 0.9f, 0.02f }, COL_LINEN);
-        if (draw > 0.05f)
-            DrawShadedBox((Vector3){ -0.2f, 1.5f, string + 0.38f }, (Vector3){ 0.03f, 0.03f, 0.76f }, COL_REED);
-    } else {
-        Limb(-0.31f, 0.98f, -swing, 0.065f, 0.6f, skin, limb);
-        Limb(0.31f, 0.98f, swing, 0.065f, 0.6f, skin, limb);
-        if (fine) {
-            BlobQuads(bm, (Vector3){ -0.31f, 0.95f, -swing }, (Vector3){ 0.06f, 0.075f, 0.055f }, skin);
-            BlobQuads(bm, (Vector3){ 0.31f, 0.95f, swing }, (Vector3){ 0.06f, 0.075f, 0.055f }, skin);
-        }
-    }
-
-    Limb(0, 1.58f, 0, 0.07f, 0.1f, skin, limb);
-    BlobQuads(bm, (Vector3){ 0, 1.79f, 0.01f }, (Vector3){ 0.15f, 0.17f, 0.16f }, skin);
-    BlobQuads(bm, (Vector3){ 0, 1.86f, -0.02f }, (Vector3){ 0.165f, 0.12f, 0.17f }, look.hair);
-    DrawShadedBox((Vector3){ 0, 1.77f, 0.16f }, (Vector3){ 0.05f, 0.07f, 0.05f }, skin);
-    if (fine)
-        for (int s = -1; s <= 1; s += 2)
-            DrawShadedBox((Vector3){ 0.055f * (float)s, 1.825f, 0.148f }, (Vector3){ 0.035f, 0.024f, 0.02f }, (Color){ 34, 26, 22, 255 });
-}
-
-static bool NearCamera(Vector3 p)
-{
-    return Vector3Distance(p, G.cam.position) < 26.0f;
-}
-
-void DrawHuman(Vector3 pos, float facing, float stride, Look look, bool crouch, bool bow, float draw)
-{
-    float was = flash;
-    flash = fmaxf(flash, FlashAt(pos));
-    rlPushMatrix();
-    rlTranslatef(pos.x, pos.y, pos.z);
-    rlRotatef(facing * RAD2DEG, 0, 1, 0);
-    HumanModel(stride, look, crouch, bow, draw, NearCamera(pos));
-    rlPopMatrix();
-    flash = was;
-}
-
-void DrawPersonBody(Vector3 pos, float facing, Look look)
-{
-    rlPushMatrix();
-    rlTranslatef(pos.x, pos.y + 0.16f, pos.z);
-    rlRotatef(facing * RAD2DEG, 0, 1, 0);
-    rlRotatef(-90.0f, 1, 0, 0);
-    HumanModel(0, look, false, false, 0, NearCamera(pos));
-    rlPopMatrix();
 }

@@ -84,11 +84,12 @@ void LeaveToLobby(const char *why)
     OpenLobby(why);
 }
 
+// Into the game: the first time on this computer, choosing a look comes first (not for test links).
 static void Enter(void)
 {
     open = false;
     G.quit = false;
-    SetPanel(PANEL_NONE);
+    SetPanel(StyleChosen() || PageParam("auto")[0] ? PANEL_NONE : PANEL_LOOK);
     G.wasCaptured = false;
 }
 
