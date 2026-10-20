@@ -2,7 +2,7 @@
 """Sumer multiplayer server.
 
 Serves the browser build of the game (the web/ folder next to this file) and relays messages between
-the player who hosts a game and up to four guests. The host's browser runs the world; this server only
+the player who hosts a game and up to five guests. The host's browser runs the world; this server only
 forwards messages and never looks inside them. Needs nothing but Python 3.8 or newer.
 
     python3 server.py              # http://localhost:8000
@@ -21,7 +21,7 @@ import struct
 import urllib.parse
 
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
-MAX_GUESTS = 4
+MAX_GUESTS = 5
 MAX_MESSAGE = 4 << 20
 SEND_BACKLOG = 400
 

@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define NET_VERSION   4
+#define NET_VERSION   7
 #define SNAP_EVERY    0.1f
 #define STATE_EVERY   0.066f
 #define RECORD_EVERY  15.0f
@@ -21,7 +21,7 @@
 #define MAX_ARGS      REQ_ARGS
 
 enum { M_HELLO = 1, M_WELCOME, M_ROSTER, M_SNAP, M_STATE, M_REQ, M_REPLY, M_EVENT, M_RECORD, M_KICK };
-enum { EV_HURT = 1, EV_SAY, EV_HIT, EV_IMPACT, EV_SKIP, EV_PARRIED };
+enum { EV_HURT = 1, EV_SAY, EV_HIT, EV_IMPACT, EV_SKIP, EV_PARRIED, EV_STUNNED, EV_LANDED };
 
 typedef struct { int id, kind, args[MAX_ARGS], nargs; float age; } Pending;
 typedef struct { Vector3 pos; Color color; int count; float speed; bool ring; } Effect;
@@ -225,10 +225,12 @@ static void WriteSnapshot(Writer *w, bool slow)
         W8(w, Byte(p->swingT * 200.0f));
         W16(w, (unsigned)p->flags);
         W8(w, (unsigned)p->equip); W8(w, (unsigned)p->weapon); W8(w, (unsigned)p->bow); W8(w, (unsigned)p->armor);
+        W8(w, (unsigned)p->style);
         W16(w, (unsigned)Clamp(p->wanted, 0.0f, 65000.0f));
         W8(w, p->alone ? 1u : 0u);
         W8(w, (unsigned)(p->kills < 255 ? p->kills : 255));
         W8(w, (unsigned)(p->deaths < 255 ? p->deaths : 255));
+        W8(w, (unsigned)(p->mark & 3));
     }
 
     W8(w, (unsigned)G.animalCount);
@@ -368,12 +370,15 @@ static void ReadSnapshot(Reader *r)
         float facing = RAngle(r), stride = RF(r), draw = (float)R8(r) / 255.0f, health = (float)R8(r);
         float swing = (float)R8(r) / 200.0f;
         int flags = (int)R16(r), equip = (int)R8(r), weapon = (int)R8(r), bow = (int)R8(r), armor = (int)R8(r);
+        unsigned char style = (unsigned char)R8(r);
         float wanted = (float)R16(r);
         bool alone = R8(r) != 0;
         int kills = (int)R8(r);
         int deaths = (int)R8(r);
+        int mark = (int)(R8(r) & 3u);
         p->kills = kills;
         p->deaths = deaths;
+        p->mark = mark;
         if (s == G.self) {
             p->wanted = wanted;
             p->alone = alone;
@@ -395,6 +400,7 @@ static void ReadSnapshot(Reader *r)
         p->weapon = weapon;
         p->bow = bow;
         p->armor = armor;
+        p->style = style;
         p->wanted = wanted;
         p->alone = alone;
         p->heard = 0;
@@ -760,19 +766,46 @@ static void ShowSay(Reader *r)
     if (!r->bad) Show(fmt, args, n);
 }
 
-void NetHurt(int slot, float dmg, int by)
+void NetHurt(int slot, float dmg, int by, const Vector3 *src)
 {
     Writer w = Begin(M_EVENT);
     W8(&w, EV_HURT);
     WF(&w, dmg);
     W8(&w, (unsigned)by);
+    W8(&w, src ? 1u : 0u);
+    if (src) {
+        WF(&w, src->x);
+        WF(&w, src->z);
+    }
     SendGuest(slot, &w);
 }
 
-void NetHitMark(int slot)
+// The guest's blow was turned aside: they cannot swing again for a moment.
+void NetStunned(int slot, float secs)
+{
+    Writer w = Begin(M_EVENT);
+    W8(&w, EV_STUNNED);
+    WF(&w, secs);
+    SendGuest(slot, &w);
+}
+
+// The guest's blow or arrow struck home; 'arrow' when it was an arrow (it cracks as it strikes; a
+// swing's thud the guest's own game plays at contact).
+void NetHitMark(int slot, bool arrow)
 {
     Writer w = Begin(M_EVENT);
     W8(&w, EV_HIT);
+    W8(&w, arrow ? 1u : 0u);
+    SendGuest(slot, &w);
+}
+
+// The guest's swing at another player landed on them at 'at': the guest feels it as it lands.
+void NetBlowLanded(int slot, Vector3 at, bool heavy)
+{
+    Writer w = Begin(M_EVENT);
+    W8(&w, EV_LANDED);
+    WF(&w, at.x); WF(&w, at.y); WF(&w, at.z);
+    W8(&w, heavy ? 1u : 0u);
     SendGuest(slot, &w);
 }
 
@@ -839,7 +872,7 @@ void NetShoot(Vector3 from, Vector3 vel, int damage)
     SendHost(&w);
 }
 
-void NetStrike(Vector3 chest, Vector3 fwd, int equip, int weapon)
+void NetStrike(Vector3 chest, Vector3 fwd, int equip, int weapon, int phase)
 {
     Writer w = Begin(M_REQ);
     W16(&w, 0);
@@ -848,6 +881,7 @@ void NetStrike(Vector3 chest, Vector3 fwd, int equip, int weapon)
     WF(&w, fwd.x); WF(&w, fwd.z);
     W8(&w, (unsigned)equip);
     W8(&w, (unsigned)weapon);
+    W8(&w, (unsigned)phase);
     SendHost(&w);
 }
 
@@ -873,9 +907,10 @@ static void HostRequest(int slot, Reader *r)
         Vector3 chest = RVec(r), fwd = { 0, 0, 0 };
         fwd.x = RF(r);
         fwd.z = RF(r);
-        int equip = (int)R8(r), weapon = (int)R8(r);
+        int equip = (int)R8(r), weapon = (int)R8(r), phase = (int)R8(r);
         fwd = Vector3Normalize(fwd);
-        if (!r->bad && Vector3Distance(chest, G.peers[slot].pos) < 5.0f) StrikeFor(chest, fwd, equip, weapon);
+        if (!r->bad && Vector3Distance(chest, G.peers[slot].pos) < 5.0f && (phase == STRIKE_START || phase == STRIKE_CONTACT))
+            StrikeFor(chest, fwd, equip, weapon, phase);
     } else {
         int args[MAX_ARGS], res[MAX_ARGS], n = (int)R8(r), nres = 0;
         if (n > MAX_ARGS) n = MAX_ARGS;
@@ -988,7 +1023,7 @@ static void HostHello(int net, Reader *r)
     for (int s = 1; s < MAX_PLAYERS && slot < 0; s++)
         if (!G.peers[s].active) slot = s;
     if (slot < 0) {
-        Kick(net, "The game is full: five players already.");
+        Kick(net, "The game is full: six players already.");
         return;
     }
     // Everyone already playing hears of it; the newcomer gets a welcome of their own instead, which
@@ -998,7 +1033,8 @@ static void HostHello(int net, Reader *r)
     Peer *p = &G.peers[slot];
     *p = (Peer){ .active = true, .net = net, .health = HEALTH_MAX, .flags = PF_GROUND };
     snprintf(p->name, NAME_LEN, "%s", name);
-    p->pos = p->shown = rec ? rec->pos : G.houses[slot].door;
+    // In PvP everyone starts somewhere else in the city; otherwise a returning player is where they left.
+    p->pos = p->shown = G.pvp ? CitySpawn(slot) : rec ? rec->pos : G.houses[slot].door;
 
     Writer w = Begin(M_WELCOME);
     W8(&w, (unsigned)slot);
@@ -1007,6 +1043,8 @@ static void HostHello(int net, Reader *r)
     W8(&w, (G.pvp ? 1u : 0u) | (G.combat ? 2u : 0u));
     W8(&w, rec ? 1u : 0u);
     if (rec) WriteRecord(&w, rec);
+    WF(&w, p->pos.x);
+    WF(&w, p->pos.z);
     SendGuest(slot, &w);
     SendRoster();
     Snapshot(slot, true);
@@ -1038,6 +1076,7 @@ static void HostState(int slot, Reader *r)
     Vector3 pos = RVec(r);
     float facing = RAngle(r), stride = RF(r), draw = (float)R8(r) / 255.0f, health = (float)R8(r), swing = (float)R8(r) / 200.0f;
     int flags = (int)R16(r), equip = (int)R8(r), weapon = (int)R8(r), bow = (int)R8(r), armor = (int)R8(r);
+    unsigned char style = (unsigned char)R8(r);
     if (r->bad || !isfinite(pos.x) || fabsf(pos.x) > WORLD_HALF + 5 || fabsf(pos.z) > WORLD_HALF + 5) return;
     p->pos = pos;
     p->facing = facing;
@@ -1050,6 +1089,7 @@ static void HostState(int slot, Reader *r)
     p->weapon = weapon;
     p->bow = bow;
     p->armor = armor;
+    p->style = style;
     p->heard = 0;
 }
 
@@ -1075,6 +1115,7 @@ static void SendState(void)
     W8(&w, Byte(p->swingT * 200.0f));
     W16(&w, (unsigned)p->flags);
     W8(&w, (unsigned)p->equip); W8(&w, (unsigned)p->weapon); W8(&w, (unsigned)p->bow); W8(&w, (unsigned)p->armor);
+    W8(&w, (unsigned)p->style);
     SendHost(&w);
 }
 
@@ -1148,6 +1189,12 @@ const char *KillDeath(int s)
 }
 
 // The game's rules in a line.
+// What a PvP game's welcome adds: the way to the priest's blessing is open.
+static const char *ZigguratHint(void)
+{
+    return G.pvp ? L(" Tip: the priest on top of the ziggurat gives you a boost: +20% speed for a day. Its stairs are unguarded here.") : "";
+}
+
 const char *RulesText(void)
 {
     return L(!G.pvp ? "PvP off: players cannot hurt each other." : G.combat ? "Combat mode: best gear, unlimited arrows, guards stay out of player fights."
@@ -1168,11 +1215,16 @@ static void StartHosting(void)
     if (mine) ApplyRecord(mine);
     G.pvp = rulePvp;
     G.combat = ruleCombat;
+    if (G.pvp) {
+        RemoveZigguratGuards();
+        G.player.pos = CitySpawn(0);
+        G.player.pos.y = GroundHeight(G.player.pos.x, G.player.pos.z, G.player.pos.y + 0.5f);
+    }
     UpdateSky();
     FollowCamera(1.0f);
     phase = PHASE_PLAYING;
-    if (resumed) Say("%s %s", TextFormat(L("Your game is open again: day %d. Friends join from this same address."), G.day), RulesText());
-    else Say("%s %s", L("You are hosting a new game. Friends open this same address and press Join."), RulesText());
+    if (resumed) Say("%s %s%s", TextFormat(L("Your game is open again: day %d. Friends join from this same address."), G.day), RulesText(), ZigguratHint());
+    else Say("%s %s%s", L("You are hosting a new game. Friends open this same address and press Join."), RulesText(), ZigguratHint());
     G.msgT = 8.0f;
 }
 
@@ -1185,6 +1237,7 @@ static void StartGuest(Reader *r)
     bool hasRecord = R8(r) != 0;
     PlayerRecord rec;
     if (hasRecord && !ReadRecord(r, &rec)) hasRecord = false;
+    float startX = RF(r), startZ = RF(r);
     if (r->bad || slot <= 0 || slot >= MAX_PLAYERS) {
         Fail("The host sent something this game could not read.");
         return;
@@ -1208,12 +1261,17 @@ static void StartGuest(Reader *r)
         G.player.pos = G.houses[slot].door;
         G.player.pos.y = GroundHeight(G.player.pos.x, G.player.pos.z, 1.0f);
     }
+    if (G.pvp) {
+        RemoveZigguratGuards();
+        G.player.pos = (Vector3){ startX, 0, startZ };
+        G.player.pos.y = GroundHeight(startX, startZ, TerrainHeight(startX, startZ) + 0.5f);
+    }
     UpdateSky();
     FollowCamera(1.0f);
     phase = PHASE_PLAYING;
-    Say("%s %s", TextFormat(L(hasRecord ? "Welcome back. Your home has the %s lintel." : "You joined the game. Your home has the %s lintel."), PlayerColorName(slot)),
-        RulesText());
-    G.msgT = 8.0f;
+    Say("%s %s%s", TextFormat(L(hasRecord ? "Welcome back. Your home has the %s lintel." : "You joined the game. Your home has the %s lintel."), PlayerColorName(slot)),
+        RulesText(), ZigguratHint());
+    G.msgT = 9.0f;
 }
 
 // Called every frame while the lobby waits: 1 once the game is on, -1 if it failed (see NetFailure).
@@ -1238,7 +1296,7 @@ int NetLobby(void)
         } else if (m.kind == S_NOHOST) {
             Fail("No one is hosting a game here yet. One player presses Host first.");
         } else if (m.kind == S_FULL) {
-            Fail("The game is full: five players already.");
+            Fail("The game is full: six players already.");
         } else if (m.kind == S_DATA && m.len > 0) {
             Reader r = { m.data, m.len, 1, false };
             if (m.data[0] == M_WELCOME) {
@@ -1329,11 +1387,34 @@ static void ClientEvent(Reader *r)
     case EV_HURT: {
         float dmg = RF(r);
         int by = (int)R8(r);
-        if (!r->bad) HurtPlayer(dmg, by);
+        bool has = R8(r) != 0;
+        Vector3 src = { 0 };
+        if (has) {
+            src.x = RF(r);
+            src.z = RF(r);
+        }
+        if (!r->bad) HurtPlayerFrom(dmg, by, has ? &src : NULL);
+        break;
+    }
+    case EV_STUNNED: {
+        float secs = RF(r);
+        if (!r->bad && secs >= 0 && secs < 5.0f) {
+            G.swingCool += secs;
+            BlowTurnedAside(ChestAhead());
+        }
+        break;
+    }
+    case EV_LANDED: {
+        Vector3 at = RVec(r);
+        bool heavy = R8(r) != 0;
+        if (!r->bad) BlowLanded(at, heavy);
         break;
     }
     case EV_SAY: ShowSay(r); break;
-    case EV_HIT: G.hitMarkT = 0.3f; break;
+    case EV_HIT:
+        G.hitMarkT = 0.3f;
+        if (R8(r) == 1) SfxPlay(SFX_ARROW, 0.8f);
+        break;
     case EV_IMPACT: {
         Vector3 at = RVec(r);
         if (!r->bad) {
@@ -1345,6 +1426,7 @@ static void ClientEvent(Reader *r)
     case EV_PARRIED:
         G.parryT = 0;
         G.parryCool = 0;
+        BlowTurnedAside(ChestAhead());
         break;
     case EV_SKIP: {
         float hours = RF(r);

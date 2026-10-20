@@ -269,14 +269,13 @@ static void DrawSpear(Vector3 g, float f, float swing, float windup)
     rlPushMatrix();
     rlTranslatef(g.x, g.y, g.z);
     rlRotatef(f * RAD2DEG, 0, 1, 0);
-    if (swing > 0) {
-        float k = swing / 0.35f;
-        Part(0.3f, 1.35f, 0.9f - 0.5f * k, 0.05f, 0.05f, 2.4f, COL_WOOD);
-        Part(0.3f, 1.35f, 2.2f - 0.5f * k, 0.08f, 0.08f, 0.26f, COL_BRONZE);
-    } else if (windup > 0) {
-        Part(0.3f, 1.45f, 0.35f, 0.05f, 0.05f, 2.4f, COL_WOOD);
-        Part(0.3f, 1.45f, 1.65f, 0.08f, 0.08f, 0.26f, COL_BRONZE);
+    if (swing > 0 || windup > 0) {
+        float z = SpearThrust(windup, swing), y = windup > 0.1f ? 1.45f : 1.35f;
+        GripHere(HAND_WEAPON, 0.3f, y, z - 0.2f);
+        Part(0.3f, y, z, 0.05f, 0.05f, 2.4f, COL_WOOD);
+        Part(0.3f, y, z + 1.3f, 0.08f, 0.08f, 0.26f, COL_BRONZE);
     } else {
+        GripHere(HAND_WEAPON, 0.36f, 1.18f, 0.12f);
         Part(0.36f, 1.2f, 0.12f, 0.05f, 2.4f, 0.05f, COL_WOOD);
         Part(0.36f, 2.5f, 0.12f, 0.08f, 0.26f, 0.08f, COL_BRONZE);
     }
@@ -299,12 +298,13 @@ void DrawCaravans(void)
         LightFor(c->path[c->points - 1]);
         if (c->state == CV_TRADE) DrawStall(c);
 
-        Look merchant = { COL_SKIN, c->robe, c->robe, c->cloth };
+        Look merchant = PersonLook(LOOK_MERCHANT, 700u + (unsigned)i, c->robe);
         LightFor(p);
         if (c->vit[0].dead) {
             DrawPersonBody(p, f, merchant);
         } else {
             float stride = c->vit[0].override ? time * 8.0f : moving ? c->s * 2.5f : 0.0f;
+            if (G.night >= 0.3f) GripAt(HAND_OTHER, -0.36f, 1.36f, 0.28f);
             DrawHuman(p, f, stride, merchant, false, false, 0);
             if (G.night >= 0.3f) DrawHandTorch(p, f);
         }
@@ -320,15 +320,16 @@ void DrawCaravans(void)
             Vector3 g;
             CaravanMember(i, 3 + k, &g, &f);
             LightFor(g);
-            Look guard = { COL_SKIN, k ? (Color){ 100, 86, 70, 255 } : (Color){ 120, 100, 80, 255 }, COL_SKIN, COL_HAIR };
+            Look guard = PersonLook(LOOK_SOLDIER, 720u + (unsigned)(i * 2 + k), k ? (Color){ 100, 86, 70, 255 } : (Color){ 120, 100, 80, 255 });
             if (v->dead) {
                 DrawPersonBody(g, f, guard);
                 continue;
             }
             float stride = v->override ? time * 8.0f : moving ? c->s * 2.5f + 1.0f + (float)k : 0.0f;
+            DrawSpear(g, f, v->swing, v->windup);
+            if (G.night >= 0.3f) GripAt(HAND_OTHER, -0.36f, 1.36f, 0.28f);
             DrawHuman(g, f, stride, guard, false, false, 0);
             if (G.night >= 0.3f) DrawHandTorch(g, f);
-            DrawSpear(g, f, v->swing, v->windup);
         }
     }
     G.drawTorch = G.drawFog = 0;

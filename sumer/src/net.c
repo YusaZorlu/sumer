@@ -1,5 +1,5 @@
 // The connection to the relay server: a WebSocket in the browser. The relay keeps rooms of one host
-// and up to four guests and forwards each message; it never looks inside them.
+// and up to five guests and forwards each message; it never looks inside them.
 //
 // To the host the relay sends: S_HELLO, then S_JOIN id / S_LEAVE id as guests come and go, and
 // S_DATA from-id payload. To a guest: S_HELLO id, S_DATA 0 payload, or S_FULL / S_NOHOST / S_TAKEN /

@@ -393,7 +393,7 @@ static void UpdateWolf(Animal *a, const AnimalDef *d, float dt)
         } else {
             a->speed = 0;
             if (a->bite <= 0) {
-                HurtSlot(s, WOLF_BITE, BY_WOLF);
+                HurtSlotFrom(s, WOLF_BITE, BY_WOLF, &a->pos);
                 a->bite = BITE_COOLDOWN;
                 a->timer = 1.2f;
             }
@@ -444,7 +444,7 @@ static void UpdateCharge(Animal *a, const AnimalDef *d, float dt)
     } else {
         a->speed = 0;
         if (a->bite <= 0 && fabsf(at.y - a->pos.y) < 1.5f) {
-            HurtSlot(s, BOAR_GORE, BY_BOAR);
+            HurtSlotFrom(s, BOAR_GORE, BY_BOAR, &a->pos);
             a->bite = GORE_COOLDOWN;
         }
     }
@@ -515,7 +515,7 @@ static void UpdateSnake(Animal *a, const AnimalDef *d, float dt)
         a->timer -= dt;
         a->speed = (dist > 1.1f && XZDist(a->pos, a->lair) < 3.0f) ? d->run : 0.0f;
         if (dist < 1.7f && level && a->bite <= 0) {
-            HurtSlot(s, SNAKE_BITE, BY_SNAKE);
+            HurtSlotFrom(s, SNAKE_BITE, BY_SNAKE, &a->pos);
             a->bite = SNAKE_COOLDOWN;
             SayTo(s, "A snake bit you!");
         }
@@ -795,7 +795,9 @@ static void FlyNpcArrow(Arrow *ar, float dt)
     if (s >= 0) {
         Vector3 p = G.peers[s].pos;
         SpawnBurst((Vector3){ p.x, p.y + 1.2f, p.z }, (Color){ 170, 30, 30, 255 }, 10, 2.2f);
-        HurtSlot(s, (float)ar->damage, ar->cause);
+        // The shot came from along the way the arrow was flying.
+        Vector3 shotFrom = Vector3Subtract(ar->pos, Vector3Scale(Vector3Normalize(ar->vel), 8.0f));
+        HurtSlotFrom(s, (float)ar->damage, ar->cause, &shotFrom);
         Spend(ar);
     } else if (ar->pos.y <= TerrainHeight(ar->pos.x, ar->pos.z) || (ar->pos.y <= WATER_LEVEL && InWater(ar->pos.x, ar->pos.z)) || PointInSolid(ar->pos)) {
         if (PointInSolid(ar->pos)) ar->pos = prev;
@@ -1214,7 +1216,9 @@ void DrawWildlife(void)
         if (!a->active || d > 260.0f || (a->type == AN_SNAKE && d > 110.0f)) continue;
         LightFor(a->pos);
         if (a->type == AN_SNAKE) DrawSnakeGrass(a, i);
+        SetDrawFlash(FlashAt(a->pos));
         DrawAnimal(a);
+        SetDrawFlash(0);
     }
     G.drawTorch = G.drawFog = 0;
 }
@@ -1230,13 +1234,14 @@ static void KnockBack(Animal *a, Vector3 dir, float dist)
 }
 
 // The war mace sweeps a wide arc: every animal in reach and every foe in front is struck. A bystander
-// is only hit when the blow was clearly aimed at them (nearest of everything in front).
-static void MaceStrike(Vector3 chest, Vector3 fwd)
+// is only hit when the blow was clearly aimed at them (nearest of everything in front). Players in the
+// arc are dealt with when the swing starts (HitPlayer queues their blows to land at contact). With
+// 'apply' false nothing happens: it only says whether the sweep would meet anyone, and where.
+static bool MaceStrike(Vector3 chest, Vector3 fwd, bool apply, Vector3 *at)
 {
-    int people[16], n = PeopleInArc(chest, fwd, MACE_REACH, MACE_ARC, people, 16), players[MAX_PLAYERS];
-    int np = G.pvp ? PlayersInArc(chest, fwd, MACE_REACH, MACE_ARC, G.actor, players, MAX_PLAYERS) : 0;
-    for (int k = 0; k < np; k++) HitPlayer(players[k], (float)MACE_DAMAGE, chest, true);
-    float nearestAnimal = 1e9f;
+    int people[16], n = PeopleInArc(chest, fwd, MACE_REACH, MACE_ARC, people, 16);
+    float nearestAnimal = 1e9f, nearest = 1e9f;
+    bool met = false;
 
     for (int i = 0; i < G.animalCount; i++) {
         Animal *a = &G.animals[i];
@@ -1247,6 +1252,12 @@ static void MaceStrike(Vector3 chest, Vector3 fwd)
         if (dist - Radius(a) * 0.6f > MACE_REACH || fabsf(Center(a).y - chest.y) > 1.8f) continue;
         if (dist > 0.3f && Vector3DotProduct(Vector3Scale(d, 1.0f / dist), fwd) < MACE_ARC) continue;
         nearestAnimal = fminf(nearestAnimal, dist);
+        met = true;
+        if (dist < nearest) {
+            nearest = dist;
+            *at = Center(a);
+        }
+        if (!apply) continue;
         HitAnimal(a, a->state == ST_CALM ? MACE_DAMAGE * 3 / 2 : MACE_DAMAGE);
         KnockBack(a, d, dist);
     }
@@ -1256,28 +1267,32 @@ static void MaceStrike(Vector3 chest, Vector3 fwd)
         const char *name;
         bool hostile, dead;
         FighterInfo(people[k], &pos, &hp, &maxHp, &name, &hostile, &dead);
-        bool aimed = k == 0 && XZDist(pos, chest) < nearestAnimal;
-        if (aimed || FighterIsFoe(people[k])) DamagePerson(people[k], (float)MACE_DAMAGE);
+        float dist = XZDist(pos, chest);
+        bool aimed = k == 0 && dist < nearestAnimal;
+        if (!aimed && !FighterIsFoe(people[k])) continue;
+        met = true;
+        if (dist < nearest) {
+            nearest = dist;
+            *at = (Vector3){ pos.x, pos.y + 1.2f, pos.z };
+        }
+        if (apply) DamagePerson(people[k], (float)MACE_DAMAGE);
     }
-    for (int k = -3; k <= 3; k++) {
-        float a = atan2f(fwd.x, fwd.z) + 0.32f * (float)k;
-        Vector3 at = { chest.x + sinf(a) * 2.0f, chest.y - 0.6f, chest.z + cosf(a) * 2.0f };
-        SpawnBurst(at, (Color){ 196, 176, 132, 255 }, 3, 1.4f);
-    }
+    if (apply)
+        for (int k = -3; k <= 3; k++) {
+            float a = atan2f(fwd.x, fwd.z) + 0.32f * (float)k;
+            Vector3 dust = { chest.x + sinf(a) * 2.0f, chest.y - 0.6f, chest.z + cosf(a) * 2.0f };
+            SpawnBurst(dust, (Color){ 196, 176, 132, 255 }, 3, 1.4f);
+        }
+    return met;
 }
 
-// A blow by the acting player (G.actor): the closest animal or person in front of the chest, toward
-// where they look; unaware animals take half again as much. The war mace sweeps instead.
-void StrikeFor(Vector3 chest, Vector3 fwd, int equip, int weapon)
-{
-    Animal *target = NULL;
-    float best = 1e9f;
-    Vector3 dir = { 0 };
+// What a sword or club swung from 'chest' toward 'fwd' reaches: the nearest animal, the nearest person,
+// and (when players may fight) the nearest other player.
+typedef struct { Animal *animal; Vector3 dir; float animalDist; int person; float personDist; int player; float playerDist; } BladeReach;
 
-    if (equip == EQ_MACE) {
-        MaceStrike(chest, fwd);
-        return;
-    }
+static BladeReach Reach(Vector3 chest, Vector3 fwd)
+{
+    BladeReach r = { NULL, { 0 }, 1e9f, -1, 1e9f, -1, 1e9f };
     for (int i = 0; i < G.animalCount; i++) {
         Animal *a = &G.animals[i];
         if (!a->active || a->state == ST_DEAD) continue;
@@ -1286,43 +1301,110 @@ void StrikeFor(Vector3 chest, Vector3 fwd, int equip, int weapon)
         float dist = Vector3Length(d);
         if (dist - Radius(a) * 0.6f > 2.3f || fabsf(Center(a).y - chest.y) > 1.8f) continue;
         if (dist > 0.3f && Vector3DotProduct(Vector3Scale(d, 1.0f / dist), fwd) < 0.45f) continue;
-        if (dist < best) {
-            best = dist;
-            target = a;
-            dir = d;
+        if (dist < r.animalDist) {
+            r.animalDist = dist;
+            r.animal = a;
+            r.dir = d;
         }
     }
-    int damage = MELEE_DAMAGE[weapon < 0 ? 0 : weapon > 2 ? 2 : weapon];
-    float personDist;
-    int person = PersonInFront(chest, fwd, 2.3f, &personDist), player;
+    r.person = PersonInFront(chest, fwd, 2.3f, &r.personDist);
+    int player;
     if (G.pvp && PlayersInArc(chest, fwd, 2.3f, 0.45f, G.actor, &player, 1) == 1) {
-        float d = XZDist(G.peers[player].pos, chest);
-        if ((person < 0 || d < personDist) && (!target || d < best)) {
-            HitPlayer(player, (float)damage, chest, true);
-            return;
-        }
+        r.player = player;
+        r.playerDist = XZDist(G.peers[player].pos, chest);
     }
-    if (person >= 0 && (!target || personDist < best)) {
-        DamagePerson(person, (float)damage);
-        return;
-    }
-    if (!target) return;
-
-    if (target->state == ST_CALM) damage = damage * 3 / 2;
-    HitAnimal(target, damage);
-    KnockBack(target, dir, best);
+    return r;
 }
 
-// This machine's player swings; in someone else's game the host plays the blow out.
-void MeleeStrike(void)
+static bool PlayerNearest(const BladeReach *r)
+{
+    return r->player >= 0 && r->playerDist < r->personDist && r->playerDist < r->animalDist;
+}
+
+static bool aimedAtPlayer[MAX_PLAYERS];
+
+// A blow by the acting player (G.actor), in two halves. When the swing starts, a blow at another player
+// is set going (it lands at contact, after its warning; see HitPlayer). At contact (STRIKE_CONTACT
+// into the swing, as the weapon comes down) it meets the closest animal or person in front of the
+// chest, toward where they look; unaware animals take half again as much. The war mace sweeps instead.
+// Says whether the contact met anyone.
+bool StrikeFor(Vector3 chest, Vector3 fwd, int equip, int weapon, int phase)
+{
+    int a = G.actor >= 0 && G.actor < MAX_PLAYERS ? G.actor : 0;
+    Vector3 at;
+
+    if (equip == EQ_MACE) {
+        if (phase == STRIKE_CONTACT) {
+            G.meleeing = true;
+            bool met = MaceStrike(chest, fwd, true, &at);
+            G.meleeing = false;
+            return met;
+        }
+        int players[MAX_PLAYERS], np = G.pvp ? PlayersInArc(chest, fwd, MACE_REACH, MACE_ARC, G.actor, players, MAX_PLAYERS) : 0;
+        for (int k = 0; k < np; k++) HitPlayer(players[k], (float)MACE_DAMAGE, chest, true);
+        return false;
+    }
+    int damage = MELEE_DAMAGE[weapon < 0 ? 0 : weapon > 2 ? 2 : weapon];
+    BladeReach r = Reach(chest, fwd);
+    if (phase == STRIKE_START) {
+        aimedAtPlayer[a] = PlayerNearest(&r);
+        if (aimedAtPlayer[a]) HitPlayer(r.player, (float)damage, chest, true);
+        return false;
+    }
+    if (aimedAtPlayer[a]) {
+        aimedAtPlayer[a] = false;
+        return false;
+    }
+    G.meleeing = true;
+    if (r.person >= 0 && r.personDist < r.animalDist) {
+        DamagePerson(r.person, (float)damage);
+    } else if (r.animal) {
+        if (r.animal->state == ST_CALM) damage = damage * 3 / 2;
+        HitAnimal(r.animal, damage);
+        KnockBack(r.animal, r.dir, r.animalDist);
+    }
+    G.meleeing = false;
+    return r.person >= 0 || r.animal;
+}
+
+// Whether this machine's player's swing meets an animal or person at contact, and where: what it sees
+// and hears at once, even in someone else's game. A blow at another player waits for the host's word.
+bool StrikeWouldMeet(Vector3 chest, Vector3 fwd, int equip, Vector3 *at)
+{
+    if (equip == EQ_MACE) return MaceStrike(chest, fwd, false, at);
+    BladeReach r = Reach(chest, fwd);
+    if (PlayerNearest(&r)) return false;
+    if (r.person >= 0 && r.personDist < r.animalDist) {
+        Vector3 pos;
+        float hp, maxHp;
+        const char *name;
+        bool hostile, dead;
+        FighterInfo(r.person, &pos, &hp, &maxHp, &name, &hostile, &dead);
+        *at = (Vector3){ pos.x, pos.y + 1.2f, pos.z };
+        return true;
+    }
+    if (!r.animal) return false;
+    *at = Center(r.animal);
+    return true;
+}
+
+// This machine's player swings: the swish at the start, the blow at contact (player.c times it). In
+// someone else's game the host plays the blow out; the feel of it comes at once all the same.
+void MeleeStrike(int phase)
 {
     Player *p = &G.player;
     Vector3 fwd = { -sinf(p->yaw), 0, -cosf(p->yaw) };
-    Vector3 chest = { p->pos.x, p->pos.y + 1.0f, p->pos.z };
+    Vector3 chest = { p->pos.x, p->pos.y + 1.0f, p->pos.z }, at;
+    bool mace = G.equip == EQ_MACE;
 
-    p->facing = p->yaw + PI;
-    if (IsClient()) NetStrike(chest, fwd, G.equip, UseWeapon());
-    else StrikeFor(chest, fwd, G.equip, UseWeapon());
+    if (phase == STRIKE_START) {
+        p->facing = p->yaw + PI;
+        SfxPlay(mace ? SFX_SWING_HEAVY : SFX_SWING, 0.75f);
+    }
+    bool met = phase == STRIKE_CONTACT && StrikeWouldMeet(chest, fwd, G.equip, &at);
+    if (IsClient()) NetStrike(chest, fwd, G.equip, UseWeapon(), phase);
+    else StrikeFor(chest, fwd, G.equip, UseWeapon(), phase);
+    if (met) BlowLanded(at, mace);
 }
 
 void DrawArrow(const Arrow *ar)

@@ -9,3 +9,13 @@
 *.sav.tmp
 sumer.slot
 sumer.lang
+
+# Test builds and renders (tools/)
+/tools/out/
+sumer.music
+sumer.gfx
+sumer.sfx
+/tools/web/click/*.png
+/tools/web/click/flow/
+/tools/web/shots/
+sumer.look

@@ -48,7 +48,7 @@
 #define MAX_WORKERS     16
 #define MAX_CARAVANS    2
 #define CARAVAN_GUARDS  2
-#define MAX_PLAYERS     5
+#define MAX_PLAYERS     6
 #define HOUSE_STN       6
 #define MAX_STARS       90
 #define MAX_TORCHES     176
@@ -244,7 +244,7 @@ typedef enum {
     STN_BED, STN_STORAGE, STN_QUERN, STN_TROUGH, STN_OVEN, STN_KILN, STN_SMELTER, STN_BENCH, STN_ALTAR, STN_STASH, STN_STASH2,
     STN_STASH3, STN_STASH4, STN_WELL, STN_DITCH, STN_FERRY_E, STN_FERRY_W, STN_COUNT
 } StationId;
-typedef enum { PANEL_NONE, PANEL_BAG, PANEL_STORAGE, PANEL_TRADE, PANEL_PAUSE, PANEL_HELP, PANEL_COOP } Panel;
+typedef enum { PANEL_NONE, PANEL_BAG, PANEL_STORAGE, PANEL_TRADE, PANEL_PAUSE, PANEL_HELP, PANEL_COOP, PANEL_LOOK } Panel;
 typedef enum { TGT_NONE, TGT_CARCASS, TGT_RES, TGT_STATION, TGT_PLOT, TGT_COOP, TGT_TRADER, TGT_BODY, TGT_OFFER, TGT_LADDER, TGT_WATER } TargetKind;
 enum { SPRING, SUMMER, FALL, WINTER };
 typedef struct { TargetKind kind; int index; } Target;
@@ -257,7 +257,21 @@ typedef struct {
     bool grounded, crouching, aiming, moving, running;
 } Player;
 
-typedef struct { Color skin, cloth, top, hair; } Look;
+// How a person looks: colors, then hair, beard, dress, jewellery, headgear and armor (the enums below).
+typedef struct {
+    Color skin, cloth, trim, hair;
+    unsigned char hairStyle, beard, dress, jewel, head, armor;
+    bool woman;
+} Look;
+enum { HAIR_SHAVED, HAIR_SHORT, HAIR_LONG, HAIR_BUN, HAIR_KINDS };
+enum { BEARD_NONE, BEARD_SHORT, BEARD_FULL, BEARD_LONG, BEARD_KINDS };
+enum { DRESS_KILT, DRESS_FLEECE, DRESS_SHAWL, DRESS_ROBE, DRESS_KINDS };
+enum { JEWEL_NONE, JEWEL_BEADS, JEWEL_GOLD, JEWEL_BANDS, JEWEL_KINDS };
+enum { HEAD_NONE, HEAD_HELMET, HEAD_CAP, HEAD_STONECAP, HEAD_HORNS, HEAD_TALL };
+enum { LOOK_TOWN, LOOK_VILLAGER, LOOK_TRAVELLER, LOOK_MERCHANT, LOOK_WORKER, LOOK_PRIEST, LOOK_GUARD, LOOK_WARDEN, LOOK_SOLDIER,
+       LOOK_RAIDER, LOOK_BARBARIAN };
+enum { HAND_WEAPON, HAND_OTHER };
+enum { WEAPON_CLUB, WEAPON_COPPER, WEAPON_SWORD, WEAPON_MACE };
 
 // Every player has a house of their own: bed, storage, quern, trough, workbench and oven.
 typedef struct { Vector3 center, door; Vector3 stations[HOUSE_STN]; float bedFacing; } House;
@@ -265,6 +279,16 @@ typedef struct { Vector3 center, door; Vector3 stations[HOUSE_STN]; float bedFac
 // Playing alone, hosting a game others join, or playing in someone else's.
 typedef enum { NET_SOLO, NET_HOST, NET_CLIENT } NetRole;
 // PF_SLEEP: asleep or out cold (nothing attacks them); PF_BED: lying in bed waiting for the night to pass.
+// A swing's length (also how the weapon is drawn), and how long a blow on another player takes to land
+// from the start of the swing: the warning the one about to be hit gets.
+#define SWING_TIME   0.45f
+#define MACE_TIME    0.55f
+#define PVP_WINDUP   0.3f
+#define NPC_WINDUP   0.55f          // a person's blow lands this long after it begins (warning to contact)
+#define NPC_SWING    0.35f          // and its follow-through takes this long
+#define CONTACT_TIME PVP_WINDUP     // a swing's weapon meets its target this long after it starts, whatever it hits
+#define HITSTOP_TIME 0.07f          // a landed blow holds the swing still this long (the mace a little longer)
+#define FLINCH_TIME  0.45f
 enum { PF_CROUCH = 1, PF_RUN = 2, PF_MOVE = 4, PF_GROUND = 8, PF_AIM = 16, PF_SLEEP = 32, PF_CLIMB = 64, PF_PARRY = 128, PF_BED = 256 };
 #define NAME_LEN 16
 #define SAFE_RADIUS 22.0f
@@ -277,7 +301,12 @@ typedef struct {
     Vector3 pos, shown;
     float facing, shownFacing, stride, draw, health, swingT, wanted, aggro, heard;
     int flags, equip, weapon, bow, armor, net;
+    unsigned char style;   // how they chose to look (PackStyle)
     int kills, deaths;   // players brought down by this one, and times brought down by a player
+    // The warning mark over this player's head while they swing at someone, then how it came out
+    // (MARK_*, the host decides); and how long since this machine saw them hurt (a flinch).
+    int mark;
+    float markT, hitT, hitX, hitZ, lastHealth, lastSwing;
 } Peer;
 
 // Everything a player owns and where they stand: kept by the host for each name, saved with its game.
@@ -372,6 +401,12 @@ typedef struct {
     int quiver, quiverMax, bow, tools, weapon;
     bool hasMace;
     float swingT, swingCool, hitMarkT, impactT, herbT;
+    float hitStop, shakeT, shakeAmp;   // a landed blow: the swing held still, the view kicked
+    bool strikePending;                // swinging, the weapon has not met anything yet
+    bool meleeing;                     // a swing's contact is being played out (not an arrow)
+    // Where the last blow on this player came from, as red lights at the screen's edges (front, back, left,
+    // right) that fade, and the flinch of the body: how long it lasts and the way it was pushed.
+    float hitLight[4], flinchT, flinchX, flinchZ;
     Vector3 impact;
     int followArrow;
     float followT, camBlend;
@@ -390,7 +425,7 @@ typedef struct {
     float sleepT;
     bool sleeping, slept;
 
-    char msg[256];
+    char msg[384];
     float msgT;
     char promptE[192], promptF[192];
     bool okE, okF;
@@ -436,7 +471,22 @@ void DrawShadedBlobFar(Vector3 c, Vector3 r, Color col);
 void DrawShadedBlobFine(Vector3 c, Vector3 r, Color col);
 void DrawBeveledBox(Vector3 c, Vector3 s, Color col, float bevel);
 Color Clothe(Color cloth, Color skin);
+void VPaint(Color c, Vector3 n);
+float DrawFlash(void);
 void DrawHuman(Vector3 pos, float facing, float stride, Look look, bool crouch, bool bow, float draw);
+extern void (*ExtraFigures)(void);
+void GripHere(int hand, float x, float y, float z);
+void GripAt(int hand, float x, float y, float z);
+Look PlayerLook(int slot, unsigned char style, int armor);
+Look PersonLook(int role, unsigned seed, Color robe);
+unsigned char PackStyle(int hair, int beard, int dress, int jewel);
+unsigned char ChosenStyle(void);
+bool StyleChosen(void);
+void ChooseStyle(unsigned char style);
+const char *HairName(int k);
+const char *BeardName(int k);
+const char *DressName(int k);
+const char *JewelName(int k);
 
 void AddTorch(float x, float y, float z, bool pole);
 void AddFireLight(float x, float y, float z);
@@ -544,6 +594,10 @@ void UpdateSky(void);
 void DrawSky(void);
 void DrawTerrain(void);
 void DrawResources(void);
+void DrawResourcesOf(bool still, bool moving);
+void DrawResource(int i);
+void DrawBoxAt(int i, float d2);
+Vector3 SunDirection(void);
 
 int SlotsCount(const Slot *s, int n, int item);
 int SlotsSpace(const Slot *s, int n, int item);
@@ -576,6 +630,20 @@ void StartClimb(int ladder, bool up);
 const char *EquipName(int eq);
 void FollowCamera(float dt);
 void DrawPlayer(void);
+float SwingElapsed(float swingT, bool mace);
+float WeaponAngle(float t);
+Matrix ArmFrame(float arm, float reach, float blade);
+Matrix SwordFrame(float t);
+Matrix BlowFrame(float blade);
+void HoldWeapon(Vector3 pos, float facing, bool crouching, bool mace, float t, bool guard);
+void DrawWeaponPart(int kind);
+float MaceYaw(float t);
+float SwingLean(float t, bool mace);
+float BlowAngle(float windup, float swing, float rest);
+float SpearThrust(float windup, float swing);
+void BeginLean(Vector3 at, Vector2 dir, float degrees);
+void EndLean(void);
+Look Flushed(Look look, float k);
 
 void InitWildlife(void);
 void UpdateWildlife(float dt);
@@ -594,11 +662,13 @@ bool AnyBeastAttacking(void);
 void CalmBeasts(int slot);
 void ShootFor(int slot, Vector3 from, Vector3 vel, int damage);
 void LooseFor(Vector3 from, Vector3 to, float speed, int damage, int cause);
-void StrikeFor(Vector3 chest, Vector3 fwd, int equip, int weapon);
+enum { STRIKE_START, STRIKE_CONTACT };
+bool StrikeFor(Vector3 chest, Vector3 fwd, int equip, int weapon, int phase);
+bool StrikeWouldMeet(Vector3 chest, Vector3 fwd, int equip, Vector3 *at);
 void DrawArrow(const Arrow *ar);
 void DrawArrowTrails(const Arrow *arrows);
 int AnimalMaxHp(int type);
-void MeleeStrike(void);
+void MeleeStrike(int phase);
 const char *WeaponName(int tier);
 const char *MaceName(void);
 
@@ -606,6 +676,8 @@ void BuildVillage(void);
 Color PlayerColor(int slot);
 const char *PlayerColorName(int slot);
 void SetHome(int slot);
+Vector3 CitySpawn(int slot);
+void RemoveZigguratGuards(void);
 int AddNpc(NpcKind kind, Vector3 a, Vector3 b, float speed, Color robe, float face);
 void UpdateVillage(float dt);
 void AdvanceHours(float h);
@@ -678,6 +750,8 @@ void NewDay(void);
 bool RainBefore(float hour);
 bool CropStage(float lead, float *growth, bool *stubble);
 void UpdateFields(void);
+bool FieldBox(int i);
+void DrawFields(void);
 void UpdateWeather(void);
 void DrawRain(void);
 int Season(void);
@@ -739,6 +813,7 @@ void GameUpdate(void);
 void GameDraw(void);
 void StartSleep(void);
 void HurtPlayer(float dmg, int by);
+void HurtPlayerFrom(float dmg, int by, const Vector3 *src);
 void WakeAfterNight(float hours, bool rained, bool dawn);
 void TrackGoods(void);
 void PassHours(float h);
@@ -758,6 +833,9 @@ Vector2 MouseLook(void);
 const char *PageParam(const char *key);
 void ServerAddress(char *buf, int size, const char *query);
 bool OnWeb(void);
+bool OnPhone(void);
+Vector2 PointerPosition(void);
+float PixelRatio(void);
 
 // The connection to the relay server (net.c).
 bool NetOpen(bool host, const char *room);
@@ -777,6 +855,7 @@ float PlayerStance(int s);
 void UpdatePlayerSafety(float dt);
 bool Warn(int s, int kind, float quiet);
 void HurtSlot(int s, float dmg, int by);
+void HurtSlotFrom(int s, float dmg, int by, const Vector3 *src);
 void HitMark(void);
 void ShowImpact(Vector3 at);
 void SayTo(int s, const char *fmt, ...) PRINTF_LIKE(2, 3);
@@ -797,15 +876,17 @@ const Arrow *NetArrows(void);
 void DrawNetArrows(void);
 void LocalSayV(const char *fmt, va_list ap);
 void NetSayV(int slot, const char *fmt, va_list ap);
-void NetHurt(int slot, float dmg, int by);
-void NetHitMark(int slot);
+void NetHurt(int slot, float dmg, int by, const Vector3 *src);
+void NetStunned(int slot, float secs);
+void NetHitMark(int slot, bool arrow);
+void NetBlowLanded(int slot, Vector3 at, bool heavy);
 void NetImpact(int slot, Vector3 at);
 void NetParried(int slot);
 void NetSkip(float hours, bool rained, bool dawn);
 bool Asking(int kind, int first);
 void Ask(int kind, const int *args, int n);
 void NetShoot(Vector3 from, Vector3 vel, int damage);
-void NetStrike(Vector3 chest, Vector3 fwd, int equip, int weapon);
+void NetStrike(Vector3 chest, Vector3 fwd, int equip, int weapon, int phase);
 void NetSendRecord(void);
 void NetSaveSoon(void);
 float NetSilence(void);
@@ -861,7 +942,69 @@ void CalmFor(int slot);
 void OpenLobby(const char *why);
 bool InLobby(void);
 void LobbyFrame(void);
+// The UI's own units (ui.c): a small screen gets the UI shrunk as if it were 960 x 540.
+float UiScale(void);
+float UiWidth(void);
+float UiHeight(void);
+Vector2 UiMouse(void);
+void UiBegin(void);
+void UiEnd(void);
 void LeaveToLobby(const char *why);
 const char *PlayerName(void);
+
+// The music, made by a small synthesizer: the morning tune, the fight and the night (music.c).
+void MusicInit(void);
+void MusicUpdate(float dt, bool inGame);
+void MusicClose(void);
+int MusicLevel(void);              // 0 off, 1 low, 2 medium, 3 high
+void MusicSetLevel(int level);
+const char *MusicLevelName(void);
+const char *MusicTitle(int mood);
+int MusicMood(void);               // 0 morning, 1 the fight, 2 the night
+void MusicRender(int mood, float *out, int frames);
+float MusicPartBeats(int mood, int part);
+
+// How a blow feels (effects.c): the swing held still a moment, the view kicked, sparks and blood, the one
+// struck flashing; and the sounds (sfx.c).
+void BlowLanded(Vector3 at, bool heavy);
+void BlowTurnedAside(Vector3 at);
+void BlowTaken(void);
+Vector3 ChestAhead(void);
+void AddFlash(Vector3 at);
+float FlashAt(Vector3 p);
+void UpdateHitFeel(float dt);
+void SetDrawFlash(float k);
+void DrawSwingTrails(void);
+enum { SFX_SWING, SFX_SWING_HEAVY, SFX_HIT, SFX_HIT_HEAVY, SFX_CLANG, SFX_HURT, SFX_ARROW, SFX_COUNT };
+void SfxPlay(int id, float volume);
+void SfxPlayAt(int id, Vector3 at, float volume, float reach);
+int SfxLevel(void);
+void SfxSetLevel(int level);
+void SfxLoadSetting(void);
+const char *SfxLevelName(void);
+void SfxExport(const char *dir);
+
+// The shader renderer and its setting (gfx.c). While GfxOn() the draw code hands out plain colors
+// (Lit() leaves them as they are), a material and normals, and the shaders do the light. The vertex
+// stream below is how every piece of the world is drawn, whichever way it goes.
+enum { GFX_AUTO, GFX_HIGH, GFX_LOW, GFX_CLASSIC, GFX_CHOICES };
+enum { MAT_THING, MAT_GROUND, MAT_WATER, MAT_GLOW, MAT_FIGURE, MAT_BUILT, MAT_UNLIT };
+void GfxLoadSetting(void);
+int GfxChoice(void);               // what the player picked, GFX_AUTO included
+int GfxTier(void);                 // what runs: GFX_HIGH, GFX_LOW or GFX_CLASSIC
+void GfxSetChoice(int choice);
+const char *GfxChoiceName(int choice);
+const char *GfxLabel(void);
+bool GfxOn(void);
+bool DrawingAll(void);             // drawing the whole map once for the shaders' meshes: no culling
+void GfxWorldChanged(void);
+bool GfxDrawWorld(void);           // the 3D world through the shaders; false when the classic way must draw it
+void SetMaterial(int material);
+int CurrentMaterial(void);
+void VBegin(int mode);
+void VEnd(void);
+void VColor(Color c);
+void VNormal(float x, float y, float z);
+void VVertex(float x, float y, float z);
 
 #endif

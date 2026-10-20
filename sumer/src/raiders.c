@@ -248,14 +248,11 @@ void DrawRaiders(void)
         float f = r->vit.override ? r->vit.face : r->face;
         if (XZDist(p, G.cam.position) > 220.0f) continue;
 
-        // Barbarians wear dark red and black, a horned helmet, and swing a bronze axe.
+        // Barbarians from the west wear dark red, wolf pelts and horned helmets and swing a bronze axe; the
+        // raiders from the east, leather, a stone-grey cap and a stone axe.
         bool west = West(r->camp);
-        Look look = { (Color){ 150, 102, 70, 255 }, (Color){ 96, 72, 48, 255 }, (i & 1) ? (Color){ 150, 102, 70, 255 } : (Color){ 112, 88, 60, 255 },
-                      (Color){ 30, 24, 20, 255 } };
-        if (west) {
-            look.cloth = (Color){ 112, 40, 34, 255 };
-            look.top = (i & 1) ? (Color){ 150, 102, 70, 255 } : (Color){ 58, 44, 38, 255 };
-        }
+        Look look = PersonLook(west ? LOOK_BARBARIAN : LOOK_RAIDER, 800u + (unsigned)i, west ? (Color){ 112, 40, 34, 255 } : (Color){ 96, 72, 48, 255 });
+        look.trim = (i & 1) ? (Color){ 150, 102, 70, 255 } : (Color){ 58, 44, 38, 255 };
         LightFor(p);
         if (r->vit.dead) {
             DrawPersonBody(p, f, look);
@@ -267,37 +264,23 @@ void DrawRaiders(void)
             // The bowman: a war bow in hand, no axe.
             float pull = r->vit.drawing ? Clamp(1.0f - r->vit.windup / BOW_DRAW_TIME, 0.0f, 1.0f) : 0.0f;
             DrawHuman(p, f, stride, look, sitting, true, pull);
-        } else {
-            DrawHuman(p, f, stride, look, sitting, false, 0);
+            continue;
         }
-
-        float k = Clamp(r->vit.swing / 0.35f, 0.0f, 1.0f);
-        float angle = r->vit.swing > 0 ? -80.0f + 120.0f * (1.0f - k) : (r->vit.override ? -40.0f : 30.0f);
-        if (r->vit.windup > 0) angle = -40.0f - 80.0f * (1.0f - r->vit.windup / 0.55f);
+        float angle = BlowAngle(r->vit.windup, r->vit.swing, r->vit.override ? -40.0f : 30.0f);
         rlPushMatrix();
         rlTranslatef(p.x, p.y + (sitting ? 1.04f : 1.42f), p.z);
         rlRotatef(f * RAD2DEG, 0, 1, 0);
-        rlTranslatef(0.3f, 0, 0.1f);
-        rlRotatef(angle, 1, 0, 0);
-        if (west && !RaiderBowman(i)) {
+        rlMultMatrixf(MatrixToFloat(BlowFrame(angle)));
+        GripHere(HAND_WEAPON, 0, 0, 0.04f);
+        if (west) {
             DrawShadedBox((Vector3){ 0, 0, 0.5f }, (Vector3){ 0.06f, 0.06f, 1.0f }, COL_WOOD);
             DrawShadedBox((Vector3){ 0, 0.14f, 0.92f }, (Vector3){ 0.04f, 0.42f, 0.28f }, COL_BRONZE);
-        } else if (!west) {
+        } else {
             DrawShadedBox((Vector3){ 0, 0, 0.42f }, (Vector3){ 0.05f, 0.05f, 0.85f }, COL_WOOD);
             DrawShadedBox((Vector3){ 0, 0.1f, 0.8f }, (Vector3){ 0.04f, 0.3f, 0.2f }, COL_STONE);
         }
         rlPopMatrix();
-        rlPushMatrix();
-        rlTranslatef(p.x, p.y, p.z);
-        rlRotatef(f * RAD2DEG, 0, 1, 0);
-        float head = (sitting ? 1.52f : 1.9f) + 0.06f;
-        DrawShadedBox((Vector3){ 0, head, -0.02f }, (Vector3){ 0.34f, 0.1f, 0.34f }, west ? COL_BRONZE : (Color){ 128, 122, 112, 255 });
-        if (west)
-            for (int s = -1; s <= 1; s += 2) {
-                DrawShadedBox((Vector3){ 0.22f * (float)s, head + 0.06f, -0.02f }, (Vector3){ 0.12f, 0.06f, 0.06f }, COL_LINEN);
-                DrawShadedBox((Vector3){ 0.28f * (float)s, head + 0.18f, -0.02f }, (Vector3){ 0.05f, 0.2f, 0.05f }, COL_LINEN);
-            }
-        rlPopMatrix();
+        DrawHuman(p, f, stride, look, sitting, false, 0);
     }
     G.drawTorch = G.drawFog = 0;
 }

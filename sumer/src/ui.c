@@ -1,4 +1,5 @@
 #include "game.h"
+#include "rlgl.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -35,6 +36,57 @@ void SetPanel(Panel p)
     }
 }
 
+// The UI is laid out for a screen of at least 960 x 540. A smaller one, a phone's above all, gets it
+// all shrunk to fit, as if it were that big: everything here works in those units (UiWidth() wide),
+// and the mouse and points on the screen are turned into them. On a screen with several pixels to
+// each of the page's (PixelRatio) the UI is drawn that much bigger, so it keeps its size, sharper.
+float UiScale(void)
+{
+    float s = fminf(fminf((float)GetScreenHeight() / 540.0f, (float)GetScreenWidth() / 960.0f), PixelRatio());
+    return s > 0.0f ? s : 1.0f;
+}
+
+float UiWidth(void)
+{
+    return (float)GetScreenWidth() / UiScale();
+}
+
+float UiHeight(void)
+{
+    return (float)GetScreenHeight() / UiScale();
+}
+
+Vector2 UiMouse(void)
+{
+    return Vector2Scale(PointerPosition(), 1.0f / UiScale());
+}
+
+static Vector2 OnScreen(Vector3 p)
+{
+    return Vector2Scale(GetWorldToScreen(p, G.cam), 1.0f / UiScale());
+}
+
+// Shrunk, the pixel letters are smoothed so that their thin strokes do not drop out.
+void UiBegin(void)
+{
+    static int filter = -1;
+    float s = UiScale();
+    int want = s < 1.0f ? TEXTURE_FILTER_BILINEAR : TEXTURE_FILTER_POINT;
+    if (want != filter) {
+        SetTextureFilter(GameFont().texture, want);
+        filter = want;
+    }
+    rlDrawRenderBatchActive();
+    rlPushMatrix();
+    rlScalef(s, s, 1.0f);
+}
+
+void UiEnd(void)
+{
+    rlDrawRenderBatchActive();
+    rlPopMatrix();
+}
+
 static float FontSize(int size)
 {
     return (float)(size < 10 ? 10 : size);
@@ -58,6 +110,7 @@ static void CenterText(const char *s, float cx, float y, int size, Color c)
 }
 
 // Breaks the translated text into lines no wider than 'width'; returns the height used.
+static bool paragraphDry;   // measuring only: nothing is drawn
 static float Paragraph(const char *s, float x, float y, float width, int size, float lineH)
 {
     char line[512], trial[512];
@@ -77,7 +130,7 @@ static float Paragraph(const char *s, float x, float y, float width, int size, f
         tl += wl;
         trial[tl] = '\0';
         if (len && Measure(trial, size) > (int)width) {
-            Text(line, x, y + used, size, C_TEXT);
+            if (!paragraphDry) Text(line, x, y + used, size, C_TEXT);
             used += lineH;
             memcpy(line, word, (size_t)wl);
             len = wl;
@@ -89,7 +142,7 @@ static float Paragraph(const char *s, float x, float y, float width, int size, f
         while (*s == ' ') s++;
     }
     if (len) {
-        Text(line, x, y + used, size, C_TEXT);
+        if (!paragraphDry) Text(line, x, y + used, size, C_TEXT);
         used += lineH;
     }
     return used;
@@ -98,7 +151,7 @@ static float Paragraph(const char *s, float x, float y, float width, int size, f
 // Key fallback: a click pressed and released within one frame is lost.
 static bool Button(Rectangle r, const char *label, bool enabled, int key)
 {
-    bool hover = enabled && CheckCollisionPointRec(GetMousePosition(), r);
+    bool hover = enabled && CheckCollisionPointRec(UiMouse(), r);
     DrawRectangleRec(r, enabled ? (hover ? (Color){ 150, 110, 60, 255 } : (Color){ 112, 82, 48, 255 }) : (Color){ 60, 54, 48, 255 });
     DrawRectangleLinesEx(r, 1, C_EDGE);
     CenterText(label, r.x + r.width / 2, r.y + (r.height - 18) / 2, 18, enabled ? C_TEXT : C_DIM);
@@ -114,8 +167,8 @@ static int SlotKey(int i)
 
 static Rectangle PanelRect(float w, float h)
 {
-    Rectangle r = { ((float)GetScreenWidth() - w) / 2, ((float)GetScreenHeight() - h) / 2, w, h };
-    DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(BLACK, 0.35f));
+    Rectangle r = { (UiWidth() - w) / 2, (UiHeight() - h) / 2, w, h };
+    DrawRectangle(0, 0, (int)UiWidth() + 1, (int)UiHeight() + 1, Fade(BLACK, 0.35f));
     DrawRectangleRec(r, C_PANEL);
     DrawRectangleLinesEx(r, 2, C_EDGE);
     return r;
@@ -124,7 +177,7 @@ static Rectangle PanelRect(float w, float h)
 static int SlotWidget(Rectangle r, Slot s, bool locked, int index)
 {
     static const char *labels[BAG_MAX] = { "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "=" };
-    bool hover = !locked && CheckCollisionPointRec(GetMousePosition(), r);
+    bool hover = !locked && CheckCollisionPointRec(UiMouse(), r);
 
     DrawRectangleRec(r, locked ? (Color){ 40, 34, 30, 255 } : (hover ? C_SLOT_HI : C_SLOT));
     DrawRectangleLinesEx(r, 1, hover ? C_GOLD : (Color){ 90, 74, 56, 255 });
@@ -312,7 +365,7 @@ static void DrawTradePanel(void)
 // host's browser keeps the game.
 static void DrawNetPausePanel(void)
 {
-    Rectangle r = PanelRect(620, 470);
+    Rectangle r = PanelRect(620, 530);
     float bx = r.x + 50, bw = 240, gap = r.width - 100 - 2 * bw, y = r.y + 128;
     bool host = G.role == NET_HOST;
 
@@ -334,12 +387,19 @@ static void DrawNetPausePanel(void)
     }
 
     const char *lang = Language() == LANG_TR ? "Dil / Language: Türkçe" : "Language / Dil: English";
-    if (Button((Rectangle){ r.x + r.width / 2 - 150, r.y + 274, 300, 34 }, lang, true, KEY_L)) {
+    if (Button((Rectangle){ bx, r.y + 274, 290, 34 }, lang, true, KEY_L)) {
         SetLanguage(Language() == LANG_TR ? LANG_EN : LANG_TR);
         SaveLanguage();
     }
-    CenterText(RulesText(), r.x + r.width / 2, r.y + 314, 15, C_GOLD);
-    y = r.y + r.height - 130;
+    if (Button((Rectangle){ bx + 300, r.y + 274, r.width - 100 - 300, 34 }, TextFormat(L("Music: %s (N)"), L(MusicLevelName())), true, KEY_N))
+        MusicSetLevel((MusicLevel() + 1) % 4);
+    if (Button((Rectangle){ bx, r.y + 316, 290, 34 }, TextFormat(L("Graphics: %s (G)"), GfxLabel()), true, KEY_G))
+        GfxSetChoice(GfxChoice() + 1);
+    if (Button((Rectangle){ bx + 300, r.y + 316, r.width - 100 - 300, 34 }, TextFormat(L("Sounds: %s"), L(SfxLevelName())), true, 0))
+        SfxSetLevel((SfxLevel() + 1) % 4);
+    if (Button((Rectangle){ bx, r.y + 358, r.width - 100, 34 }, "Your look", true, 0)) SetPanel(PANEL_LOOK);
+    CenterText(RulesText(), r.x + r.width / 2, r.y + 398, 15, C_GOLD);
+    y = r.y + r.height - 96;
     if (Button((Rectangle){ bx, y, bw, 40 }, "Resume (Esc)", true, 0)) SetPanel(PANEL_NONE);
     if (Button((Rectangle){ bx + bw + gap, y, bw, 40 }, host ? "Save (F5)" : "Hand in my things (F5)", true, 0)) SaveNow();
     if (Button((Rectangle){ bx, y + 54, r.width - 100, 40 }, host ? "Save and end the game for everyone (Q)" : "Leave the game (Q)", true, 0)) G.quit = true;
@@ -351,7 +411,7 @@ static void DrawPausePanel(void)
         DrawNetPausePanel();
         return;
     }
-    Rectangle r = PanelRect(620, 470);
+    Rectangle r = PanelRect(620, 530);
     float bx = r.x + 50, bw = 240, gap = r.width - 100 - 2 * bw;
     int active = SaveSlot();
 
@@ -374,12 +434,19 @@ static void DrawPausePanel(void)
     }
 
     const char *lang = Language() == LANG_TR ? "Dil / Language: Türkçe" : "Language / Dil: English";
-    if (Button((Rectangle){ r.x + r.width / 2 - 150, r.y + 274, 300, 34 }, lang, true, KEY_L)) {
+    if (Button((Rectangle){ bx, r.y + 274, 290, 34 }, lang, true, KEY_L)) {
         SetLanguage(Language() == LANG_TR ? LANG_EN : LANG_TR);
         SaveLanguage();
     }
+    if (Button((Rectangle){ bx + 300, r.y + 274, r.width - 100 - 300, 34 }, TextFormat(L("Music: %s (N)"), L(MusicLevelName())), true, KEY_N))
+        MusicSetLevel((MusicLevel() + 1) % 4);
+    if (Button((Rectangle){ bx, r.y + 316, 290, 34 }, TextFormat(L("Graphics: %s (G)"), GfxLabel()), true, KEY_G))
+        GfxSetChoice(GfxChoice() + 1);
+    if (Button((Rectangle){ bx + 300, r.y + 316, r.width - 100 - 300, 34 }, TextFormat(L("Sounds: %s"), L(SfxLevelName())), true, 0))
+        SfxSetLevel((SfxLevel() + 1) % 4);
+    if (Button((Rectangle){ bx, r.y + 358, r.width - 100, 34 }, "Your look", true, 0)) SetPanel(PANEL_LOOK);
 
-    float y = r.y + r.height - 130;
+    float y = r.y + r.height - 110;
     if (Button((Rectangle){ bx, y, bw, 40 }, "Resume (Esc)", true, 0)) SetPanel(PANEL_NONE);
     if (Button((Rectangle){ bx + bw + gap, y, bw, 40 }, "Save (F5)", true, 0)) {
         if (SaveGame()) Say("Game saved to %s.", SaveFileName(active));
@@ -391,6 +458,45 @@ static void DrawPausePanel(void)
         else G.confirmNew = true;
     }
     if (Button((Rectangle){ bx + bw + gap, y + 54, bw, 40 }, "Save & quit (Q)", true, 0)) G.quit = true;
+}
+
+// Choosing how you look: hair, beard, what you wear and your jewellery, shown on your own body
+// beside the choices (the armor you have on goes over it). Each change is kept at once.
+static void DrawLookPanel(void)
+{
+    static const char *const rows[4] = { "Hair", "Beard", "Clothes", "Jewellery" };
+    static const int counts[4] = { HAIR_KINDS, BEARD_KINDS, DRESS_KINDS, JEWEL_KINDS };
+    unsigned char style = ChosenStyle();
+    int v[4] = { style & 3, style >> 2 & 3, style >> 4 & 3, style >> 6 & 3 };
+    float h = 392, w = 400;
+    Rectangle r = { 20, (UiHeight() - h) / 2, w, h };
+    DrawRectangleRec(r, C_PANEL);
+    DrawRectangleLinesEx(r, 2, C_EDGE);
+    CenterText("Your look", r.x + w / 2, r.y + 16, 28, C_GOLD);
+    CenterText("Everyone sees you like this, in your own color.", r.x + w / 2, r.y + 52, 14, C_DIM);
+
+    bool changed = false;
+    for (int k = 0; k < 4; k++) {
+        float y = r.y + 82 + 58.0f * (float)k;
+        const char *name = k == 0 ? HairName(v[k]) : k == 1 ? BeardName(v[k]) : k == 2 ? DressName(v[k]) : JewelName(v[k]);
+        Text(TextFormat("%d  %s", k + 1, L(rows[k])), r.x + 20, y, 16, C_DIM);
+        if (Button((Rectangle){ r.x + 20, y + 20, 40, 30 }, "<", true, 0)) {
+            v[k] = (v[k] + counts[k] - 1) % counts[k];
+            changed = true;
+        }
+        DrawRectangle((int)r.x + 66, (int)y + 20, (int)w - 152, 30, C_SLOT);
+        CenterText(name, r.x + w / 2, y + 26, 17, C_TEXT);
+        if (Button((Rectangle){ r.x + w - 80, y + 20, 40 + 20, 30 }, ">", true, KEY_ONE + k)) {
+            v[k] = (v[k] + 1) % counts[k];
+            changed = true;
+        }
+    }
+    if (changed) ChooseStyle(PackStyle(v[0], v[1], v[2], v[3]));
+    CenterText("1-4: next choice    Left/Right arrows: turn the view", r.x + w / 2, r.y + h - 76, 14, C_DIM);
+    if (Button((Rectangle){ r.x + 20, r.y + h - 52, w - 40, 38 }, "Done (Enter)", true, KEY_ENTER)) {
+        ChooseStyle(PackStyle(v[0], v[1], v[2], v[3]));
+        SetPanel(PANEL_NONE);
+    }
 }
 
 static void DrawCoopPanel(void)
@@ -462,12 +568,13 @@ static void DrawHelpPanel(void)
         { "Right mouse, Q", "parry with the melee weapon" }, { "V", "strike" },
         { "E", "use, talk, pick up, climb, search" }, { "F", "alternate action" },
         { "R", "refill the quiver" }, { "Z", "arrow camera on/off" }, { "Tab", "baskets and equipment" },
-        { "M", "map zoom" }, { "T (hold)", "fast-forward time" }, { "F5", "save" },
-        { "F11", "fullscreen" }, { "Esc", "pause, save slots, language" }, { "H", "this window" },
+        { "M", "map zoom" }, { "N", "music: off, low, medium, high" }, { "G", "graphics: auto, high, low, classic" }, { "T (hold)", "fast-forward time" }, { "F5", "save" },
+        { "F11", "fullscreen" }, { "Esc", "pause, save slots, language, your look" }, { "H", "this window" },
     };
     static const char *const tips[] = {
-        "Parry: a yellow mark means a blow is coming. Parry while facing them: green = turned aside (hit back harder), "
-        "red = it landed.",
+        "Parry: a yellow mark means a blow is coming, over a person or a player swinging at you (a player gives you less "
+        "time). Parry while facing them: green = turned aside (hit back harder), red = it landed. A red glow on the edge "
+        "of the screen shows where a blow on you came from: top ahead, bottom behind, left and right.",
         "Seasons last 9 days. Wheat needs 10 days with water, so sow by summer's 8th day. Nothing grows in winter. "
         "Harvest: 4 wheat, 2 seeds. The farm and the coop each hold 6 days of water. Fill the bucket from your storeroom "
         "at the well or the river (E), then pour it into the farm ditch or at the coop. Rain fills both; 6 dry days kill "
@@ -487,23 +594,38 @@ static void DrawHelpPanel(void)
         "Herbs grow in green meadows, most of all across the river: chew one from your baskets to heal fast. Snakes hide "
         "in long grass; a hiss means back off (crouch to creep by). Hurt a boar and its whole sounder charges. Arrows "
         "landing close send prey running and bring wolves down on you.",
-        "Playing together (in the browser): each player has a house in their own color. The world never pauses, and the "
-        "night passes when everyone lies in bed. The farm, the coop and the eggs are shared. The host decides whether players "
-        "can hurt each other (PvP) and can turn on combat mode.",
+        "Playing together (in the browser): up to six players, each with a house in their own color. The world never pauses, "
+        "and the night passes when everyone lies in bed. The farm, the coop and the eggs are shared. The host decides whether "
+        "players can hurt each other (PvP: everyone starts somewhere in the city and the ziggurat is unguarded) and can turn "
+        "on combat mode.",
     };
     const int nk = (int)(sizeof(keys) / sizeof(keys[0])), nt = (int)(sizeof(tips) / sizeof(tips[0]));
-    Rectangle r = PanelRect(fminf(1200.0f, (float)GetScreenWidth() - 20.0f), fminf(690.0f, (float)GetScreenHeight() - 16.0f));
+    Rectangle r = PanelRect(fminf(1200.0f, UiWidth() - 20.0f), fminf(690.0f, UiHeight() - 16.0f));
     float x0 = r.x + 24, x1 = r.x + 500, y0 = r.y + 60;
 
     Text("Controls", x0, r.y + 20, 26, C_GOLD);
     Text("Tips", x1, r.y + 20, 26, C_GOLD);
+    // The keys close up on a short screen (a phone's).
+    float row = fminf(23.0f, (r.y + r.height - 40.0f - y0) / (float)nk);
+    int keySize = row >= 20.0f ? 16 : 14;
     for (int i = 0; i < nk; i++) {
-        Text(keys[i][0], x0, y0 + 23.0f * (float)i, 16, C_GOLD);
-        Text(keys[i][1], x0 + 126, y0 + 23.0f * (float)i, 16, C_TEXT);
+        Text(keys[i][0], x0, y0 + row * (float)i, keySize, C_GOLD);
+        Text(keys[i][1], x0 + 126, y0 + row * (float)i, keySize, C_TEXT);
+    }
+    // The tips take the biggest letters that fit the window (Turkish runs longer than English).
+    static const struct { int size; float line; } fits[] = { { 15, 18.0f }, { 14, 16.5f }, { 13, 15.0f }, { 12, 14.0f } };
+    float room = r.y + r.height - 16.0f - y0, width = r.x + r.width - 24 - x1;
+    int fit = 0;
+    for (; fit < 3; fit++) {
+        float used = 0;
+        paragraphDry = true;
+        for (int i = 0; i < nt; i++) used += Paragraph(tips[i], x1, y0, width, fits[fit].size, fits[fit].line) + 5;
+        paragraphDry = false;
+        if (used <= room) break;
     }
     float ty = y0;
-    for (int i = 0; i < nt; i++) ty += Paragraph(tips[i], x1, ty, r.x + r.width - 24 - x1, 15, 18) + 5;
-    Text("H or Esc: close", r.x + r.width - 170, r.y + r.height - 30, 16, C_DIM);
+    for (int i = 0; i < nt; i++) ty += Paragraph(tips[i], x1, ty, width, fits[fit].size, fits[fit].line) + 5;
+    Text("H or Esc: close", r.x + r.width - 170, r.y + 26, 16, C_DIM);
 }
 
 static void DrawAnimalBars(void)
@@ -520,7 +642,7 @@ static void DrawAnimalBars(void)
         Vector3 head = { a->pos.x, AnimalTop(a) - 0.2f, a->pos.z };
         if (Vector3DotProduct(Vector3Subtract(head, G.cam.position), fwd) < 0) continue;
 
-        Vector2 sp = GetWorldToScreen(head, G.cam);
+        Vector2 sp = OnScreen(head);
         float k = Clamp((float)a->hp / (float)max, 0.0f, 1.0f);
         float w = Clamp(56.0f - dist * 0.5f, 30.0f, 56.0f);
         Color fill = k > 0.6f ? C_GOOD : k > 0.3f ? C_GOLD : C_BAD;
@@ -528,6 +650,17 @@ static void DrawAnimalBars(void)
         DrawRectangle((int)(sp.x - w / 2), (int)sp.y, (int)(w * k), 5, fill);
         if (dist < 20.0f) CenterText(AnimalName(a->type), sp.x, sp.y - 15, 12, Fade(RAYWHITE, 0.9f));
     }
+}
+
+// The warning over someone who is about to strike: yellow while the blow is coming, then green when it was
+// turned aside or red when it landed.
+static void DrawMarkDiamond(int mark, Vector2 c)
+{
+    static const Color colors[4] = { { 0 }, { 245, 205, 60, 255 }, { 90, 215, 90, 255 }, { 225, 60, 50, 255 } };
+    float size = mark == MARK_WARN ? 9.0f + 2.0f * sinf((float)GetTime() * 18.0f) : 10.0f;
+
+    DrawPoly(c, 4, size + 2, 0, Fade(BLACK, 0.7f));
+    DrawPoly(c, 4, size, 0, colors[mark & 3]);
 }
 
 static void DrawPeopleBars(void)
@@ -547,7 +680,7 @@ static void DrawPeopleBars(void)
         if (Vector3DotProduct(Vector3Subtract(head, G.cam.position), fwd) < 0) continue;
         if (FogAt(head) > 0.6f) continue;
 
-        Vector2 sp = GetWorldToScreen(head, G.cam);
+        Vector2 sp = OnScreen(head);
         float k = Clamp(hp / maxHp, 0.0f, 1.0f);
         float w = Clamp(60.0f - dist * 0.5f, 32.0f, 60.0f);
         Color fill = hostile ? C_BAD : k > 0.6f ? C_GOOD : C_GOLD;
@@ -556,13 +689,7 @@ static void DrawPeopleBars(void)
         if (dist < 16.0f || hostile) CenterText(name, sp.x, sp.y - 15, 12, hostile ? C_BAD : Fade(RAYWHITE, 0.85f));
 
         int mark = FighterMark(i);
-        if (mark != MARK_NONE) {
-            static const Color colors[4] = { { 0 }, { 245, 205, 60, 255 }, { 90, 215, 90, 255 }, { 225, 60, 50, 255 } };
-            float size = mark == MARK_WARN ? 9.0f + 2.0f * sinf((float)GetTime() * 18.0f) : 10.0f;
-            Vector2 c = { sp.x, sp.y - 32 };
-            DrawPoly(c, 4, size + 2, 0, Fade(BLACK, 0.7f));
-            DrawPoly(c, 4, size, 0, colors[mark]);
-        }
+        if (mark != MARK_NONE) DrawMarkDiamond(mark, (Vector2){ sp.x, sp.y - 32 });
     }
 }
 
@@ -621,7 +748,8 @@ static void DrawMinimap(int ox, int oy, int size)
     float mx = (float)ox + (float)size / 2 - cx * s, mz = (float)oy + (float)size / 2 - cz * s;
 
     DrawRectangle(ox, oy, size, size, Fade((Color){ 170, 160, 110, 255 }, 0.88f));
-    BeginScissorMode(ox, oy, size, size);
+    float k = UiScale();
+    BeginScissorMode((int)((float)ox * k), (int)((float)oy * k), (int)ceilf((float)size * k), (int)ceilf((float)size * k));
     for (int i = 0; i < G.boxCount; i++) {
         const Box *b = &G.boxes[i];
         if (!b->solid || (b->size.x * s < 1.0f && b->size.z * s < 1.0f)) continue;
@@ -699,7 +827,7 @@ static void DrawPeerTags(void)
         Vector3 head = { p->shown.x, p->shown.y + ((p->flags & PF_BED) ? 1.0f : 2.4f), p->shown.z };
         float dist = Vector3Distance(head, G.cam.position);
         if (dist > 90.0f || Vector3DotProduct(Vector3Subtract(head, G.cam.position), fwd) < 0 || FogAt(head) > 0.7f) continue;
-        Vector2 sp = GetWorldToScreen(head, G.cam);
+        Vector2 sp = OnScreen(head);
         int w = Measure(p->name, 16);
         DrawRectangle((int)sp.x - w / 2 - 8, (int)sp.y - 3, w + 16, 22, Fade(BLACK, 0.5f));
         DrawRectangle((int)sp.x - w / 2 - 8, (int)sp.y - 3, 4, 22, PlayerColor(s));
@@ -717,6 +845,8 @@ static void DrawPeerTags(void)
             DrawRectangle((int)sp.x - lw / 2 - 6, (int)sp.y - 22, lw + 12, 18, Fade(BLACK, 0.45f));
             DrawTextEx(GameFont(), line, (Vector2){ (float)((int)sp.x - lw / 2), sp.y - 20 }, 14, 1, p->wanted > 0 ? C_BAD : RAYWHITE);
         }
+        // Swinging at someone: yellow while the blow is coming, then green (turned aside) or red (it landed).
+        if (G.pvp && p->mark != MARK_NONE && dist < 60.0f) DrawMarkDiamond(p->mark, (Vector2){ sp.x, sp.y - 46.0f });
     }
 }
 
@@ -731,7 +861,7 @@ static void DrawAlerts(void)
         if (a->type == AN_WOLF && !hunt) continue;
         Vector3 head = { a->pos.x, AnimalTop(a), a->pos.z };
         if (Vector3Distance(head, G.player.pos) > 60 || Vector3DotProduct(Vector3Subtract(head, G.cam.position), fwd) < 0) continue;
-        Vector2 sp = GetWorldToScreen(head, G.cam);
+        Vector2 sp = OnScreen(head);
         bool flee = a->state == ST_FLEE || hunt;
         CenterText(hunt ? "!!" : flee ? "!" : "?", sp.x, sp.y - 14, 28, flee ? C_BAD : C_GOLD);
     }
@@ -740,10 +870,10 @@ static void DrawAlerts(void)
 static void DrawCrosshair(void)
 {
     if (!G.player.aiming) {
-        if (G.firstPerson && G.panel == PANEL_NONE) DrawCircle(GetScreenWidth() / 2, GetScreenHeight() / 2, 2.5f, Fade(RAYWHITE, 0.8f));
+        if (G.firstPerson && G.panel == PANEL_NONE) DrawCircle((int)UiWidth() / 2, (int)UiHeight() / 2, 2.5f, Fade(RAYWHITE, 0.8f));
         return;
     }
-    float cx = (float)GetScreenWidth() / 2, cy = (float)GetScreenHeight() / 2;
+    float cx = UiWidth() / 2, cy = UiHeight() / 2;
     float gap = 10.0f - 6.0f * G.player.draw;
 
     DrawLineEx((Vector2){ cx - gap - 8, cy }, (Vector2){ cx - gap, cy }, 2, RAYWHITE);
@@ -755,22 +885,44 @@ static void DrawCrosshair(void)
 }
 
 // A message too wide for the window breaks at the space nearest its middle.
+// Red lights on the edges of the screen show where a blow came from: the top is ahead of you, the bottom
+// behind you, then left and right.
+static void DrawHitLights(int sw, int sh)
+{
+    const Color red = { 240, 28, 24, 255 };
+    int bandY = sh / 5, bandX = sw / 7;
+
+    if (G.hitLight[0] > 0.02f) DrawRectangleGradientV(sw / 8, 0, sw * 3 / 4, bandY, Fade(red, G.hitLight[0] * 0.9f), Fade(red, 0.0f));
+    if (G.hitLight[1] > 0.02f) DrawRectangleGradientV(sw / 8, sh - bandY, sw * 3 / 4, bandY, Fade(red, 0.0f), Fade(red, G.hitLight[1] * 0.9f));
+    if (G.hitLight[2] > 0.02f) DrawRectangleGradientH(0, sh / 6, bandX, sh * 2 / 3, Fade(red, G.hitLight[2] * 0.9f), Fade(red, 0.0f));
+    if (G.hitLight[3] > 0.02f) DrawRectangleGradientH(sw - bandX, sh / 6, bandX, sh * 2 / 3, Fade(red, 0.0f), Fade(red, G.hitLight[3] * 0.9f));
+}
+
 static void DrawMessage(int sw)
 {
     float a = fminf(G.msgT, 1.0f);
-    char lines[2][sizeof(G.msg)];
+    char lines[3][sizeof(G.msg)];
     int count = 1, w = Measure(G.msg, 22), len = (int)strlen(G.msg);
 
     snprintf(lines[0], sizeof(lines[0]), "%s", G.msg);
+    // A message too wide for the window goes on two or three lines, cut at the spaces nearest equal shares.
     if (w > sw - 80) {
-        int cut = -1;
-        for (int i = 0; i < len; i++)
-            if (G.msg[i] == ' ' && (cut < 0 || abs(i - len / 2) < abs(cut - len / 2))) cut = i;
-        if (cut > 0) {
-            snprintf(lines[0], sizeof(lines[0]), "%.*s", cut, G.msg);
-            snprintf(lines[1], sizeof(lines[1]), "%s", G.msg + cut + 1);
-            count = 2;
-            w = Measure(lines[0], 22) > Measure(lines[1], 22) ? Measure(lines[0], 22) : Measure(lines[1], 22);
+        int want = w > 2 * (sw - 80) ? 3 : 2, from = 0;
+        count = 0;
+        w = 0;
+        for (int k = 1; k <= want; k++) {
+            int cut = len;
+            if (k < want) {
+                int goal = len * k / want, best = -1;
+                for (int i = from + 1; i < len; i++)
+                    if (G.msg[i] == ' ' && (best < 0 || abs(i - goal) < abs(best - goal))) best = i;
+                if (best > from) cut = best;
+            }
+            snprintf(lines[count], sizeof(lines[count]), "%.*s", cut - from, G.msg + from);
+            if (Measure(lines[count], 22) > w) w = Measure(lines[count], 22);
+            count++;
+            from = cut + 1;
+            if (cut >= len) break;
         }
     }
     DrawRectangle((sw - w) / 2 - 12, 236, w + 24, 6 + 28 * count, Fade(BLACK, 0.5f * a));
@@ -779,7 +931,7 @@ static void DrawMessage(int sw)
 
 static void DrawPrompts(void)
 {
-    float cx = (float)GetScreenWidth() / 2, y = (float)GetScreenHeight() - 128;
+    float cx = UiWidth() / 2, y = UiHeight() - 128;
     const char *lines[2] = { G.promptE, G.promptF };
     bool ok[2] = { G.okE, G.okF };
 
@@ -794,7 +946,8 @@ static void DrawPrompts(void)
 
 void DrawUI(void)
 {
-    int sw = GetScreenWidth(), sh = GetScreenHeight();
+    UiBegin();
+    int sw = (int)ceilf(UiWidth()), sh = (int)ceilf(UiHeight());
 
     DrawStatus();
     DrawMinimap(sw - 202, 12, 190);
@@ -806,7 +959,7 @@ void DrawUI(void)
     if (G.impactT > 0) {
         Vector3 fwd = Vector3Normalize(Vector3Subtract(G.cam.target, G.cam.position));
         if (Vector3DotProduct(Vector3Subtract(G.impact, G.cam.position), fwd) > 0) {
-            Vector2 sp = GetWorldToScreen((Vector3){ G.impact.x, G.impact.y + 0.4f, G.impact.z }, G.cam);
+            Vector2 sp = OnScreen((Vector3){ G.impact.x, G.impact.y + 0.4f, G.impact.z });
             Color c = Fade((Color){ 255, 196, 100, 255 }, Clamp(G.impactT, 0.0f, 1.0f));
             DrawPoly(sp, 4, 7, 45, c);
             DrawPolyLines(sp, 4, 9, 45, Fade(BLACK, Clamp(G.impactT, 0.0f, 1.0f) * 0.6f));
@@ -845,12 +998,15 @@ void DrawUI(void)
     case PANEL_PAUSE:   DrawPausePanel(); break;
     case PANEL_HELP:    DrawHelpPanel(); break;
     case PANEL_COOP:    DrawCoopPanel(); break;
+    case PANEL_LOOK:    DrawLookPanel(); break;
     default: break;
     }
 
     if (G.hurtT > 0) DrawRectangle(0, 0, sw, sh, Fade(RED, G.hurtT * 0.6f));
+    DrawHitLights(sw, sh);
     if (G.sleeping) {
         float fade = Clamp(1.0f - fabsf(G.sleepT - 1.1f) / 1.1f, 0.0f, 1.0f);
         DrawRectangle(0, 0, sw, sh, Fade(BLACK, fade));
     }
+    UiEnd();
 }

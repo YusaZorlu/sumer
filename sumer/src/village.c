@@ -87,20 +87,20 @@ static void Fence(float x0, float z0, float x1, float z1)
 
 // Each player's home: the first one by the farm, the others in a row south of the east-west street,
 // their doors toward it. A house is laid out in its own frame with the door on its -x side.
-static const float HOUSE_SPOTS[MAX_PLAYERS][3] = { { 20, 22, 0 }, { 14, 50, 1 }, { 28, 50, 1 }, { 42, 50, 1 }, { -14, 50, 1 } };
+static const float HOUSE_SPOTS[MAX_PLAYERS][3] = { { 20, 22, 0 }, { 14, 50, 1 }, { 28, 50, 1 }, { 42, 50, 1 }, { -14, 50, 1 }, { 56, 50, 1 } };
 static const int HOUSE_STATIONS[HOUSE_STN] = { STN_BED, STN_STORAGE, STN_QUERN, STN_TROUGH, STN_BENCH, STN_OVEN };
 
 Color PlayerColor(int slot)
 {
     static const Color colors[MAX_PLAYERS] = {
-        { 38, 84, 160, 255 }, { 176, 46, 40, 255 }, { 46, 128, 62, 255 }, { 222, 162, 30, 255 }, { 118, 60, 150, 255 },
+        { 38, 84, 160, 255 }, { 176, 46, 40, 255 }, { 46, 128, 62, 255 }, { 222, 162, 30, 255 }, { 118, 60, 150, 255 }, { 30, 150, 150, 255 },
     };
     return colors[slot >= 0 && slot < MAX_PLAYERS ? slot : 0];
 }
 
 const char *PlayerColorName(int slot)
 {
-    static const char *const names[MAX_PLAYERS] = { "blue", "red", "green", "yellow", "purple" };
+    static const char *const names[MAX_PLAYERS] = { "blue", "red", "green", "yellow", "purple", "teal" };
     return L(names[slot >= 0 && slot < MAX_PLAYERS ? slot : 0]);
 }
 
@@ -201,6 +201,45 @@ void SetHome(int slot)
     const House *home = &G.houses[slot >= 0 && slot < MAX_PLAYERS ? slot : 0];
     G.home = home->center;
     for (int k = 0; k < HOUSE_STN; k++) G.stations[HOUSE_STATIONS[k]] = home->stations[k];
+}
+
+// Where a player starts in a PvP game (and comes to after being brought down): anywhere inside the city
+// walls on open ground, as far from the other players as a handful of tries finds. Alone, or if nothing
+// open turns up, it is the player's own door.
+Vector3 CitySpawn(int slot)
+{
+    Vector3 best = G.houses[slot >= 0 && slot < MAX_PLAYERS ? slot : 0].door;
+    float bestAway = -1.0f;
+    int found = 0;
+
+    for (int tries = 0; tries < 400 && found < 24; tries++) {
+        float x = RandF(-CITY_A, CITY_A), z = RandF(CITY_Z - CITY_B, CITY_Z + CITY_B);
+        if (!InsideWalls(x, z, 10.0f) || InWater(x, z) || SolidAt(x, z, 1.3f)) continue;
+        float ground = TerrainHeight(x, z);
+        if (GroundHeight(x, z, ground + 0.5f) > ground + 0.3f) continue;
+        found++;
+        float away = 1e9f;
+        for (int s = 0; s < MAX_PLAYERS; s++)
+            if (s != slot && PlayerIn(s)) away = fminf(away, XZDist(G.peers[s].pos, (Vector3){ x, 0, z }));
+        if (away > bestAway) {
+            bestAway = away;
+            best = (Vector3){ x, ground, z };
+        }
+    }
+    return best;
+}
+
+// In PvP the guards on the ziggurat's stairs and terrace are gone, so anyone can climb to the priest.
+// Host and guests both call this once the rules are known, so their lists of people stay the same.
+void RemoveZigguratGuards(void)
+{
+    int kept = 0;
+    for (int i = 0; i < G.villagerCount; i++) {
+        const Villager *v = &G.villagers[i];
+        if (v->kind == NPC_GUARD && v->a.y >= 5.0f && v->b.y >= 5.0f) continue;
+        G.villagers[kept++] = G.villagers[i];
+    }
+    G.villagerCount = kept;
 }
 
 static void BuildHome(void)
@@ -423,9 +462,13 @@ static void BuildTempleStaff(void)
     const Color guard = { 150, 128, 96, 255 }, cleric = { 238, 234, 224, 255 };
     const float cz = ZIG_Z;
 
-    // The gate guards carry composite bows as well as spears.
-    static const float gates[4][2] = { { -7.2f, -4.2f }, { 7.2f, -4.2f }, { -4.8f, 70.5f }, { 4.8f, 70.5f } };
-    for (int k = 0; k < 4; k++) {
+    // The gate guards carry composite bows as well as spears: two at the temple yard's gate and two just
+    // inside each of the city's gates (south, north, east, west, and on the quays of the harbor's water gate).
+    static const float gates[][2] = {
+        { -7.2f, -4.2f }, { 7.2f, -4.2f }, { -4.8f, 70.5f }, { 4.8f, 70.5f }, { -39.5f, -79.5f }, { -33.5f, -79.5f },
+        { 91.0f, 4.8f }, { 91.0f, 13.2f }, { -85.0f, 21.8f }, { -85.0f, 30.2f }, { -94.0f, -17.5f }, { -94.0f, -2.5f },
+    };
+    for (int k = 0; k < (int)(sizeof(gates) / sizeof(gates[0])); k++) {
         int g = AddNpc(NPC_GUARD, (Vector3){ gates[k][0], 0, gates[k][1] }, (Vector3){ gates[k][0], 0, gates[k][1] }, 0, guard, 0);
         if (g >= 0) G.villagers[g].bow = 2;
     }
@@ -881,7 +924,7 @@ void DrawVillage(void)
     for (int i = 0; i < TR_COUNT; i++) {
         const Trader *tr = &G.traders[i];
         if (tr->roaming) continue;
-        Look look = { COL_SKIN, tr->robe, tr->robe, COL_HAIR };
+        Look look = PersonLook(LOOK_MERCHANT, 300u + (unsigned)i, tr->robe);
         Vector3 tp = TraderPos(tr);
         if (XZDist(tp, G.cam.position) > 220.0f) continue;
         LightFor(tp);
@@ -900,58 +943,53 @@ void DrawVillage(void)
         float pull = v->vit.drawing ? Clamp(1.0f - v->vit.windup / BOW_DRAW_TIME, 0.0f, 1.0f) : 0.0f;
         if (v->vit.drawing) stride = 0;
         LightFor(pos);
+        static const int roles[] = { [NPC_CIVILIAN] = LOOK_TOWN, [NPC_GUARD] = LOOK_GUARD, [NPC_CLERIC] = LOOK_PRIEST,
+                                     [NPC_VILLAGER] = LOOK_VILLAGER, [NPC_TRAVELLER] = LOOK_TRAVELLER, [NPC_WARDEN] = LOOK_WARDEN };
+        Look look = PersonLook(roles[v->kind], (unsigned)i, v->robe);
         if (v->vit.dead) {
-            Look look = { COL_SKIN, v->robe, v->kind == NPC_GUARD ? (Color){ 120, 96, 66, 255 } : v->robe, v->kind == NPC_GUARD ? COL_BRONZE : COL_HAIR };
             DrawPersonBody(pos, face, look);
             continue;
         }
-        if (v->kind == NPC_CIVILIAN || v->kind == NPC_VILLAGER || v->kind == NPC_TRAVELLER) {
-            Look look = { COL_SKIN, v->robe, (i % 2) ? COL_SKIN : v->robe, COL_HAIR };
+        bool torch = G.night >= 0.3f && (v->kind == NPC_TRAVELLER || v->kind == NPC_WARDEN || v->kind == NPC_GUARD);
+        if (torch) GripAt(HAND_OTHER, -0.36f, 1.36f, 0.28f);
+        if (v->kind == NPC_CIVILIAN || v->kind == NPC_VILLAGER || v->kind == NPC_TRAVELLER || v->kind == NPC_CLERIC) {
             // A villager standing still at the hunters' butt keeps drawing a bow.
             bool archer = v->kind == NPC_VILLAGER && v->speed <= 0 && !v->vit.override;
             float pull = archer ? fmaxf(0.0f, sinf((float)GetTime() * 0.9f + (float)i)) : 0.0f;
+            if (v->kind == NPC_TRAVELLER) {
+                DrawTravelGear(pos, face, v->robe);
+                GripAt(HAND_WEAPON, 0.36f, 1.12f, 0.24f);
+            }
             DrawHuman(pos, face, stride, look, false, archer, pull);
-            if (v->kind == NPC_TRAVELLER) DrawTravelGear(pos, face, v->robe);
-            if (v->kind == NPC_TRAVELLER && G.night >= 0.3f) DrawHandTorch(pos, face);
         } else if (v->kind == NPC_WARDEN) {
             // A village guard: a leather jerkin and cap, and a bow always in hand.
-            Look look = { COL_SKIN, v->robe, (Color){ 128, 88, 56, 255 }, (Color){ 128, 88, 56, 255 } };
             DrawHuman(pos, face, stride, look, false, true, pull);
-            if (G.night >= 0.3f) DrawHandTorch(pos, face);
-        } else if (v->kind == NPC_GUARD) {
-            Look look = { COL_SKIN, v->robe, (Color){ 120, 96, 66, 255 }, COL_BRONZE };
-            DrawHuman(pos, face, stride, look, false, v->vit.drawing, pull);
+        } else {
+            // A city guard: a bronze helmet and studded cloak, a spear, and a shield by day.
             rlPushMatrix();
             rlTranslatef(pos.x, pos.y, pos.z);
             rlRotatef(face * RAD2DEG, 0, 1, 0);
-            Part(0, 1.97f, -0.02f, 0.36f, 0.12f, 0.36f, COL_BRONZE);
             if (v->vit.drawing) {
                 // The spear slung on the back while the bow is drawn.
                 Part(0.1f, 1.3f, -0.25f, 0.05f, 2.4f, 0.05f, COL_WOOD);
-            } else if (v->vit.swing > 0) {
-                float k = v->vit.swing / 0.35f;
-                Part(0.3f, 1.35f, 0.9f - 0.5f * k, 0.05f, 0.05f, 2.4f, COL_WOOD);
-                Part(0.3f, 1.35f, 2.2f - 0.5f * k, 0.08f, 0.08f, 0.26f, COL_BRONZE);
-            } else if (v->vit.windup > 0) {
-                Part(0.3f, 1.45f, 0.35f, 0.05f, 0.05f, 2.4f, COL_WOOD);
-                Part(0.3f, 1.45f, 1.65f, 0.08f, 0.08f, 0.26f, COL_BRONZE);
+            } else if (v->vit.swing > 0 || v->vit.windup > 0) {
+                float z = SpearThrust(v->vit.windup, v->vit.swing), y = v->vit.windup > 0.1f ? 1.45f : 1.35f;
+                GripHere(HAND_WEAPON, 0.3f, y, z - 0.2f);
+                Part(0.3f, y, z, 0.05f, 0.05f, 2.4f, COL_WOOD);
+                Part(0.3f, y, z + 1.3f, 0.08f, 0.08f, 0.26f, COL_BRONZE);
             } else {
+                GripHere(HAND_WEAPON, 0.36f, 1.18f, 0.12f);
                 Part(0.36f, 1.2f, 0.12f, 0.05f, 2.4f, 0.05f, COL_WOOD);
                 Part(0.36f, 2.5f, 0.12f, 0.08f, 0.26f, 0.08f, COL_BRONZE);
             }
-            if (G.night < 0.3f) Part(-0.38f, 1.2f, 0.1f, 0.08f, 0.62f, 0.5f, (Color){ 130, 90, 56, 255 });
+            if (G.night < 0.3f && !v->vit.drawing) {
+                GripHere(HAND_OTHER, -0.31f, 1.2f, 0.14f);
+                Part(-0.38f, 1.2f, 0.12f, 0.08f, 0.62f, 0.5f, (Color){ 130, 90, 56, 255 });
+            }
             rlPopMatrix();
-            if (G.night >= 0.3f) DrawHandTorch(pos, face);
-        } else {
-            Look look = { COL_SKIN, v->robe, v->robe, COL_SKIN };
-            DrawHuman(pos, face, stride, look, false, false, 0);
-            rlPushMatrix();
-            rlTranslatef(pos.x, pos.y, pos.z);
-            rlRotatef(face * RAD2DEG, 0, 1, 0);
-            Part(0, 0.5f, 0, 0.52f, 0.6f, 0.34f, v->robe);
-            Part(0, 2.06f, -0.01f, 0.24f, 0.26f, 0.24f, v->robe);
-            rlPopMatrix();
+            DrawHuman(pos, face, stride, look, false, v->vit.drawing, pull);
         }
+        if (torch) DrawHandTorch(pos, face);
     }
     G.drawTorch = G.drawFog = 0;
 }

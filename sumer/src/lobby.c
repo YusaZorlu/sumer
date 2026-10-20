@@ -84,11 +84,12 @@ void LeaveToLobby(const char *why)
     OpenLobby(why);
 }
 
+// Into the game: the first time on this computer, choosing a look comes first (not for test links).
 static void Enter(void)
 {
     open = false;
     G.quit = false;
-    SetPanel(PANEL_NONE);
+    SetPanel(StyleChosen() || PageParam("auto")[0] ? PANEL_NONE : PANEL_LOOK);
     G.wasCaptured = false;
 }
 
@@ -129,7 +130,7 @@ static void Centered(const char *s, float cx, float y, int size, Color c)
 static bool Choice(Rectangle r, const char *label, bool enabled)
 {
     int size = r.height < 30 ? 15 : 20;
-    bool hover = enabled && CheckCollisionPointRec(GetMousePosition(), r);
+    bool hover = enabled && CheckCollisionPointRec(UiMouse(), r);
     DrawRectangleRec(r, enabled ? (hover ? (Color){ 150, 110, 60, 255 } : (Color){ 112, 82, 48, 255 }) : (Color){ 60, 54, 48, 255 });
     DrawRectangleLinesEx(r, 1, (Color){ 150, 120, 80, 255 });
     Centered(label, r.x + r.width / 2, r.y + (r.height - (float)size) / 2, size, enabled ? (Color){ 240, 230, 210, 255 } : (Color){ 150, 140, 125, 255 });
@@ -150,7 +151,7 @@ static void TypeName(void)
 void LobbyFrame(void)
 {
     const Color gold = { 240, 200, 120, 255 }, text = { 240, 230, 210, 255 }, dim = { 150, 140, 125, 255 }, bad = { 230, 110, 90, 255 };
-    float sw = (float)GetScreenWidth(), sh = (float)GetScreenHeight(), cx = sw / 2;
+    float sw = UiWidth(), sh = UiHeight(), cx = sw / 2;
 
     if (!autoDone) {
         autoDone = true;
@@ -177,6 +178,7 @@ void LobbyFrame(void)
 
     BeginDrawing();
     ClearBackground((Color){ 30, 24, 20, 255 });
+    UiBegin();
     DrawRectangleGradientV(0, 0, (int)sw, (int)(sh * 0.6f), (Color){ 92, 132, 170, 255 }, (Color){ 214, 178, 120, 255 });
     DrawRectangle(0, (int)(sh * 0.6f), (int)sw, (int)(sh * 0.4f), (Color){ 168, 136, 96, 255 });
     // The ziggurat on the horizon: three stages of mud brick.
@@ -214,7 +216,7 @@ void LobbyFrame(void)
     if (Choice((Rectangle){ x, y, 250, 46 }, "Host a game", menu && named)) Connect(true);
     int day;
     float hour;
-    Label("Up to four friends join from this same address.", x + 270, y + 4, 15, dim);
+    Label("Up to five friends join from this same address.", x + 270, y + 4, 15, dim);
     if (NetSaveSummary(&day, &hour)) {
         // The hosted world carries on until its host starts a new one (two clicks).
         Label(TextFormat(L("Your hosted world: day %d."), day), x + 270, y + 26, 15, dim);
@@ -248,10 +250,17 @@ void LobbyFrame(void)
         Centered("Type a name to host or join a game.", cx, y, 17, dim);
     }
 
+    if (Choice((Rectangle){ panel.x + 14, panel.y + 12, 214, 26 }, TextFormat(L("Music: %s"), L(MusicLevelName())), menu))
+        MusicSetLevel((MusicLevel() + 1) % 4);
+    if (Choice((Rectangle){ panel.x + 14, panel.y + 44, 214, 26 }, TextFormat(L("Graphics: %s"), GfxLabel()), menu))
+        GfxSetChoice(GfxChoice() + 1);
+    if (Choice((Rectangle){ panel.x + 14, panel.y + 76, 214, 26 }, TextFormat(L("Sounds: %s"), L(SfxLevelName())), menu))
+        SfxSetLevel((SfxLevel() + 1) % 4);
     const char *lang = Language() == LANG_TR ? "Dil / Language: Türkçe" : "Language / Dil: English";
     if (Choice((Rectangle){ panel.x + panel.width - 214, panel.y + 12, 200, 26 }, lang, menu)) {
         SetLanguage(Language() == LANG_TR ? LANG_EN : LANG_TR);
         SaveLanguage();
     }
+    UiEnd();
     EndDrawing();
 }

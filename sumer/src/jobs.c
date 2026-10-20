@@ -195,13 +195,13 @@ static void FerryBoat(float x)
 
 void DrawFerries(void)
 {
-    Look look = { COL_SKIN, (Color){ 100, 120, 130, 255 }, COL_SKIN, COL_HAIR };
+    Look a = PersonLook(LOOK_WORKER, 900u, (Color){ 100, 120, 130, 255 }), b = PersonLook(LOOK_WORKER, 901u, (Color){ 100, 120, 130, 255 });
     if (XZDist(G.stations[STN_FERRY_E], G.cam.position) > 220.0f) return;
     LightFor(G.stations[STN_FERRY_E]);
     FerryBoat(-131.0f);
     FerryBoat(-147.0f);
-    DrawHuman((Vector3){ -128.6f, 0.3f, FERRY_Z - 0.6f }, PI / 2, 0, look, false, false, 0);
-    DrawHuman((Vector3){ -149.4f, 0.3f, FERRY_Z - 0.6f }, -PI / 2, 0, look, false, false, 0);
+    DrawHuman((Vector3){ -128.6f, 0.3f, FERRY_Z - 0.6f }, PI / 2, 0, a, false, false, 0);
+    DrawHuman((Vector3){ -149.4f, 0.3f, FERRY_Z - 0.6f }, -PI / 2, 0, b, false, false, 0);
     G.drawTorch = G.drawFog = 0;
 }
 
@@ -318,8 +318,8 @@ static void DrawTool(Vector3 pos, float facing, float shoulder, float angle, int
     rlPushMatrix();
     rlTranslatef(pos.x, pos.y + shoulder, pos.z);
     rlRotatef(facing * RAD2DEG, 0, 1, 0);
-    rlTranslatef(0.22f, 0, 0.15f);
-    rlRotatef(angle, 1, 0, 0);
+    rlMultMatrixf(MatrixToFloat(BlowFrame(angle)));
+    GripHere(HAND_WEAPON, 0, 0, 0.04f);
     Part(0, 0, len / 2, 0.05f, 0.05f, len, COL_WOOD);
     if (kind == TOOL_DRAW_AXE) Part(0, 0.1f, len - 0.05f, 0.04f, 0.26f, 0.16f, COL_BRONZE);
     else if (kind == TOOL_DRAW_PICK) Part(0, 0, len, 0.05f, 0.5f, 0.06f, COL_STONE);
@@ -334,15 +334,14 @@ static void DrawBoat(Vector3 p, float bob)
     Part(p.x, p.y + bob + 0.2f, p.z + 1.75f, 0.7f, 0.5f, 0.35f, COL_STRAW);
 }
 
-static Look WorkerLook(JobKind job)
+static Look WorkerLook(JobKind job, int i)
 {
     static const Color cloth[] = {
         [JOB_WOOD] = { 110, 90, 60, 255 }, [JOB_MINE] = { 92, 82, 72, 255 }, [JOB_POTTER] = { 150, 120, 90, 255 },
         [JOB_KILN] = { 170, 140, 100, 255 }, [JOB_SMITH] = { 80, 60, 50, 255 }, [JOB_BOAT] = { 120, 140, 150, 255 },
         [JOB_DOCK] = { 130, 150, 160, 255 }, [JOB_FARM] = { 204, 194, 164, 255 },
     };
-    Color top = (job == JOB_POTTER || job == JOB_KILN) ? cloth[job] : COL_SKIN;
-    return (Look){ COL_SKIN, cloth[job], top, COL_HAIR };
+    return PersonLook(LOOK_WORKER, 500u + (unsigned)i, cloth[job]);
 }
 
 void DrawWorkers(void)
@@ -355,7 +354,7 @@ void DrawWorkers(void)
         if (w->job == JOB_BOAT) DrawBoat(w->spot, bob);
         if (!w->visible || XZDist(w->pos, G.cam.position) > 220.0f) continue;
 
-        Look look = WorkerLook(w->job);
+        Look look = WorkerLook(w->job, i);
         Vector3 pos = w->pos;
         int tool = w->job == JOB_WOOD ? TOOL_DRAW_AXE : w->job == JOB_MINE ? TOOL_DRAW_PICK : w->job == JOB_FARM ? TOOL_DRAW_HOE : -1;
         LightFor(pos);
@@ -364,11 +363,9 @@ void DrawWorkers(void)
             continue;
         }
         if (w->vit.override) {
-            float k = Clamp(w->vit.swing / 0.35f, 0.0f, 1.0f);
-            DrawHuman(pos, w->vit.face, time * 8.0f, look, false, false, 0);
-            float angle = w->vit.swing > 0 ? -80.0f + 120.0f * (1.0f - k) : -20.0f;
-            if (w->vit.windup > 0) angle = -20.0f - 90.0f * (1.0f - w->vit.windup / 0.55f);
+            float angle = BlowAngle(w->vit.windup, w->vit.swing, -20.0f);
             if (tool >= 0) DrawTool(pos, w->vit.face, 1.42f, angle, tool);
+            DrawHuman(pos, w->vit.face, time * 8.0f, look, false, false, 0);
             continue;
         }
         if (w->walking) {
@@ -382,13 +379,13 @@ void DrawWorkers(void)
         switch (w->job) {
         case JOB_WOOD:
         case JOB_MINE:
-            DrawHuman(pos, f, 0, look, false, false, 0);
             DrawTool(pos, f, 1.42f, -75.0f + 115.0f * powf(s, 2.5f), tool);
+            DrawHuman(pos, f, 0, look, false, false, 0);
             break;
         case JOB_FARM: {
             bool bend = sinf(time * 0.7f + w->phase) > -0.3f;
-            DrawHuman(pos, f, 0, look, bend, false, 0);
             DrawTool(pos, f, bend ? 1.05f : 1.42f, bend ? 10.0f + 30.0f * s : -20.0f, TOOL_DRAW_HOE);
+            DrawHuman(pos, f, 0, look, bend, false, 0);
             break;
         }
         case JOB_POTTER: {
@@ -411,12 +408,12 @@ void DrawWorkers(void)
             break;
         case JOB_BOAT:
             pos.y = w->spot.y + bob + 0.15f;
-            DrawHuman(pos, f, 0, look, false, false, 0);
             DrawTool(pos, f, 1.42f, -35.0f + 12.0f * s, TOOL_DRAW_POLE);
+            DrawHuman(pos, f, 0, look, false, false, 0);
             break;
         case JOB_DOCK: {
-            DrawHuman(pos, f, 0, look, true, false, 0);
             DrawTool(pos, f, 1.05f, -30.0f, TOOL_DRAW_POLE);
+            DrawHuman(pos, f, 0, look, true, false, 0);
             float tipY = pos.y + 1.05f + 2.6f * sinf(30.0f * DEG2RAD);
             float reach = 0.15f + 2.6f * cosf(30.0f * DEG2RAD);
             float tx = pos.x + sinf(f) * reach + cosf(f) * 0.22f, tz = pos.z + cosf(f) * reach - sinf(f) * 0.22f;

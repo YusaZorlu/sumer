@@ -2,11 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>Sumer</title>
 <style>
   html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #1e1814; }
-  canvas { display: block; outline: none; }
+  /* The game gives the canvas the screen's own pixels (see PageFrame in web.c); this stretches it over
+     the window. No browser gestures on it: a finger on the game is the game's. */
+  canvas { display: block; outline: none; position: fixed; left: 0; top: 0; width: 100%; height: 100%; touch-action: none; }
   #status { position: absolute; top: 45%; width: 100%; text-align: center; color: #f0e6d2; font: 18px sans-serif; }
 </style>
 </head>
@@ -22,6 +24,14 @@
     setStatus: function (t) { document.getElementById('status').textContent = t || ''; },
     onRuntimeInitialized: function () { document.getElementById('status').style.display = 'none'; canvas.focus(); }
   };
+  // The game draws with WebGL 2: where the browser has none, say so instead of failing on the way in.
+  try { Module.noWebGL2 = !document.createElement('canvas').getContext('webgl2'); } catch (e) { Module.noWebGL2 = true; }
+  if (Module.noWebGL2) {
+    Module.noInitialRun = true;
+    Module.setStatus = function () {};
+    document.getElementById('status').textContent = 'Sumer needs WebGL 2: please update your browser (Chrome, Edge, Firefox, Safari 15 or newer). / ' +
+      'Sumer WebGL 2 ister: lütfen tarayıcını güncelle.';
+  }
   // The game asks for the mouse (Module.sumerWantLock); a browser hands it over only during a click.
   canvas.addEventListener('mousedown', function () {
     canvas.focus();
@@ -37,7 +47,11 @@
   window.addEventListener('keydown', function (e) {
     if (e.key === 'F5' || e.key === 'F1') e.preventDefault();
   }, true);
-  window.addEventListener('error', function (e) { Module.setStatus('Something went wrong: ' + e.message); document.getElementById('status').style.display = ''; });
+  window.addEventListener('error', function (e) {
+    if (Module.noWebGL2) return;
+    Module.setStatus('Something went wrong: ' + e.message);
+    document.getElementById('status').style.display = '';
+  });
 </script>
 {{{ SCRIPT }}}
 </body>
