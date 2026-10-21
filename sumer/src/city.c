@@ -90,9 +90,9 @@ static void BuildWaterways(void)
     Bridge(-114, -10, false, 14);
 
     // Brick quays round the harbor basin, down into the water.
-    AddBox(-66.5f, -1.4f, -26.5f, 18.0f, 1.75f, 1.0f, COL_BRICK, true);
-    AddBox(-66.5f, -1.4f, 2.5f, 18.0f, 1.75f, 1.0f, COL_BRICK, true);
-    AddBox(-57.5f, -1.4f, -12.0f, 1.0f, 1.75f, 29.0f, COL_BRICK, true);
+    AddBox(-66.5f, -3.0f, -26.5f, 18.0f, 3.35f, 1.0f, COL_BRICK, true);
+    AddBox(-66.5f, -3.0f, 2.5f, 18.0f, 3.35f, 1.0f, COL_BRICK, true);
+    AddBox(-57.5f, -3.0f, -12.0f, 1.0f, 3.35f, 29.0f, COL_BRICK, true);
     Boat(-70, -20, true);
     Boat(-64, -16, true);
     Boat(-71, -3, true);

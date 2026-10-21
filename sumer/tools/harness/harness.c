@@ -135,6 +135,48 @@ static void Shot(const char *out, float x, float z, float yaw, float pitch, floa
 }
 
 
+// Things meant to stand on the ground that hang above the drawn ground somewhere under them: each one's
+// gap, place, size and shape, worst first, and how many in all. floaters [min gap, default 0.08 m]
+static void Floaters(float minGap)
+{
+    int count = 0, shown = 0;
+    float worst = 0;
+    for (int pass = 0; pass < 2; pass++) {
+        for (int i = 0; i < G.boxCount; i++) {
+            const Box *b = &G.boxes[i];
+            if (b->water || b->glow) continue;
+            float bottom = b->pos.y - b->size.y / 2, lo = 1e9f, hi = -1e9f;
+            for (int u = 0; u <= 2; u++)
+                for (int v = 0; v <= 2; v++) {
+                    float x = b->pos.x + b->size.x * ((float)u / 2 - 0.5f) * 0.9f, z = b->pos.z + b->size.z * ((float)v / 2 - 0.5f) * 0.9f;
+                    float g = GroundSurface(x, z);
+                    lo = fminf(lo, g);
+                    hi = fmaxf(hi, g);
+                }
+            // Standing on the ground: its bottom within half a metre of the highest ground under it.
+            if (bottom > hi + 0.5f || bottom - lo < minGap || lo < WATER_LEVEL) continue;
+            // Resting on something else (a floor, a plinth, a quay) is not floating.
+            bool held = false;
+            for (int k = 0; k < G.boxCount && !held; k++) {
+                const Box *o = &G.boxes[k];
+                float top = o->pos.y + o->size.y / 2;
+                held = k != i && !o->glow && top > bottom - 0.12f && o->pos.y - o->size.y / 2 < bottom - 0.05f &&
+                       fabsf(o->pos.x - b->pos.x) < (o->size.x + b->size.x) / 2 && fabsf(o->pos.z - b->pos.z) < (o->size.z + b->size.z) / 2;
+            }
+            if (held) continue;
+            if (pass == 0) {
+                count++;
+                worst = fmaxf(worst, bottom - lo);
+            } else if (bottom - lo > worst * 0.5f && shown < 40) {
+                shown++;
+                printf("gap %.2f at (%.1f, %.1f) size %.2f x %.2f x %.2f shape %d built %d solid %d color %d,%d,%d\n", bottom - lo, b->pos.x, b->pos.z,
+                       b->size.x, b->size.y, b->size.z, b->shape, b->built, b->solid, b->color.r, b->color.g, b->color.b);
+            }
+        }
+    }
+    printf("%d floating (gap over %.2f m), the worst %.2f m\n", count, minGap, worst);
+}
+
 // Where any walker's way dips into a canal bed: every villager lane, street edge and patrol sampled
 // every 0.5 m; prints each wet stretch. wetways
 static void WetWays(void)
@@ -623,6 +665,8 @@ int main(int argc, char **argv)
         GameInit();
         bool again = LoadGame();
         printf("reload %d: day %d %.1fh at %.0f,%.0f weapon %d armor %d pelts %d\n", again, G.day, G.hour, G.player.pos.x, G.player.pos.z, G.weapon, G.armor, BagCount(IT_WOLF));
+    } else if (strcmp(argv[1], "floaters") == 0) {
+        Floaters(argc > 2 ? (float)atof(argv[2]) : 0.08f);
     } else if (strcmp(argv[1], "ui") == 0 && argc > 4) {
         ShotPanel(argv[2], atoi(argv[3]), atoi(argv[4]), argc > 5 ? atoi(argv[5]) : 0);
     } else if (strcmp(argv[1], "mace") == 0 && argc > 3) {

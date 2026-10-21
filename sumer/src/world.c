@@ -407,6 +407,32 @@ static void BuildVegetation(void)
     PlaceHerbs(-530, -160, -530, 530, 48);
 }
 
+// Things are placed on the true lie of the land, but the ground is drawn as 6 m triangles, which sag
+// below it over hilltops and the world's edge. Once the ground is built, whatever was set on the land
+// (its bottom no more than a hand above it) reaches down to the lowest drawn ground under it: walls,
+// posts and trunks grow down, round things (rocks, bushes, huts, tents) sink. Things on floors and
+// platforms stand higher and are left alone.
+static void SettleOnGround(void)
+{
+    for (int i = 0; i < G.boxCount; i++) {
+        Box *b = &G.boxes[i];
+        if (b->water || b->glow) continue;
+        float bottom = b->pos.y - b->size.y / 2, lo = 1e9f;
+        if (bottom > TerrainHeight(b->pos.x, b->pos.z) + 0.25f) continue;
+        for (int u = 0; u <= 2; u++)
+            for (int v = 0; v <= 2; v++)
+                lo = fminf(lo, GroundSurface(b->pos.x + b->size.x * ((float)u / 2 - 0.5f), b->pos.z + b->size.z * ((float)v / 2 - 0.5f)));
+        float gap = bottom - (lo - 0.05f);
+        if (gap <= 0) continue;
+        if (b->shape == SHAPE_BLOB || b->shape == SHAPE_CONE) {
+            b->pos.y -= gap;
+        } else {
+            b->size.y += gap;
+            b->pos.y -= gap / 2;
+        }
+    }
+}
+
 void BuildWorld(void)
 {
     keepCount = 0;
@@ -422,6 +448,7 @@ void BuildWorld(void)
     building = false;
     BuildVegetation();
     BuildTerrain();
+    SettleOnGround();
     BuildRoads();
     BuildLights();
 
@@ -702,14 +729,18 @@ static void DrawFish(int i, const Resource *r)
     if (r->regrow > 0) return;
     float t = (float)GetTime() * 0.6f + (float)i * 0.37f;
     float ph = t - floorf(t);
-    float s = 0.4f + 1.4f * ph;
+    float s = 0.2f + 0.7f * ph;
 
-    rlPushMatrix();
-    rlTranslatef(r->pos.x, r->pos.y + 0.03f, r->pos.z);
-    rlRotatef(45, 0, 1, 0);
-    DrawShadedBox((Vector3){ 0, 0, 0 }, (Vector3){ s, 0.01f, s }, Fade((Color){ 170, 205, 215, 255 }, 1.0f - ph));
-    DrawShadedBox((Vector3){ 0, 0.005f, 0 }, (Vector3){ s * 0.8f, 0.01f, s * 0.8f }, COL_WATER);
-    rlPopMatrix();
+    // A ring spreading on the water: short pale dashes round a circle, fading as it grows.
+    Color c = Fade((Color){ 200, 222, 228, 255 }, 0.7f * (1.0f - ph));
+    for (int k = 0; k < 14; k++) {
+        float a = (float)k * 2.0f * PI / 14.0f;
+        rlPushMatrix();
+        rlTranslatef(r->pos.x + cosf(a) * s, r->pos.y + 0.06f, r->pos.z + sinf(a) * s);
+        rlRotatef(-a * RAD2DEG, 0, 1, 0);
+        DrawShadedBox((Vector3){ 0, 0, 0 }, (Vector3){ 0.04f, 0.01f, s * 0.42f }, c);
+        rlPopMatrix();
+    }
     if (ph < 0.25f) {
         float a = ph / 0.25f;
         Part(r->pos.x + 0.6f * a - 0.3f, r->pos.y + 0.03f + 0.5f * sinf(a * PI), r->pos.z, 0.3f, 0.08f, 0.1f, (Color){ 170, 180, 186, 255 });
