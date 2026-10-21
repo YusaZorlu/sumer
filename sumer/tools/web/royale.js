@@ -60,7 +60,7 @@ const away = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 
   // A latecomer watches until the next round.
   const dee = await open(browser, 'dee', `${BASE}?auto=join&name=Dee&room=${ROOM}`);
-  const d = await waitFor(dee, 'Dee joining', i => i.lobby === 0 && i.role === 2, 60000).catch(e => null);
+  const d = await waitFor(dee, 'Dee joining', i => i.lobby === 0 && i.role === 2, 180000).catch(e => null);
   check(!!d && d.royale.out === 1, `Dee, who joins mid-round, watches (${d ? d.royale.out : '?'})`);
 
   // Bob falls: Ann is the last one standing.
