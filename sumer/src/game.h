@@ -180,6 +180,9 @@ typedef struct {
     Vector3 jumpFrom, jumpTo;
     // An archer drawing its bow ('windup' counts down to the shot).
     bool drawing;
+    // Going round something big: the side it keeps to (+1 or -1), how long since it got any nearer.
+    signed char detour;
+    float detourT, bestLeft;
 } Vitals;
 
 enum { MARK_NONE, MARK_WARN, MARK_PARRIED, MARK_HIT };

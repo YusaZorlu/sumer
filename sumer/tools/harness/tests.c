@@ -699,6 +699,43 @@ static void Stand(int villager, float x, float z)
     v->at = (Vector3){ x, GroundHeight(x, z, 2.0f), z };
 }
 
+// A guard who has to go round the ziggurat to reach a wanted player behind it gets there.
+static void TestGuardRound(void)
+{
+    G.self = G.actor = 0;
+    G.health = 1e6f;
+    RespawnPeople();
+    // The guard who walks the precinct's west side, stopped half way along it; the player behind the ziggurat's
+    // north-east, within the guard's reach but out of a straight line.
+    int g = -1;
+    for (int i = 0; i < G.villagerCount && g < 0; i++)
+        if (G.villagers[i].kind == NPC_GUARD && G.villagers[i].a.x < -23.0f && G.villagers[i].a.x > -25.0f) g = i;
+    if (g < 0) {
+        Check(false, "no guard walks the precinct's west side");
+        return;
+    }
+    G.villagers[g].t = 0.5f;
+    G.villagers[g].speed = 0;
+    Stand(g, -24, -35);
+    Vitals *v = &G.villagers[g].vit;
+    PlaceAt(2, -62, 0);
+    G.peers[0].wanted = 200;
+    v->hostile = 200;
+    v->target = 0;
+    float closest = 1e9f;
+    for (float t = 0; t < 40; t += 0.05f) {
+        SyncSelf();
+        CollectBodies();
+        UpdateCombat(0.05f);
+        closest = fminf(closest, XZDist(v->at, G.player.pos));
+        if (getenv("TRACE") && fmodf(t, 2.0f) < 0.05f) printf("  t %.0f guard (%.1f,%.1f) override %d hostile %.0f target %d\n", t, v->at.x, v->at.z, v->override, v->hostile, v->target);
+    }
+    Check(closest < 4.0f, "a guard goes round the ziggurat to the wanted player behind it (closest %.1f m)", closest);
+    G.peers[0].wanted = 0;
+    G.health = HEALTH_MAX;
+    RespawnPeople();
+}
+
 // The law: the city's guards keep the peace inside the canals only; a village stands together for two
 // minutes; caravan and city guards do not chase far from their posts.
 static void TestLaw(void)
@@ -1639,6 +1676,7 @@ static void RunTests(void)
     TestStreets();
     TestAim();
     TestLaw();
+    TestGuardRound();
     TestDeathLosses();
     TestCanals();
     TestArchers();

@@ -254,10 +254,11 @@ static bool JumpWater(Vitals *v, float angle)
 }
 
 // Heads for the goal, trying side steps around walls and people, jumping canals and finding a way
-// round wider water; true once within 'stop'.
+// round wider water; true once within 'stop'. Round something big (the ziggurat, a block of houses) it
+// keeps to one side, as if feeling along the wall, and tries the other side when that gets it nowhere.
 static bool StepToward(Vitals *v, int owner, Vector3 goal, float speed, float dt, float stop)
 {
-    static const float tries[5] = { 0.0f, 0.7f, -0.7f, 1.4f, -1.4f };
+    static const float tries[9] = { 0.0f, 0.7f, -0.7f, 1.4f, -1.4f, 2.1f, -2.1f, 2.8f, -2.8f };
     if (v->jumpDur > 0) {
         v->jumpT += dt;
         float k = fminf(1.0f, v->jumpT / v->jumpDur);
@@ -275,9 +276,20 @@ static bool StepToward(Vitals *v, int owner, Vector3 goal, float speed, float dt
         d = fmaxf(sqrtf(dx * dx + dz * dz), stop + 0.1f);
     }
 
+    if (v->detour == 0) v->detour = (owner & 1) ? 1 : -1;
+    if (left < v->bestLeft - 0.5f || v->bestLeft <= 0 || left > v->bestLeft + 4.0f) {   // nearer, or a new goal
+        v->bestLeft = left;
+        v->detourT = 0;
+    } else if ((v->detourT += dt) > 3.0f) {
+        v->detour = (signed char)-v->detour;   // no nearer for a while: try round the other way
+        v->detourT = 0;
+        v->bestLeft = left;
+    }
     float base = atan2f(dx, dz), step = fminf(speed * dt, d - stop);
-    for (int k = 0; k < 5; k++) {
-        float a = base + tries[k], nx = v->at.x + sinf(a) * step, nz = v->at.z + cosf(a) * step;
+    // Turning away from the goal only pays when it is still some way off; near it, side steps do.
+    for (int k = 0; k < (left > 3.0f ? 9 : 5); k++) {
+        float a = base + tries[k] * (float)v->detour;   // the side it keeps to first, then the other
+        float nx = v->at.x + sinf(a) * step, nz = v->at.z + cosf(a) * step;
         Vector3 next = { nx, v->at.y, nz };
         if (BlockedAt(nx, nz, v->at.y)) {
             if (k == 0 && JumpWater(v, a)) return false;
