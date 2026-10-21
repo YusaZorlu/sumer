@@ -274,6 +274,13 @@ no sound files. Read the comment at the top of the file and the notation comment
 
 ## Ideas that were mentioned and not done
 
+**To do next (the owner's list, in the order given):**
+- Rain falls inside the ziggurat (it should not fall under roofs).
+- Bridges, piers and quays slow you as if you were wading: only the water itself should.
+- Player houses get roofs. Like the ziggurat's top room (a closed room you can still see into), the roof
+  must not hide the player inside: see-through or hidden from inside, not an opaque lid.
+- Pressing Esc twice sometimes opens the pause menu again instead of closing it.
+
 - Firefox and Safari are untested (only Chromium here). Touch/gamepad input does not exist; the owner wants to decide
   the phone controls after the graphics work is done (the UI already fits phones and takes taps on its buttons).
 - Graphics, later steps (the owner wants CC0-only art, a 25-50 MB download at most, and to weigh each effect's cost):
