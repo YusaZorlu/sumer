@@ -2,13 +2,17 @@
 // desktop and "#version 300 es" (WebGL 2) in the browser. Both take the same GLSL below.
 //
 // Materials come in each vertex's first texture coordinate (MAT_* in game.h): 0 a thing, 1 ground,
-// 2 water, 3 something glowing, 4 people and animals, 5 something built, 6 unlit (rain, trails).
+// 2 water, 3 something glowing, 4 people and animals, 5 something built, 6 unlit (rain, trails). For people
+// the other three hold where on the body the point is (1/64 m, x and z from -2 m), and the color's alpha
+// says what it is (255 skin and the rest, 254 woven cloth, 253 fleece or fur, 252 leather, 251 metal). On
+// the ground, alpha 254 marks a road.
 
 const char *SH_WORLD_VS =
-    "in vec3 vertexPosition; in vec2 vertexTexCoord; in vec3 vertexNormal; in vec4 vertexColor;\n"
+    "in vec3 vertexPosition; in vec4 vertexTexCoord; in vec3 vertexNormal; in vec4 vertexColor;\n"
     "uniform mat4 mvp;\n"
-    "out vec3 wpos; out vec4 vcol; out vec3 vnrm; flat out int vmat;\n"
+    "out vec3 wpos; out vec4 vcol; out vec3 vnrm; out vec3 vbody; flat out int vmat;\n"
     "void main(){ wpos=vertexPosition; vcol=vertexColor; vnrm=vertexNormal; vmat=int(vertexTexCoord.x+0.5);\n"
+    "  vbody=vertexTexCoord.yzw/64.0;\n"
     "  gl_Position=mvp*vec4(vertexPosition,1.0); }\n";
 
 // The sky's color in a direction, the tone curve and the noise: shared by the sky and the world.
@@ -51,7 +55,7 @@ const char *SH_SKY_FS =
 // Everything in the world. Normals come with the vertices where the draw code gives them (round
 // things, the ground) and from the screen-space slope of the surface where it does not.
 const char *SH_WORLD_FS =
-    "in vec3 wpos; in vec4 vcol; in vec3 vnrm; flat in int vmat; out vec4 finalColor;\n"
+    "in vec3 wpos; in vec4 vcol; in vec3 vnrm; in vec3 vbody; flat in int vmat; out vec4 finalColor;\n"
     "uniform vec3 lightDir; uniform vec3 lightCol; uniform vec3 ambSky; uniform vec3 ambGround; uniform vec3 torchCol;\n"
     "uniform float fogDensity; uniform float time; uniform float worldHalf; uniform float night; uniform float wet;\n"
     "uniform float shadowTexel; uniform float shadowRange; uniform float groundTile; uniform float groundN;\n"
@@ -59,7 +63,7 @@ const char *SH_WORLD_FS =
     "uniform int torchSlots; uniform int gridN; uniform float gridCell; uniform float torchRadius;\n"
     "uniform int dynCount; uniform vec4 dynLights[8];\n"
     "uniform mat4 lightVP; uniform sampler2D shadowMap; uniform sampler2D heightMap; uniform sampler2D torchGrid; uniform sampler2D torchData;\n"
-    "uniform sampler2D detailMap;\n"
+    "uniform sampler2D detailMap; uniform sampler2D detailMap2;\n"
     // A photo's light and dark, about -1..1: on the faces turned most toward each axis, blended (no UVs needed)
     "float det(vec3 p,vec3 n,float s,int c){ vec3 w=pow(abs(n),vec3(4.0)); w/=w.x+w.y+w.z;\n"
     "  return (texture(detailMap,p.zy*s)[c]*w.x+texture(detailMap,p.xz*s)[c]*w.y+texture(detailMap,p.xy*s)[c]*w.z)*3.2-1.6; }\n"
@@ -106,6 +110,7 @@ const char *SH_WORLD_FS =
     "    float far=texture(detailMap,wpos.xz*0.043+0.37).r-0.5;\n"   // a second, larger scale breaks the repeat
     "    base*=0.80+0.30*big+(d-0.5)*0.85*mix(0.45,1.0,near)+far*0.25;\n"
     "    n=normalize(n-vec3(dx,0.0,dz)*6.0*near); rough=mix(0.97,0.35,wet); base*=mix(1.0,0.72,wet);\n"
+    "    if(vcol.a<0.999){ float r=texture(detailMap2,wpos.xz*0.22).a; base*=1.0+(r-0.5)*0.7*mix(0.4,1.0,near); }\n"
     "  } else if(vmat==2){\n"   // water: ripples, the sky in it, the sun glinting, darker where deep
     "    water=true; vec3 p=wpos*0.6; float e=0.08;\n"
     "    float h0=fbm(vec3(p.x+time*0.3,time*0.2,p.z)), hx=fbm(vec3(p.x+e+time*0.3,time*0.2,p.z)), hz=fbm(vec3(p.x+time*0.3,time*0.2,p.z+e));\n"
@@ -127,8 +132,14 @@ const char *SH_WORLD_FS =
     "    base*=0.75+0.45*fbm(wpos*2.2); rough=0.6;\n"
     "  } else if(vmat!=4 && vcol.r>vcol.g && vcol.g>vcol.b && lum<0.45 && sat>0.12){\n" // wood: grain along the length
     "    base*=0.9+0.1*fbm(wpos*1.5)+det(wpos,n,0.45,2)*0.22*mix(0.4,1.0,near); rough=0.75;\n"
-    "  } else if(vmat==4){\n"   // people and animals: cloth weave, a soft sheen on skin
-    "    base*=0.92+0.12*noise(wpos*40.0)*near; rough=0.7;\n"
+    "  } else if(vmat==4){\n"   // people and animals: the photo grain of what they wear, a soft sheen on skin
+    "    int tag=int(255.0-vcol.a*255.0+0.5);\n"
+    "    if(tag>=1&&tag<=3){ vec3 ln=cross(dFdx(vbody),dFdy(vbody)); ln=dot(ln,ln)>1e-12?normalize(ln):vec3(0.0,0.0,1.0);\n"
+    "      vec3 w=pow(abs(ln),vec3(4.0)); w/=w.x+w.y+w.z; float s=tag==1?3.0:tag==2?2.0:3.0; int c=tag-1;\n"
+    "      float d=texture(detailMap2,vbody.zy*s)[c]*w.x+texture(detailMap2,vbody.xz*s)[c]*w.y+texture(detailMap2,vbody.xy*s)[c]*w.z;\n"
+    "      base*=1.0+(d-0.5)*(tag==2?1.1:0.8)*mix(0.4,1.0,near); rough=tag==3?0.55:0.92;\n"
+    "    } else if(tag==4){ base*=0.9+0.2*noise(wpos*30.0)*near; rough=0.28; spec=0.35;\n"
+    "    } else { base*=0.92+0.12*noise(wpos*40.0)*near; rough=0.7; }\n"
     "  } else if(sat<0.12){ base*=0.9+0.12*fbm(wpos*1.6)+det(wpos,n,0.35,3)*0.2*mix(0.4,1.0,near);\n"   // stone, rock
     "  } else { base*=0.88+0.22*fbm(wpos*1.6); }\n"
     "  float ndl=max(dot(n,lightDir),0.0);\n"
@@ -144,7 +155,7 @@ const char *SH_WORLD_FS =
     "    col=mix(base*(amb+lightCol*0.1+torch),skyColor(r)*1.1,fres)+min(lightCol*sp*sh*0.35,vec3(2.5)); }\n"
     "  float fog=1.0-exp(-dist*fogDensity);\n"
     "  col=mix(col,skyColor(-V)*1.05,fog);\n"
-    "  finalColor=vec4(toScreen(col),vcol.a);\n"
+    "  finalColor=vec4(toScreen(col),(vmat==4||vmat==1)?1.0:vcol.a);\n"
     "}\n";
 
 // The sun's view, for the shadow: depth packed into the color, which every WebGL 2 device can render

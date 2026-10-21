@@ -238,7 +238,7 @@ void LobbyFrame(void)
     y += 34;
     // Dev tools go for playing alone too: the dev console (Tab, then its button, or `).
     if (Choice((Rectangle){ x + 200, y, 190, 28 }, dev ? "Dev tools: on" : "Dev tools: off", menu)) dev = !dev;
-    Label("For testing: the dev console, alone or for everyone in your game.", x + 400, y + 6, 13, dim);
+    Label("The dev console, alone or hosting.", x + 400, y + 6, 13, dim);
     y += 40;
     if (Choice((Rectangle){ x, y, 250, 46 }, "Join a game", menu && named)) Connect(false);
     Label("Joins the game hosted in this room.", x + 270, y + 14, 15, dim);

@@ -22,5 +22,5 @@ emcc -std=gnu99 -O2 -Wall -Wextra -o web/index.html src/*.c -Iraylib-web/src ray
     -DPLATFORM_WEB -sUSE_GLFW=3 -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=1048576 -sFORCE_FILESYSTEM=1 \
     -sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE='$stringToNewUTF8,$UTF8ToString' \
     -sEXPORTED_RUNTIME_METHODS=HEAPF32 \
-    --embed-file assets/detail.png -lidbfs.js -lwebsocket.js --shell-file src/shell.html
+    --embed-file assets/detail.png --embed-file assets/detail2.png --embed-file assets/flame.png -lidbfs.js -lwebsocket.js --shell-file src/shell.html
 echo "Built web/. Start the server with: python3 server.py"

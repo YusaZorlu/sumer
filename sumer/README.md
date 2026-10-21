@@ -123,8 +123,8 @@ touch controls yet: play with a keyboard (a USB-C or Bluetooth one works; WASD t
 | Z | Arrow camera on/off |
 | E / F | Use, talk, pick up, climb a ladder, search a body, fill or pour a bucket, open the coop / alternate action (plant a date) |
 | R | Refill quiver from carried arrow baskets |
-| Tab | Baskets (inventory), equipment and armor; its "Dev console" button opens the dev console |
-| ` or F2 | Dev console (see below) |
+| Tab | Baskets (inventory), equipment and armor; with dev tools on, its "Dev console" button opens the dev console |
+| ` or F2 | Dev console, when dev tools are on (see below) |
 | T (hold) | Fast-forward time (playing alone) |
 | F5 | Save |
 | F11 or Alt+Enter | Borderless fullscreen on/off |
@@ -132,7 +132,8 @@ touch controls yet: play with a keyboard (a USB-C or Bluetooth one works; WASD t
 | N | Music volume: off, low, medium, high (also a button in the Esc menu and on the title screen) |
 | G | Graphics: auto, high, low, classic (also a button in the Esc menu and on the title screen) |
 | H | Controls and tips window |
-| Esc | Pause / close a panel (pause menu: save slots, language, music, graphics, sounds, your look, save, new game, save & quit) |
+| Esc | Pause / close a panel (pause menu: save slots, game settings, your look, save, new game, save & quit) |
+| S (in the pause menu) | Game settings: language, graphics, music, sounds, arrow camera, first person or behind you |
 
 Panels also take number keys (barter offer N, with 0, - and = for offers 10-12; use basket N; coop actions
 1-4), so nothing depends on a click landing. The game pauses when the window loses focus (a screenshot tool, switching apps);
@@ -140,8 +141,11 @@ Resume or Esc takes the mouse back.
 
 ## Dev console
 
-For testing: Tab, then the "Dev console" button, or the ` key (F2 on keyboards without it). Type a command
-and press Enter; the up arrow brings back the last one, Tab or Esc closes. Buttons below do the usual ones.
+For testing. It is there only when **Dev tools** were turned on on the title screen before playing alone or
+hosting (a rule like PvP and Combat mode, off by default; `?dev=1` in the address turns it on too). Then
+everyone in that game can open it: Tab, then the "Dev console" button, or the ` key (F2 on keyboards without
+it). Type a command and press Enter; the up arrow brings back the last one, Tab or Esc closes. Buttons below
+do the usual ones.
 
 | Command | Does |
 |---|---|
@@ -155,7 +159,13 @@ and press Enter; the up arrow brings back the last one, Tab or Esc closes. Butto
 | `kill [m]` | Brings down every foe and beast within m metres, 20 if not given (host) |
 | `calm` | Beasts and fighters let you be, and you are no longer wanted (host) |
 
-In a joined game the world commands are the host's; in a PvP game a guest can only use `where` and `help`.
+In a joined game the world commands (marked host) are the host's.
+
+## Game settings
+
+Esc, then "Game settings" (or S): language, graphics, music, sounds, the arrow camera (the view follows each
+arrow) and the view (first person or behind you). They are kept in this browser and change nothing about how
+the game plays. The keys L, G, N, Z and P do the same while playing.
 
 ## Language
 
@@ -212,7 +222,14 @@ raylib (zlib licence) draws the graphics and opens the audio device.
 Surface detail comes from four photo textures from [Poly Haven](https://polyhaven.com), all **CC0** (public domain, no
 attribution needed, free for any use): `dry_ground_rocks` (the ground), `white_sandstone_bricks_03` (mud-brick walls),
 `wood_planks_dirt` (wood) and `rock_boulder_dry` (rock). The game keeps its own colors and takes only their light and dark,
-packed into `assets/detail.png` (512x512, 0.8 MB) by `python3 -I tools/assets/make_detail.py`. Everything else is drawn in code.
+packed into `assets/detail.png` (512x512, 0.8 MB) by `python3 -I tools/assets/make_detail.py`.
+
+People's clothes and the roads take their grain from four textures from [ambientCG](https://ambientcg.com), all **CC0**:
+`Fabric019` (woven cloth), `Carpet016` (fleece skirts, pelts and felt), `Leather037` (leather armor, caps and
+sandals) and `Pathway004` (the roads' packed earth), in `assets/detail2.png`. The grain moves with each body, so
+it does not slide over people as they walk. Torch and fire flames are two frames from Kenney's
+[Particle Pack](https://kenney.nl/assets/particle-pack) (**CC0**), in `assets/flame.png`. The same script builds
+both. Everything else is drawn in code.
 
 ## Where things are
 

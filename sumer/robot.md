@@ -126,9 +126,15 @@ in `src/game.h`) holds the whole world.
   world space (triplanar, no UVs) where it used to draw noise, and multiplies the vertex color by them. Rebuild with
   `python3 -I tools/assets/make_detail.py` (Pillow, network); the browser builds embed it (`--embed-file`). A missing file
   falls back to flat grey. Only CC0 sources (Poly Haven, ambientCG, Kenney, Quaternius); list each in the README's credits.
-- **Dev console** (`src/console.c`, panel `PANEL_CONSOLE` drawn in `ui.c`): `ConsoleRun(text)` parses and runs a command
-  and writes its answer to a 14-line scrollback. World commands check `Host()`, self commands `Self()` (a guest in a PvP
-  game may only look). Add a command as one more `else if` in `ConsoleRun`, a line in `Help()`, a row in the README's
+- **People's grain, roads, flames**: `assets/detail2.png` (R cloth, G fleece/fur, B leather, A road) is read
+  by the world shader for MAT_FIGURE where a color's alpha says what it is (`Tag()` in `figures.c`: 254 cloth,
+  253 fleece, 252 leather, 251 metal, which only shines; 255 the rest). People's vertices carry their position on
+  their own body in the 2nd-4th material bytes (`VVertex` in `gfx.c`), so the grain moves with them. Roads are
+  ground with alpha 254. Flames: `Flame()`/`DrawTorches()` call `GfxFlame()`, and `DrawFlames()` in `gfx.c` draws
+  them after the world as additive billboards from `assets/flame.png`; without shaders the old glow boxes stay.
+- **Dev console** (`src/console.c`, panel `PANEL_CONSOLE` drawn in `ui.c`): only when `G.devTools` (the "Dev tools" rule
+  on the title screen, sent to guests as rules bit 4). `ConsoleRun(text)` parses and runs a command and writes its
+  answer to a 14-line scrollback. World commands check `Host()`. Add a command as one more `else if` in `ConsoleRun`, a line in `Help()`, a row in the README's
   table, Turkish for its answers, and a check in `TestConsole()`.
 - **Ground as drawn** (`SettleOnGround` in `world.c`, after `BuildTerrain`): things are placed on `TerrainHeight`, but the
   ground is drawn as 6 m triangles (`GroundSurface`/`MeshHeight`), which sag below it over hills. The pass extends

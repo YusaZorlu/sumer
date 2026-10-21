@@ -1014,6 +1014,7 @@ void GfxSetChoice(int choice);
 const char *GfxChoiceName(int choice);
 const char *GfxLabel(void);
 bool GfxOn(void);
+void GfxFlame(Vector3 p, float size);
 bool DrawingAll(void);             // drawing the whole map once for the shaders' meshes: no culling
 void GfxWorldChanged(void);
 bool GfxDrawWorld(void);           // the 3D world through the shaders; false when the classic way must draw it

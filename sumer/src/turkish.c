@@ -514,7 +514,7 @@ const Phrase TR_PHRASES[] = {
     { "Dev tools are off. Turn them on before playing alone or hosting (title screen).", "Geliştirici araçları kapalı. Tek başına oynamadan ya da oyun kurmadan önce aç (başlık ekranı)." },
     { "Dev tools: on", "Geliştirici araçları: açık" },
     { "Dev tools: off", "Geliştirici araçları: kapalı" },
-    { "For testing: the dev console, alone or for everyone in your game.", "Denemek için: geliştirici konsolu, tek başına ya da oyunundaki herkes için." },
+    { "The dev console, alone or hosting.", "Geliştirici konsolu, tek başına ya da kurarken." },
     { "Game settings", "Oyun ayarları" },
     { "Game settings (S)", "Oyun ayarları (S)" },
     { "Kept in this browser. The keys work while you play, too.", "Bu tarayıcıda saklanır. Tuşlar oynarken de çalışır." },

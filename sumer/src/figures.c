@@ -17,8 +17,19 @@ typedef struct { float y, rx, rz, z, ruffle; Color c; } Ring;
 // A garment painted onto the torso: what is cloth and what is skin, by where a point is.
 typedef struct { const Look *look; bool woman; } Dress;
 
-static const Color P_DARK = { 26, 20, 18, 255 }, P_EYE = { 226, 220, 206, 255 }, P_GOLD = { 222, 178, 70, 255 },
-                   P_LAPIS = { 40, 70, 168, 255 }, P_CARNELIAN = { 188, 70, 40, 255 }, P_SANDAL = { 96, 66, 44, 255 };
+// What a color is, in its alpha, for the shaders' photo grain (see shaders.c): woven cloth, fleece or fur,
+// leather, metal. Skin and everything else stay at 255.
+enum { T_CLOTH = 1, T_FLEECE, T_LEATHER, T_METAL };
+
+static Color Tag(Color c, int t)
+{
+    c.a = (unsigned char)(255 - t);
+    return c;
+}
+
+static const Color P_DARK = { 26, 20, 18, 255 }, P_EYE = { 226, 220, 206, 255 }, P_GOLD = { 222, 178, 70, 255 - T_METAL },
+                   P_LAPIS = { 40, 70, 168, 255 }, P_CARNELIAN = { 188, 70, 40, 255 }, P_SANDAL = { 96, 66, 44, 255 - T_LEATHER };
+static const Color P_BRONZE = { 190, 130, 60, 255 - T_METAL };   // COL_BRONZE, as metal
 
 // ---- Shapes ----
 
@@ -574,18 +585,18 @@ static void Headgear(const Look *l, const Build *b, float y)
     switch (l->head) {
     case HEAD_HELMET:
         // A bronze helmet over the ears, as the soldiers of the Stele of the Vultures wore.
-        Ball(V3(0, y + 1.835f, -0.012f), V3(0.138f, 0.128f, 0.152f), lod, COL_BRONZE);
-        Bit(0, y + 1.79f, -0.13f, 0.2f, 0.12f, 0.04f, COL_BRONZE);
-        if (b->lod != LOD_FAR) Bit(0, y + 1.94f, -0.01f, 0.03f, 0.05f, 0.18f, Mix(COL_BRONZE, P_DARK, 0.25f));
+        Ball(V3(0, y + 1.835f, -0.012f), V3(0.138f, 0.128f, 0.152f), lod, P_BRONZE);
+        Bit(0, y + 1.79f, -0.13f, 0.2f, 0.12f, 0.04f, P_BRONZE);
+        if (b->lod != LOD_FAR) Bit(0, y + 1.94f, -0.01f, 0.03f, 0.05f, 0.18f, Mix(P_BRONZE, P_DARK, 0.25f));
         break;
     case HEAD_CAP:
-        Ball(V3(0, y + 1.85f, -0.015f), V3(0.128f, 0.1f, 0.142f), lod, (Color){ 128, 88, 56, 255 });
+        Ball(V3(0, y + 1.85f, -0.015f), V3(0.128f, 0.1f, 0.142f), lod, (Color){ 128, 88, 56, 255 - T_LEATHER });
         break;
     case HEAD_STONECAP:
         Ball(V3(0, y + 1.85f, -0.015f), V3(0.13f, 0.1f, 0.144f), lod, (Color){ 128, 122, 112, 255 });
         break;
     case HEAD_HORNS:
-        Ball(V3(0, y + 1.85f, -0.015f), V3(0.134f, 0.11f, 0.148f), lod, COL_BRONZE);
+        Ball(V3(0, y + 1.85f, -0.015f), V3(0.134f, 0.11f, 0.148f), lod, P_BRONZE);
         for (int s = -1; s <= 1; s += 2) {
             Vector3 a = V3(0.11f * (float)s, y + 1.89f, -0.01f), m = V3(0.23f * (float)s, y + 1.97f, 0.0f), t = V3(0.26f * (float)s, y + 2.13f, 0.04f);
             Tube(a, m, 0.035f, 0.028f, b->lod == LOD_FINE ? 8 : 4, COL_LINEN);
@@ -651,7 +662,7 @@ static void Armor(const Look *l, const Build *b, float y)
     switch (l->armor) {
     case ARMOR_WOLF: {
         // A wolf's pelt over the shoulders and down the back, its head worn as a hood.
-        const Color fur = { 168, 160, 146, 255 }, dark = { 112, 106, 96, 255 };
+        const Color fur = { 168, 160, 146, 255 - T_FLEECE }, dark = { 112, 106, 96, 255 - T_FLEECE };
         Ring r[4] = {
             { y + 0.72f, 0.25f, 0.2f, -0.02f, b->lod == LOD_FINE ? 0.05f : 0, dark }, { y + 1.1f, 0.22f, 0.16f, -0.01f, 0, fur },
             { y + 1.42f, 0.25f, 0.155f, 0.0f, 0, fur }, { y + 1.56f, 0.13f, 0.1f, -0.01f, 0, fur },
@@ -671,7 +682,7 @@ static void Armor(const Look *l, const Build *b, float y)
     }
     case ARMOR_LEATHER: {
         // Bands of thick hide laced one over the next.
-        const Color hide = { 96, 62, 40, 255 }, strap = { 58, 38, 26, 255 }, lace = { 196, 170, 120, 255 };
+        const Color hide = { 96, 62, 40, 255 - T_LEATHER }, strap = { 58, 38, 26, 255 - T_LEATHER }, lace = { 196, 170, 120, 255 - T_LEATHER };
         Ring r[8];
         for (int k = 0; k < 8; k++) {
             float t = (float)k / 7.0f, yy = y + 1.02f + 0.48f * t;
@@ -685,7 +696,7 @@ static void Armor(const Look *l, const Build *b, float y)
     }
     case ARMOR_BRONZE: {
         // A thick cloak over the shoulders and back, studded with bronze discs.
-        const Color felt = { 92, 74, 56, 255 };
+        const Color felt = { 92, 74, 56, 255 - T_FLEECE };
         Ring r[4] = {
             { y + 0.62f, 0.27f, 0.21f, -0.015f, b->lod == LOD_FINE ? 0.03f : 0, Mix(felt, P_DARK, 0.2f) }, { y + 1.0f, 0.245f, 0.18f, -0.01f, 0, felt },
             { y + 1.43f, 0.258f, 0.162f, 0.0f, 0, felt }, { y + 1.56f, 0.12f, 0.1f, -0.005f, 0, felt },
@@ -696,7 +707,7 @@ static void Armor(const Look *l, const Build *b, float y)
                 for (int k = 0; k < 5; k++) {
                     float a = PI + 0.35f + (PI - 0.7f) * (float)k / 4.0f, yy = y + 0.8f + 0.22f * (float)row;
                     float rx = Lerp(0.27f, 0.25f, (yy - y - 0.62f) / 0.8f), rz = Lerp(0.21f, 0.17f, (yy - y - 0.62f) / 0.8f);
-                    Bit(rx * cosf(a), yy, rz * sinf(a) - 0.015f, 0.05f, 0.05f, 0.05f, COL_BRONZE);
+                    Bit(rx * cosf(a), yy, rz * sinf(a) - 0.015f, 0.05f, 0.05f, 0.05f, P_BRONZE);
                 }
         break;
     }
@@ -753,8 +764,8 @@ static void Body(Vector3 at, float stride, Look look, bool crouch, bool bow, flo
     bool longDress = LongDress(&look);
     float swing = sinf(stride);
 
-    if (!(look.trim.r == look.skin.r && look.trim.g == look.skin.g)) look.trim = Clothe(look.trim, look.skin);
-    look.cloth = Clothe(look.cloth, look.skin);
+    if (!(look.trim.r == look.skin.r && look.trim.g == look.skin.g)) look.trim = Tag(Clothe(look.trim, look.skin), T_CLOTH);
+    look.cloth = Tag(Clothe(look.cloth, look.skin), look.dress == DRESS_FLEECE ? T_FLEECE : T_CLOTH);
 
     // The legs: a step's thigh swing and knee bend, or a crouch on bent knees.
     float thigh[2], bend[2];
@@ -805,7 +816,7 @@ static void Body(Vector3 at, float stride, Look look, bool crouch, bool bow, flo
         Reach(sh, target, hint, upper, lower, &elbow, &wrist);
         bool sleeve = look.dress == DRESS_ROBE || (look.dress == DRESS_SHAWL && s != HAND_WEAPON);
         Color upperC = sleeve ? look.cloth : look.skin;
-        if (look.armor == ARMOR_LEATHER) upperC = (Color){ 96, 62, 40, 255 };
+        if (look.armor == ARMOR_LEATHER) upperC = Tag((Color){ 96, 62, 40, 255 }, T_LEATHER);
         Arm(sh, elbow, wrist, upperC, look.skin, &look, &b, look.jewel == JEWEL_BANDS);
     }
     (void)at;

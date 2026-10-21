@@ -208,6 +208,10 @@ float TileLight(int i, int j)
 
 static void Flame(Vector3 p, float t, float seed)
 {
+    if (GfxOn()) {
+        GfxFlame(p, 1.1f);
+        return;
+    }
     float k = 0.85f + 0.15f * sinf(t * 13.0f + seed) * sinf(t * 7.0f + seed * 2.0f);
     DrawGlowBox((Vector3){ p.x, p.y + 0.1f * k, p.z }, (Vector3){ 0.24f * k, 0.36f * k, 0.24f * k }, (Color){ 255, 130, 40, 255 });
     DrawGlowBox((Vector3){ p.x, p.y + 0.05f, p.z }, (Vector3){ 0.13f, 0.22f * k, 0.13f }, (Color){ 255, 220, 120, 255 });
@@ -215,6 +219,10 @@ static void Flame(Vector3 p, float t, float seed)
 
 void DrawTorches(void)
 {
+    // Camp fires and braziers burn all day; with the shaders on they get a flame of their own.
+    if (GfxOn())
+        for (int k = 0; k < fireCount; k++)
+            if (XZDist(fires[k], G.cam.position) < 180.0f) GfxFlame((Vector3){ fires[k].x, fires[k].y - 0.3f, fires[k].z }, 1.4f);
     if (G.night < 0.05f) return;
     float t = (float)GetTime();
     for (int i = 0; i < G.torchCount; i++) {

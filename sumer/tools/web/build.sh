@@ -10,6 +10,6 @@ emcc -std=gnu99 -O2 -Wall -Wextra -DSUMER_TEST -o "$OUT/web/index.html" src/*.c 
     -DPLATFORM_WEB -sUSE_GLFW=3 -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=1048576 -sFORCE_FILESYSTEM=1 \
     -sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE='$stringToNewUTF8,$UTF8ToString' \
     -sEXPORTED_RUNTIME_METHODS=ccall,UTF8ToString,HEAPF32 -sEXPORTED_FUNCTIONS=_main,_TestInfo,_TestCommand,_TestConsole \
-    --embed-file assets/detail.png -lidbfs.js -lwebsocket.js --shell-file src/shell.html
+    --embed-file assets/detail.png --embed-file assets/detail2.png --embed-file assets/flame.png -lidbfs.js -lwebsocket.js --shell-file src/shell.html
 cp server.py "$OUT/server.py"
 echo "Built $OUT"
