@@ -209,6 +209,11 @@ background reading (nothing is copied from them): the Old Babylonian tuning text
 the Hurrian Melodic Texts", *Music & Letters* 75 (1994); and R. Dumbrill, *The Archaeomusicology of the Ancient Near East*.
 raylib (zlib licence) draws the graphics and opens the audio device.
 
+Surface detail comes from four photo textures from [Poly Haven](https://polyhaven.com), all **CC0** (public domain, no
+attribution needed, free for any use): `dry_ground_rocks` (the ground), `white_sandstone_bricks_03` (mud-brick walls),
+`wood_planks_dirt` (wood) and `rock_boulder_dry` (rock). The game keeps its own colors and takes only their light and dark,
+packed into `assets/detail.png` (512x512, 0.8 MB) by `python3 -I tools/assets/make_detail.py`. Everything else is drawn in code.
+
 ## Where things are
 
 The city follows the plan of Ur around 2000 BC: an oval mud-brick wall with towers, the temple precinct

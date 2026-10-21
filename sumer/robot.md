@@ -121,6 +121,11 @@ in `src/game.h`) holds the whole world.
   river bed (`MoveVertical`). Only below `WATER_LEVEL + 0.2` does water slow you, so bridges, piers and the (solid) harbor quays
   are walked at full speed. Rain skips drops under any box whose bottom is 1.8 m over the ground (roofs, ceilings: `DrawRain`).
   The camera stops at thin boxes overhead too (house roofs), so inside a roofed room it stays under the roof. The ferry was removed; `STN_FERRY_E/W` remain only as the landing stages' positions.
+- **Photo detail** (`assets/detail.png`, `LoadDetail()` in `gfx.c`, `det()` and `detailMap` in `shaders.c`): four grey
+  CC0 maps in one texture, R ground, G mud brick, B wood, A rock, mid grey = no change. The world shader samples them in
+  world space (triplanar, no UVs) where it used to draw noise, and multiplies the vertex color by them. Rebuild with
+  `python3 -I tools/assets/make_detail.py` (Pillow, network); the browser builds embed it (`--embed-file`). A missing file
+  falls back to flat grey. Only CC0 sources (Poly Haven, ambientCG, Kenney, Quaternius); list each in the README's credits.
 - **Dev console** (`src/console.c`, panel `PANEL_CONSOLE` drawn in `ui.c`): `ConsoleRun(text)` parses and runs a command
   and writes its answer to a 14-line scrollback. World commands check `Host()`, self commands `Self()` (a guest in a PvP
   game may only look). Add a command as one more `else if` in `ConsoleRun`, a line in `Help()`, a row in the README's
@@ -301,7 +306,10 @@ no sound files. Read the comment at the top of the file and the notation comment
   sharper far shadows, grass and reeds). Animals are still boxes and blobs. Free model and texture sites (poly.pizza,
   kenney.nl, quaternius.com, opengameart.org, polyhaven.com, ambientcg.com) were still denied by the cloud sandbox's
   network policy in October 2026 (403 from the proxy), so nothing has been downloaded; the owner must allow those
-  hosts in the environment's network settings first. The game has no model or texture loader yet either.
+  hosts in the environment's network settings first. Since then the owner opened them (poly.pizza still 403s); four
+  CC0 textures went in as surface detail (see "Photo detail"). Next by what is seen most: palm and tree models (Quaternius
+  nature packs are CC0 low-poly with flat colors, which suits baking into the static meshes), then thatch/reed and a
+  second ground (grass) map. There is no model loader yet.
 - A body choice (man or woman) for players: the townsfolk have it (`Look.woman`), the "Your look" window does not;
   the owner asked for few options.
 - More sound effects: footsteps, the bow, animals, ambience (blows, parries and arrows have theirs).

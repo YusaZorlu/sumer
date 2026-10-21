@@ -34,6 +34,7 @@ extern const char *SH_BRIGHT_FS, *SH_BLUR_FS, *SH_POST_FS;
 #define TEX_HEIGHT      11
 #define TEX_GRID        12
 #define TEX_TORCH       13
+#define TEX_DETAIL      14
 
 // 24 bytes: position, normal (0 when the shader is to work it out), color, material.
 typedef struct { float x, y, z; signed char n[4]; unsigned char c[4]; unsigned char m[4]; } GVert;
@@ -52,7 +53,7 @@ typedef struct {
     int mvp, camPos, sunDir, sunGlow, skyZen, skyHor, exposure, quality, lightDir, lightCol, ambSky, ambGround;
     int torchCol, fogDensity, time, worldHalf, night, wet, shadowTexel, shadowRange, groundTile, groundN;
     int heightScale, heightBase, torchSlots, gridN, gridCell, torchRadius, dynCount, dynLights, lightVP;
-    int shadowMap, heightMap, torchGrid, torchData, moonDir, cloudy, texel, bloom, bloomAmt, dir;
+    int shadowMap, heightMap, torchGrid, torchData, moonDir, cloudy, texel, bloom, bloomAmt, dir, detailMap;
 } Locs;
 
 typedef struct {
@@ -76,7 +77,7 @@ static unsigned int quadIndex;
 static Block dynBlocks[MAX_DYN_BLOCKS], skyBlock;
 static int dynUsed;
 static VList dyn, scratch;
-static Texture2D heightTex, gridTex, torchTex;
+static Texture2D heightTex, gridTex, torchTex, detailTex;
 static float heightScale = 1.0f, heightBase;
 static RenderTexture2D scene, brightRT, blurRT, shadowRT;
 static int sceneW, sceneH, shadowSize, targetTier = -1;
@@ -303,7 +304,7 @@ static Locs Find(Shader s)
     L_(lightCol); L_(ambSky); L_(ambGround); L_(torchCol); L_(fogDensity); L_(time); L_(worldHalf); L_(night); L_(wet);
     L_(shadowTexel); L_(shadowRange); L_(groundTile); L_(groundN); L_(heightScale); L_(heightBase); L_(torchSlots);
     L_(gridN); L_(gridCell); L_(torchRadius); L_(dynCount); L_(dynLights); L_(lightVP); L_(shadowMap); L_(heightMap);
-    L_(torchGrid); L_(torchData); L_(moonDir); L_(cloudy); L_(texel); L_(bloom); L_(bloomAmt); L_(dir);
+    L_(torchGrid); L_(torchData); L_(moonDir); L_(cloudy); L_(texel); L_(bloom); L_(bloomAmt); L_(dir); L_(detailMap);
 #undef L_
     return l;
 }
@@ -336,6 +337,22 @@ static void MakeSky(void)
     free(l.v);
 }
 
+// The surface detail from photographs (assets/detail.png, built by tools/assets/make_detail.py from CC0
+// textures): light and dark for the ground (R), mud-brick walls (G), wood (B) and rock (A). Mid grey, which
+// changes nothing, if the file is missing. The browser build carries the file inside it.
+static void LoadDetail(void)
+{
+    Image im = LoadImage("assets/detail.png");
+    if (!im.data) im = LoadImage(TextFormat("%s../../assets/detail.png", GetApplicationDirectory()));
+    if (!im.data) im = GenImageColor(4, 4, (Color){ 128, 128, 128, 128 });
+    ImageFormat(&im, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+    detailTex = LoadTextureFromImage(im);
+    UnloadImage(im);
+    GenTextureMipmaps(&detailTex);
+    SetTextureFilter(detailTex, TEXTURE_FILTER_TRILINEAR);
+    SetTextureWrap(detailTex, TEXTURE_WRAP_REPEAT);
+}
+
 static void Init(void)
 {
     inited = true;
@@ -362,6 +379,7 @@ static void Init(void)
     pl = Find(postSh);
     bl = Find(blurSh);
     MakeSky();
+    LoadDetail();
 }
 
 // ---- The setting ----
@@ -973,6 +991,7 @@ static void WorldUniforms(const SkyNow *s, Matrix lightVP, int quality)
     BindTexture(TEX_HEIGHT, heightTex.id, l->heightMap);
     BindTexture(TEX_GRID, gridTex.id, l->torchGrid);
     BindTexture(TEX_TORCH, torchTex.id, l->torchData);
+    BindTexture(TEX_DETAIL, detailTex.id, l->detailMap);
     rlActiveTextureSlot(0);
 }
 

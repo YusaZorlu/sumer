@@ -59,6 +59,10 @@ const char *SH_WORLD_FS =
     "uniform int torchSlots; uniform int gridN; uniform float gridCell; uniform float torchRadius;\n"
     "uniform int dynCount; uniform vec4 dynLights[8];\n"
     "uniform mat4 lightVP; uniform sampler2D shadowMap; uniform sampler2D heightMap; uniform sampler2D torchGrid; uniform sampler2D torchData;\n"
+    "uniform sampler2D detailMap;\n"
+    // A photo's light and dark, about -1..1: on the faces turned most toward each axis, blended (no UVs needed)
+    "float det(vec3 p,vec3 n,float s,int c){ vec3 w=pow(abs(n),vec3(4.0)); w/=w.x+w.y+w.z;\n"
+    "  return (texture(detailMap,p.zy*s)[c]*w.x+texture(detailMap,p.xz*s)[c]*w.y+texture(detailMap,p.xy*s)[c]*w.z)*3.2-1.6; }\n"
     "float unpackDepth(vec4 c){ return dot(c.rgb,vec3(1.0,1.0/255.0,1.0/65025.0)); }\n"
     "float tap(vec2 uv,float z){ return z>unpackDepth(texture(shadowMap,uv))?0.0:1.0; }\n"
     "float bilinearTap(vec2 uv,float z){ vec2 st=uv/shadowTexel-0.5; vec2 f=fract(st); vec2 b=(floor(st)+0.5)*shadowTexel;\n"
@@ -97,11 +101,11 @@ const char *SH_WORLD_FS =
     "  float lum=dot(vcol.rgb,vec3(0.3,0.59,0.11)), sat=max(vcol.r,max(vcol.g,vcol.b))-min(vcol.r,min(vcol.g,vcol.b));\n"
     "  float rough=0.85, spec=0.04; bool water=false;\n"
     "  if(vmat==1){\n"   // ground: soil and sand with grain, a gentle bump, darker and glossy in the rain
-    "    float big=fbm(wpos*vec3(0.08,0.0,0.08)), fine=noise(wpos*vec3(2.5,0.0,2.5)), grit=hash(floor(wpos*18.0));\n"
-    "    base*=0.80+0.30*big+(0.10*fine-0.06*step(0.93,grit))*near;\n"
-    "    vec3 q=wpos*vec3(1.7,0.0,1.7);\n"
-    "    vec3 g=vec3(noise(q+vec3(0.1,0.0,0.0))-noise(q-vec3(0.1,0.0,0.0)),0.0,noise(q+vec3(0.0,0.0,0.1))-noise(q-vec3(0.0,0.0,0.1)));\n"
-    "    n=normalize(n-g*0.6*near); rough=mix(0.97,0.35,wet); base*=mix(1.0,0.72,wet);\n"
+    "    float big=fbm(wpos*vec3(0.08,0.0,0.08)); vec2 uv=wpos.xz*0.31, e=vec2(0.004,0.0);\n"
+    "    float d=texture(detailMap,uv).r, dx=texture(detailMap,uv+e).r-d, dz=texture(detailMap,uv+e.yx).r-d;\n"
+    "    float far=texture(detailMap,wpos.xz*0.043+0.37).r-0.5;\n"   // a second, larger scale breaks the repeat
+    "    base*=0.80+0.30*big+(d-0.5)*0.85*mix(0.45,1.0,near)+far*0.25;\n"
+    "    n=normalize(n-vec3(dx,0.0,dz)*6.0*near); rough=mix(0.97,0.35,wet); base*=mix(1.0,0.72,wet);\n"
     "  } else if(vmat==2){\n"   // water: ripples, the sky in it, the sun glinting, darker where deep
     "    water=true; vec3 p=wpos*0.6; float e=0.08;\n"
     "    float h0=fbm(vec3(p.x+time*0.3,time*0.2,p.z)), hx=fbm(vec3(p.x+e+time*0.3,time*0.2,p.z)), hz=fbm(vec3(p.x+time*0.3,time*0.2,p.z+e));\n"
@@ -110,23 +114,22 @@ const char *SH_WORLD_FS =
     "    base=mix(vec3(0.05,0.10,0.08),vec3(0.015,0.05,0.055),smoothstep(0.2,2.0,deep));\n"
     "  } else if(vmat==5 && lum>0.42 && sat<0.32 && vcol.r>=vcol.g && vcol.g>=vcol.b*0.9){\n" // mud brick and plaster
     "    if(abs(fn.y)<0.35){\n"
-    "      float u=abs(fn.x)>abs(fn.z)?wpos.z:wpos.x; float bh=0.11, bw=0.36;\n"
-    "      float row=floor(wpos.y/bh), uu=u/bw+0.5*mod(row,2.0), col=floor(uu); vec2 f=vec2(fract(uu),fract(wpos.y/bh));\n"
-    "      float m=smoothstep(0.0,0.07,f.x)*smoothstep(1.0,0.93,f.x)*smoothstep(0.0,0.14,f.y)*smoothstep(1.0,0.86,f.y);\n"
-    "      m=mix(0.86,m,near);\n"
-    "      float worn=fbm(wpos*1.3); float tint=hash(vec3(col,row,3.0));\n"
-    "      vec3 brick=base*(0.84+0.24*tint*near)*(0.85+0.3*worn);\n"
+    "      float u=abs(fn.x)>abs(fn.z)?wpos.z:wpos.x; vec2 uv=vec2(u,wpos.y)*0.55;\n"
+    "      float b=texture(detailMap,uv).g, by=texture(detailMap,uv+vec2(0.0,0.003)).g-b;\n"
+    "      float worn=fbm(wpos*1.3);\n"
     "      float plaster=smoothstep(0.45,0.6,fbm(wpos*0.35+vec3(5.0)));\n"   // patches where the plaster still holds
-    "      vec3 plast=base*(1.02+0.1*noise(wpos*6.0)*near);\n"
-    "      base=mix(mix(base*0.62,brick,m),plast,plaster*0.65);\n"
-    "      n=normalize(n+(1.0-m)*(1.0-plaster)*0.25*near*vec3(0.0,(f.y<0.5?-1.0:1.0),0.0));\n"
-    "    } else { base*=0.86+0.24*fbm(wpos*0.9); }\n"
+    "      vec3 brick=base*(1.0+(b-0.5)*0.9*mix(0.4,1.0,near))*(0.85+0.3*worn);\n"
+    "      vec3 plast=base*(1.02+(b-0.5)*0.15+0.1*noise(wpos*6.0)*near);\n"
+    "      base=mix(brick,plast,plaster*0.65);\n"
+    "      n=normalize(n+vec3(0.0,-by*6.0,0.0)*(1.0-plaster)*near);\n"
+    "    } else { base*=0.86+0.2*fbm(wpos*0.9)+0.25*det(wpos,fn,0.31,0)*0.25*near; }\n"
     "  } else if(vmat!=4 && vcol.g>vcol.r*1.05 && vcol.g>vcol.b){\n" // leaves: blotches and a sheen
     "    base*=0.75+0.45*fbm(wpos*2.2); rough=0.6;\n"
     "  } else if(vmat!=4 && vcol.r>vcol.g && vcol.g>vcol.b && lum<0.45 && sat>0.12){\n" // wood: grain along the length
-    "    base*=0.82+0.3*noise(vec3(wpos.x*9.0,wpos.y*0.7,wpos.z*9.0))*near+0.1*fbm(wpos*1.5); rough=0.75;\n"
+    "    base*=0.9+0.1*fbm(wpos*1.5)+det(wpos,n,0.45,2)*0.22*mix(0.4,1.0,near); rough=0.75;\n"
     "  } else if(vmat==4){\n"   // people and animals: cloth weave, a soft sheen on skin
     "    base*=0.92+0.12*noise(wpos*40.0)*near; rough=0.7;\n"
+    "  } else if(sat<0.12){ base*=0.9+0.12*fbm(wpos*1.6)+det(wpos,n,0.35,3)*0.2*mix(0.4,1.0,near);\n"   // stone, rock
     "  } else { base*=0.88+0.22*fbm(wpos*1.6); }\n"
     "  float ndl=max(dot(n,lightDir),0.0);\n"
     "  float sh=ndl>0.0?shadowAt(wpos,n,ndl):0.0;\n"
