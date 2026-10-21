@@ -759,7 +759,6 @@ static void CatchMoving(void)
     SetMaterial(MAT_FIGURE);
     DrawVillage();
     DrawWorkers();
-    DrawFerries();
     DrawCaravans();
     DrawRaiders();
     DrawWildlife();

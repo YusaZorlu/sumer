@@ -121,7 +121,7 @@ touch controls yet: play with a keyboard (a USB-C or Bluetooth one works; WASD t
 | V | Strike with the melee weapon |
 | Right mouse or Q | Parry with the melee weapon or the mace |
 | Z | Arrow camera on/off |
-| E / F | Use, talk, pick up, climb a ladder, search a body, fill or pour a bucket, open the coop / alternate action (plant a date, pick another ferry fare) |
+| E / F | Use, talk, pick up, climb a ladder, search a body, fill or pour a bucket, open the coop / alternate action (plant a date) |
 | R | Refill quiver from carried arrow baskets |
 | Tab | Baskets (inventory), equipment and armor |
 | T (hold) | Fast-forward time (playing alone) |
@@ -213,21 +213,25 @@ fields outside. Gates: south (main road), east, west, north, plus the harbor wat
   travels with two spear-armed guards
 - Main roads (drawn on the map): the southern trade road; the east road from the east gate through the
   hills to the hunters' village; the herders' road, which leaves the trade road south of the fields and
-  crosses the downs to the herders' village; the north road from the north gate to the ford; the ferry
-  road from the west gate; and tracks along the west bank. A few travellers walk them day and night
+  crosses the downs to the herders' village; the north road from the north gate to the ford; the road
+  from the west gate down to the river's old landing stage; and tracks along the west bank. A few travellers walk them day and night
   (with torches after dark), and wolves leave you alone while you walk in their company
-- Hunters' village, in a basin beyond the eastern hills: hide tents, drying racks, a smoking rack, an
-  archery butt. The hunter butchers game better than your oven and trades pelts, meat, arrows, a large
+- Hunters' village, in a basin beyond the eastern hills: hide tents, drying racks, a smoking rack, a
+  gazelle hung from a tripod to be skinned, a reed windbreak, logs to sit on round the fire, an archery
+  butt, and people at work by the fire. The hunter butchers game better than your oven and trades pelts, meat, arrows, a large
   quiver and the composite bow
-- Herders' village, on the downs south-west of the city: mud houses and a sheepfold with its flock.
+- Herders' village, on the downs south-west of the city: mud houses, a walled yard with a clay bread oven
+  and dung cakes drying on its wall, beehive granaries, baskets and jars by the doors, someone baking and
+  someone shearing, and a sheepfold with its flock.
   The shepherd is the only one who sells sheepskin and sheep, and takes plant waste as fodder
-- Fishers' village, across the river by the ferry's west landing: reed houses, fish drying on racks,
-  boats drawn up on the bank, and good fishing in the river just below. The fisher sells the only fine
+- Fishers' village, across the river from the city: reed houses, a reed windbreak, fish drying on racks,
+  nets hung on poles, a stack of cut reeds, boats drawn up on the bank, people mending nets, and good fishing in the river just below. The fisher sells the only fine
   fishing net (8 reeds and 2 copper ore), which doubles every cast (4 fish instead of 2), and trades
   fish: 3 fish for 4 dates, 3 grilled fish for 3 fish and a piece of wood, arrows, herbs, or bronze
   for 8 fish
-- Every village keeps a guard with a hunting bow. When the village turns on you, its guard shoots at
-  you from where it stands
+- Every village keeps a guard with a hunting bow, always in hand. When the village turns on you, its
+  guard shoots at you from where it stands. City guards with bows carry them slung on the back and take
+  them in hand when the one they chase is out of a spear's reach
 - Eastern hills: copper mine and woodcutters' forest; more forest along the river, in the hills and
   around the hunters
 - Gazelles south-east and around the hunters' basin, onagers north-east, boars in the south-west marsh
@@ -236,9 +240,9 @@ fields outside. Gates: south (main road), east, west, north, plus the harbor wat
   where the packs start is different every game. A den sits by the ford at the far north end
 - A few snakes lie hidden in long grass outside the walls (river meadows on both banks)
 - Two raider camps on the city side of the river: one beside the southern trade road, one to the north
-- The ferry west of the city crosses the big river for a fare (bread, fish, a pot, wood, reeds or
-  dates; F picks another fare you can pay). A shallow ford at the far north end can be walked, through
-  wolf country
+- Water is waded: a canal or the harbor slows you by 60%, the big river's current by 85% (your head stays
+  above the water). There is no ferry any more; the old landing stages stand on both banks west of the
+  city. A shallow ford at the far north end can be walked at full speed, through wolf country
 - The west bank is green, rolling hill country: woods, flowering meadows rich in herbs, a reed-fringed
   pond with fish. Gazelles, onagers, boars and two wolf packs live there, and two barbarian war camps,
   north-west and south-west
@@ -504,7 +508,7 @@ Animals you kill stay gone until the next spring, when their herds are full agai
 | `src/world.c` | Box store, collision queries, water and ponds, palms, reeds, forests, west-bank greenery, herbs, resources, sky and season light, culled drawing (boxes at a level of detail, one resource at a time) |
 | `src/roads.c` | Main roads: their routes, terrain-following strips, walking heights for travellers, distance queries, the map overlay |
 | `src/villages.c` | The hunters', herders' and fishers' villages, their traders' offers and village guards, the sheepfold flock, travellers |
-| `src/jobs.c` | Craft quarter, docks, ferry, mine, woodcutters' camp, farmhands, daylight workers, smith |
+| `src/jobs.c` | Craft quarter, docks, the old landing stages, mine, woodcutters' camp, farmhands, daylight workers, smith |
 | `src/caravan.c` | Trade-road caravans, their stalls and offers |
 | `src/farm.c` | Seasons, weather and rain, farm plots, ditch and well, buckets, coop and hens, city farms, crop stages |
 | `src/village.c` | Home stations, pen, market traders and offers, villagers, recipes, blessing |

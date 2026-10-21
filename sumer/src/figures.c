@@ -705,6 +705,44 @@ static void Armor(const Look *l, const Build *b, float y)
     }
 }
 
+// ---- Bows ----
+
+static void BowPart(float x, float y, float z, float w, float h, float d, Color c)
+{
+    DrawShadedBox((Vector3){ x, y, z }, (Vector3){ w, h, d }, c);
+}
+
+// A bow held low in the other hand, ready to draw: an archer between shots, or walking.
+void HoldBow(Vector3 pos, float facing, bool crouch)
+{
+    rlPushMatrix();
+    rlTranslatef(pos.x, pos.y + (crouch ? 0.92f : 1.3f), pos.z);
+    rlRotatef(facing * RAD2DEG, 0, 1, 0);
+    rlTranslatef(-0.4f, 0, 0.12f);
+    rlRotatef(-12.0f, 1, 0, 0);
+    GripHere(HAND_OTHER, 0, 0, 0);
+    BowPart(0, 0, 0, 0.05f, 0.9f, 0.06f, COL_WOOD);
+    BowPart(0, 0.5f, 0.05f, 0.04f, 0.16f, 0.05f, COL_WOOD);
+    BowPart(0, -0.5f, 0.05f, 0.04f, 0.16f, 0.05f, COL_WOOD);
+    BowPart(0, 0, -0.07f, 0.015f, 1.05f, 0.015f, COL_LINEN);
+    rlPopMatrix();
+}
+
+// A bow carried across the back, string out, for someone whose hands are full.
+void SlungBow(Vector3 pos, float facing)
+{
+    rlPushMatrix();
+    rlTranslatef(pos.x, pos.y + 1.3f, pos.z);
+    rlRotatef(facing * RAD2DEG, 0, 1, 0);
+    rlTranslatef(0, 0, -0.24f);
+    rlRotatef(28.0f, 0, 0, 1);
+    BowPart(0, 0, 0, 0.05f, 1.0f, 0.05f, COL_WOOD);
+    BowPart(0, 0.55f, 0.04f, 0.04f, 0.14f, 0.05f, COL_WOOD);
+    BowPart(0, -0.55f, 0.04f, 0.04f, 0.14f, 0.05f, COL_WOOD);
+    BowPart(0, 0, -0.06f, 0.012f, 1.15f, 0.012f, COL_LINEN);
+    rlPopMatrix();
+}
+
 // ---- A whole person ----
 
 static float flashWas;

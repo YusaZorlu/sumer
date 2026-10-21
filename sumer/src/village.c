@@ -303,7 +303,7 @@ int AddNpc(NpcKind kind, Vector3 a, Vector3 b, float speed, Color robe, float fa
 {
     if (G.villagerCount >= MAX_VILLAGERS) return -1;
     G.villagers[G.villagerCount] = (Villager){ a, b, speed > 0 ? RandF(0, 1) : 0.0f, 1.0f, speed, robe, kind, face, 0.0f, false, false,
-                                               { .hp = 0 }, -1, 0.0f, 0.0f, -1, -1, 0.0f, 0.0f, 0 };
+                                               { .hp = 0 }, -1, 0.0f, 0.0f, -1, -1, 0.0f, 0.0f, 0, false };
     return G.villagerCount++;
 }
 
@@ -950,7 +950,8 @@ void DrawVillage(void)
             DrawPersonBody(pos, face, look);
             continue;
         }
-        bool torch = G.night >= 0.3f && (v->kind == NPC_TRAVELLER || v->kind == NPC_WARDEN || v->kind == NPC_GUARD);
+        // A warden's other hand holds the bow, so their torch stays on their belt.
+        bool torch = G.night >= 0.3f && (v->kind == NPC_TRAVELLER || v->kind == NPC_GUARD);
         if (torch) GripAt(HAND_OTHER, -0.36f, 1.36f, 0.28f);
         if (v->kind == NPC_CIVILIAN || v->kind == NPC_VILLAGER || v->kind == NPC_TRAVELLER || v->kind == NPC_CLERIC) {
             // A villager standing still at the hunters' butt keeps drawing a bow.
@@ -960,17 +961,23 @@ void DrawVillage(void)
                 DrawTravelGear(pos, face, v->robe);
                 GripAt(HAND_WEAPON, 0.36f, 1.12f, 0.24f);
             }
-            DrawHuman(pos, face, stride, look, false, archer, pull);
+            DrawHuman(pos, face, stride, look, v->crouch && !v->vit.override, archer, pull);
         } else if (v->kind == NPC_WARDEN) {
-            // A village guard: a leather jerkin and cap, and a bow always in hand.
-            DrawHuman(pos, face, stride, look, false, true, pull);
+            // A village guard: a leather jerkin and cap, and a bow always in hand, drawn or held ready.
+            if (!v->vit.drawing) HoldBow(pos, face, false);
+            DrawHuman(pos, face, stride, look, false, v->vit.drawing, pull);
         } else {
+            // A guard with a bow holds it ready while the one they are after is out of a spear's reach
+            // (worked out from what every machine knows, so guests see the same).
+            bool bowOut = false;
+            if (v->bow > 0 && v->vit.override && v->vit.hostile > 0 && v->vit.target >= 0 && v->vit.target < MAX_PLAYERS && G.peers[v->vit.target].active)
+                bowOut = XZDist(pos, G.peers[v->vit.target].pos) > 4.0f;
             // A city guard: a bronze helmet and studded cloak, a spear, and a shield by day.
             rlPushMatrix();
             rlTranslatef(pos.x, pos.y, pos.z);
             rlRotatef(face * RAD2DEG, 0, 1, 0);
-            if (v->vit.drawing) {
-                // The spear slung on the back while the bow is drawn.
+            if (v->vit.drawing || bowOut) {
+                // The spear slung on the back while the bow is out.
                 Part(0.1f, 1.3f, -0.25f, 0.05f, 2.4f, 0.05f, COL_WOOD);
             } else if (v->vit.swing > 0 || v->vit.windup > 0) {
                 float z = SpearThrust(v->vit.windup, v->vit.swing), y = v->vit.windup > 0.1f ? 1.45f : 1.35f;
@@ -982,11 +989,13 @@ void DrawVillage(void)
                 Part(0.36f, 1.2f, 0.12f, 0.05f, 2.4f, 0.05f, COL_WOOD);
                 Part(0.36f, 2.5f, 0.12f, 0.08f, 0.26f, 0.08f, COL_BRONZE);
             }
-            if (G.night < 0.3f && !v->vit.drawing) {
+            if (G.night < 0.3f && !v->vit.drawing && !bowOut) {
                 GripHere(HAND_OTHER, -0.31f, 1.2f, 0.14f);
                 Part(-0.38f, 1.2f, 0.12f, 0.08f, 0.62f, 0.5f, (Color){ 130, 90, 56, 255 });
             }
             rlPopMatrix();
+            if (bowOut && !v->vit.drawing) HoldBow(pos, face, false);
+            else if (v->bow > 0 && !v->vit.drawing) SlungBow(pos, face);
             DrawHuman(pos, face, stride, look, false, v->vit.drawing, pull);
         }
         if (torch) DrawHandTorch(pos, face);

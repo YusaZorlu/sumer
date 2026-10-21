@@ -108,12 +108,12 @@ static void MoveHorizontal(Player *p, Vector3 move, float speed, float dt)
 
     for (int pass = 0; pass < 2; pass++)
         for (int i = 0; i < G.boxCount; i++)
-            if (IsBlocking(&G.boxes[i], p->pos.y)) next = PushOut(next, PLAYER_RADIUS, &G.boxes[i]);
+            if (!G.boxes[i].water && IsBlocking(&G.boxes[i], p->pos.y)) next = PushOut(next, PLAYER_RADIUS, &G.boxes[i]);
     Vector2 shoved = PushOutBodies(next, PLAYER_RADIUS, OWNER_PLAYER + G.self);
     if (shoved.x != next.x || shoved.y != next.y) {
         next = shoved;
         for (int i = 0; i < G.boxCount; i++)
-            if (IsBlocking(&G.boxes[i], p->pos.y)) next = PushOut(next, PLAYER_RADIUS, &G.boxes[i]);
+            if (!G.boxes[i].water && IsBlocking(&G.boxes[i], p->pos.y)) next = PushOut(next, PLAYER_RADIUS, &G.boxes[i]);
     }
     p->pos.x = Clamp(next.x, -WORLD_LIMIT, WORLD_LIMIT);
     p->pos.z = Clamp(next.y, -WORLD_LIMIT, WORLD_LIMIT);
@@ -122,6 +122,8 @@ static void MoveHorizontal(Player *p, Vector3 move, float speed, float dt)
 static void MoveVertical(Player *p, float dt)
 {
     float ground = GroundHeight(p->pos.x, p->pos.z, p->pos.y);
+    // In deep water the body floats with its head out, treading water over the river bed.
+    if (InWater(p->pos.x, p->pos.z)) ground = fmaxf(ground, WATER_LEVEL - 1.25f);
 
     // Glue to stairs on the way down instead of hopping off each step.
     if (p->grounded && p->vy <= 0 && p->pos.y - ground < 0.6f) {
@@ -256,6 +258,8 @@ void UpdatePlayer(float dt, bool input)
     if (p->crouching) speed = CROUCH_SPEED;
     else if (p->running) speed = RUN_SPEED * Boost();
 
+    // Water is waded through, slowly.
+    speed *= WadeSpeed(p->pos.x, p->pos.z);
     if (p->moving) {
         move = Vector3Normalize(move);
         MoveHorizontal(p, move, speed, dt);
@@ -568,21 +572,6 @@ void DrawWeaponPart(int kind)
     rlPopMatrix();
 }
 
-static void DrawHeldBow(const Player *p)
-{
-    float shoulder = p->crouching ? 0.92f : 1.3f;
-    rlPushMatrix();
-    rlTranslatef(p->pos.x, p->pos.y + shoulder, p->pos.z);
-    rlRotatef(p->facing * RAD2DEG, 0, 1, 0);
-    rlTranslatef(-0.4f, 0, 0.12f);
-    rlRotatef(-12.0f, 1, 0, 0);
-    GripHere(HAND_OTHER, 0, 0, 0);
-    WPart(0, 0, 0, 0.05f, 0.9f, 0.06f, COL_WOOD);
-    WPart(0, 0.5f, 0.05f, 0.04f, 0.16f, 0.05f, COL_WOOD);
-    WPart(0, -0.5f, 0.05f, 0.04f, 0.16f, 0.05f, COL_WOOD);
-    WPart(0, 0, -0.07f, 0.015f, 1.05f, 0.015f, COL_LINEN);
-    rlPopMatrix();
-}
 
 void DrawPlayer(void)
 {
@@ -608,7 +597,7 @@ void DrawPlayer(void)
         HoldWeapon(p->pos, p->facing, p->crouching, mace, SwingElapsed(G.swingT, mace), G.parryT > 0);
         DrawWeaponPart(mace ? WEAPON_MACE : UseWeapon());
     }
-    if (G.climb == 0 && G.equip == EQ_BOW && !p->aiming) DrawHeldBow(p);
+    if (G.climb == 0 && G.equip == EQ_BOW && !p->aiming) HoldBow(p->pos, p->facing, p->crouching);
     DrawHuman(p->pos, p->facing, p->stride, hit > 0 ? Flushed(look, hit) : look, p->crouching, p->aiming, p->draw);
     if (degrees > 0.5f) EndLean();
     G.drawTorch = G.drawFog = 0;

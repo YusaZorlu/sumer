@@ -587,9 +587,9 @@ static void DrawHelpPanel(void)
         "it is in your storage.",
         "Ziggurat: market in the base. The priest at the top blesses you for a day: +20% running and attack speed. "
         "Guards fight raiders who follow you. Raiders camp south and north of the city; barbarians twice as strong camp "
-        "across the river. The ferry west of the city crosses the river for a fare. The far north ford is wolf country.",
+        "across the river. Wade the canals and the river (the canals slow you by 60%, the river's current by 85%). The far north ford is wolf country.",
         "Roads on the map lead east to the hunters' village and south-west to the herders' village; the fishers live across "
-        "the ferry and sell a fine net that doubles your catch. Each village has a guard with a bow. Travellers walk the "
+        "the river from the city and sell a fine net that doubles your catch. Each village has a guard with a bow. Travellers walk the "
         "roads, and wolves leave you alone in company. Only the shepherd sells sheepskin and sheep.",
         "Herbs grow in green meadows, most of all across the river: chew one from your baskets to heal fast. Snakes hide "
         "in long grass; a hiss means back off (crouch to creep by). Hurt a boar and its whole sounder charges. Arrows "
@@ -800,8 +800,6 @@ static void DrawMinimap(int ox, int oy, int size)
         DrawLineEx((Vector2){ camp.x - k, camp.y - k }, (Vector2){ camp.x + k, camp.y + k }, 2.5f, col);
         DrawLineEx((Vector2){ camp.x - k, camp.y + k }, (Vector2){ camp.x + k, camp.y - k }, 2.5f, col);
     }
-    Vector3 fe = G.stations[STN_FERRY_E], fw = G.stations[STN_FERRY_W];
-    DrawLineEx((Vector2){ mx + fe.x * s, mz + fe.z * s }, (Vector2){ mx + fw.x * s, mz + fw.z * s }, 2, C_GOLD);
     for (int k = 0; k < MAX_PLAYERS; k++) {
         if (k == G.self || !G.peers[k].active) continue;
         Vector2 q = { mx + G.peers[k].shown.x * s, mz + G.peers[k].shown.z * s };

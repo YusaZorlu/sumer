@@ -290,6 +290,18 @@ static void TestSwingContact(void)
 // Every gate of the city has guards standing at it, and keeps them in a PvP game: only the guards on the
 // ziggurat's terrace go.
 // A chosen look survives packing for the network, and the townsfolk are not all alike.
+// Water is waded, not crossed by boat: canals cost 60% of your speed, the river 85%; the ferry is gone.
+static void TestWading(void)
+{
+    float canal = WadeSpeed(0, 89), river = WadeSpeed(-139, 0), land = WadeSpeed(10, 20);
+    Check(fabsf(canal - 0.4f) < 0.01f && fabsf(river - 0.15f) < 0.01f && land == 1.0f,
+          "wading: a canal leaves %.0f%% of your speed, the river %.0f%%, dry land %.0f%%", canal * 100, river * 100, land * 100);
+    G.player.pos = G.stations[STN_FERRY_E];
+    FindTarget(true);
+    Check(!(G.target.kind == TGT_STATION && (G.target.index == STN_FERRY_E || G.target.index == STN_FERRY_W)), "there is no ferry to take at the old landing stage");
+}
+
+// A chosen look survives packing for the network, and the townsfolk are not all alike.
 static void TestLooks(void)
 {
     Look l = PlayerLook(1, PackStyle(HAIR_BUN, BEARD_LONG, DRESS_SHAWL, JEWEL_BEADS), ARMOR_BRONZE);
@@ -1124,7 +1136,7 @@ static void TestFishers(void)
     G.self = G.actor = 0;
     Check(VillageAt(G.traders[TR_FISHER].pos) == VIL_FISHERS && G.traders[TR_FISHER].offerCount >= 5 &&
           XZDist(G.traders[TR_FISHER].pos, G.stations[STN_FERRY_W]) < 60.0f,
-          "the fishers' village stands across the river by the ferry, its fisher with %d offers", G.traders[TR_FISHER].offerCount);
+          "the fishers' village stands across the river from the city, its fisher with %d offers", G.traders[TR_FISHER].offerCount);
     int people = 0, wardens = 0;
     for (int i = 0; i < G.villagerCount; i++) {
         if (VillageAt(G.villagers[i].a) != VIL_FISHERS) continue;
@@ -1618,6 +1630,7 @@ static void RunTests(void)
     TestSwingContact();
     TestGateGuards();
     TestLooks();
+    TestWading();
     TestSnake();
     TestHerbs();
     TestTrade();

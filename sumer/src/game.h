@@ -44,7 +44,7 @@
 #define MAX_RAIDERS     18
 #define MAX_LADDERS     8
 #define MAX_FIGHTERS    128
-#define MAX_VILLAGERS   64
+#define MAX_VILLAGERS   80
 #define MAX_WORKERS     16
 #define MAX_CARAVANS    2
 #define CARAVAN_GUARDS  2
@@ -202,6 +202,7 @@ typedef struct {
     int from, to;
     float wait, stuck;
     int bow;   // 0: no bow; 1-3: the bow they shoot with (hunting, composite, war)
+    bool crouch;   // someone at work low down: grinding grain, mending a net, tending a fire
 } Villager;
 typedef struct { Vector3 home, pos, netPos; float face, timer, speed, respawnDay; bool moving; int camp; Vitals vit; } Raider;
 typedef struct { Vector3 wall, base, n; float top; } Ladder;
@@ -477,6 +478,8 @@ void DrawHuman(Vector3 pos, float facing, float stride, Look look, bool crouch, 
 extern void (*ExtraFigures)(void);
 void GripHere(int hand, float x, float y, float z);
 void GripAt(int hand, float x, float y, float z);
+void HoldBow(Vector3 pos, float facing, bool crouch);
+void SlungBow(Vector3 pos, float facing);
 Look PlayerLook(int slot, unsigned char style, int armor);
 Look PersonLook(int role, unsigned seed, Color robe);
 unsigned char PackStyle(int hair, int beard, int dress, int jewel);
@@ -588,6 +591,7 @@ Vector2 PushOut(Vector2 p, float radius, const Box *b);
 float GroundHeight(float x, float z, float y);
 float CeilingHeight(float x, float z, float y);
 bool InWater(float x, float z);
+float WadeSpeed(float x, float z);
 bool PointInSolid(Vector3 p);
 bool SolidAt(float x, float z, float radius);
 void UpdateSky(void);
@@ -764,10 +768,6 @@ void PourDitch(void);
 bool NearWater(Vector3 p);
 void FillBucket(void);
 void Exert(float food);
-void FerryPrompt(int s, char *e, char *f, int size, bool *okE, bool *okF);
-void TakeFerry(int s);
-void ChangeFare(void);
-void DrawFerries(void);
 void BlessPrompt(char *buf, int size, bool *ok);
 void SpringRespawn(void);
 int CityFarmCount(void);

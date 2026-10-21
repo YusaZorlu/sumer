@@ -197,6 +197,13 @@ bool InWater(float x, float z)
     return false;
 }
 
+// How fast someone moves wading here: a canal's water slows them by 60%, the river's deep current by 85%.
+float WadeSpeed(float x, float z)
+{
+    if (!InWater(x, z)) return 1.0f;
+    return x > RIVER_X0 - 1.0f && x < RIVER_X1 + 1.0f ? 0.15f : 0.4f;
+}
+
 bool PointInSolid(Vector3 p)
 {
     for (int i = 0; i < G.boxCount; i++) {

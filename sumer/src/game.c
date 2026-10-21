@@ -599,7 +599,6 @@ void GameDraw(void)
     DrawResources();
     DrawVillage();
     DrawWorkers();
-    DrawFerries();
     DrawCaravans();
     DrawRaiders();
     DrawWildlife();

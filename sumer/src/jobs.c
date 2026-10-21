@@ -15,11 +15,7 @@ static const Offer SMITH[] = {
 };
 
 #define EAST 30.0f
-#define FERRY_Z (-62.0f)
-
-static const int FARES[][2] = { { IT_BREAD, 1 }, { IT_GRILLED, 1 }, { IT_FISH, 2 }, { IT_POT, 1 }, { IT_WOOD, 3 }, { IT_DATES, 10 }, { IT_REEDS, 6 } };
-#define FARE_COUNT ((int)(sizeof(FARES) / sizeof(FARES[0])))
-static int fareChoice;
+#define FERRY_Z (-62.0f)    // the old landing stages, one on each bank
 
 static void AddWorker(JobKind job, float hx, float hz, float sx, float sz, float lx, float lz)
 {
@@ -115,94 +111,9 @@ static void BuildWaterfront(void)
         AddBox(-132.8f + 2.2f * (float)k, -1.8f, FERRY_Z - 1.1f, 0.2f, 2.4f, 0.2f, COL_WOOD, false);
         AddBox(-149.8f + 2.2f * (float)k, -1.8f, FERRY_Z - 1.1f, 0.2f, 2.4f, 0.2f, COL_WOOD, false);
     }
-    AddBox(-125.2f, 0, FERRY_Z + 2.2f, 0.16f, 1.8f, 0.16f, COL_WOOD, false);
-    AddBox(-125.2f, 1.7f, FERRY_Z + 2.2f, 0.7f, 0.5f, 0.06f, COL_LINEN, false);
     G.stations[STN_FERRY_E] = (Vector3){ -127.0f, 0, FERRY_Z };
     G.stations[STN_FERRY_W] = (Vector3){ -151.0f, 0, FERRY_Z };
     KeepOut(-135, FERRY_Z - 5, -122, FERRY_Z + 5);
-}
-
-static bool CanPay(int i)
-{
-    return BagCount(FARES[i][0]) >= FARES[i][1];
-}
-
-// The fare picked with F while it can still be paid, otherwise the first one that can.
-static int Fare(void)
-{
-    if (fareChoice < FARE_COUNT && CanPay(fareChoice)) return fareChoice;
-    for (int i = 0; i < FARE_COUNT; i++)
-        if (CanPay(i)) return i;
-    return -1;
-}
-
-static int NextFare(int f)
-{
-    for (int k = 1; k < FARE_COUNT; k++)
-        if (CanPay((f + k) % FARE_COUNT)) return (f + k) % FARE_COUNT;
-    return -1;
-}
-
-void FerryPrompt(int s, char *e, char *f, int size, bool *okE, bool *okF)
-{
-    int fare = Fare(), next = fare >= 0 ? NextFare(fare) : -1;
-
-    *okE = fare >= 0;
-    *okF = next >= 0;
-    if (*okE) Fmt(e, size, s == STN_FERRY_E ? "[E] Ferry to the west bank for %d %s" : "[E] Ferry to the east bank for %d %s", FARES[fare][1], ItemName(FARES[fare][0]));
-    else Fmt(e, size, "Ferryman: \"Bread, fish, a pot, wood, reeds or dates pays the crossing.\"");
-    if (*okF) Fmt(f, size, "[F] Pay with %d %s instead", FARES[next][1], ItemName(FARES[next][0]));
-}
-
-void ChangeFare(void)
-{
-    int fare = Fare(), next = fare >= 0 ? NextFare(fare) : -1;
-    if (next >= 0) fareChoice = next;
-}
-
-void TakeFerry(int s)
-{
-    int f = Fare();
-    if (f < 0) return;
-    BagRemove(FARES[f][0], FARES[f][1]);
-    Player *p = &G.player;
-    float x = s == STN_FERRY_E ? -152.5f : -125.5f;
-    p->pos = (Vector3){ x, GroundHeight(x, FERRY_Z, 0.5f), FERRY_Z };
-    p->facing = s == STN_FERRY_E ? -PI / 2 : PI / 2;
-    p->vy = 0;
-    // Alone the crossing takes half an hour; in company the world's clock is everyone's and goes on as it is.
-    if (!Online()) {
-        G.hour += 0.5f;
-        if (G.hour >= 24.0f) {
-            G.hour -= 24.0f;
-            G.day++;
-        }
-        AdvanceHours(0.5f);
-    }
-    G.sleeping = G.slept = true;
-    G.sleepT = 1.1f;
-    Say(s == STN_FERRY_E ? "The ferryman poles you across to the wild west bank. Barbarians camp out there."
-                         : "The ferryman brings you back to the city side.");
-}
-
-static void FerryBoat(float x)
-{
-    float bob = WATER_LEVEL + 0.04f * sinf((float)GetTime() * 1.3f + x);
-    DrawShadedBox((Vector3){ x, bob, FERRY_Z + 2.0f }, (Vector3){ 3.6f, 0.3f, 1.0f }, COL_STRAW);
-    DrawShadedBox((Vector3){ x - 1.75f, bob + 0.2f, FERRY_Z + 2.0f }, (Vector3){ 0.35f, 0.5f, 0.7f }, COL_STRAW);
-    DrawShadedBox((Vector3){ x + 1.75f, bob + 0.2f, FERRY_Z + 2.0f }, (Vector3){ 0.35f, 0.5f, 0.7f }, COL_STRAW);
-}
-
-void DrawFerries(void)
-{
-    Look a = PersonLook(LOOK_WORKER, 900u, (Color){ 100, 120, 130, 255 }), b = PersonLook(LOOK_WORKER, 901u, (Color){ 100, 120, 130, 255 });
-    if (XZDist(G.stations[STN_FERRY_E], G.cam.position) > 220.0f) return;
-    LightFor(G.stations[STN_FERRY_E]);
-    FerryBoat(-131.0f);
-    FerryBoat(-147.0f);
-    DrawHuman((Vector3){ -128.6f, 0.3f, FERRY_Z - 0.6f }, PI / 2, 0, a, false, false, 0);
-    DrawHuman((Vector3){ -149.4f, 0.3f, FERRY_Z - 0.6f }, -PI / 2, 0, b, false, false, 0);
-    G.drawTorch = G.drawFog = 0;
 }
 
 static void BuildMine(void)

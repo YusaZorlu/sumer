@@ -263,7 +263,8 @@ void DrawRaiders(void)
         if (RaiderBowman(i)) {
             // The bowman: a war bow in hand, no axe.
             float pull = r->vit.drawing ? Clamp(1.0f - r->vit.windup / BOW_DRAW_TIME, 0.0f, 1.0f) : 0.0f;
-            DrawHuman(p, f, stride, look, sitting, true, pull);
+            if (!r->vit.drawing) HoldBow(p, f, sitting);
+            DrawHuman(p, f, stride, look, sitting, r->vit.drawing, pull);
             continue;
         }
         float angle = BlowAngle(r->vit.windup, r->vit.swing, r->vit.override ? -40.0f : 30.0f);

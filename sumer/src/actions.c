@@ -77,7 +77,6 @@ static void BuildPrompts(void)
     }
     case TGT_STATION:
         if (StashCamp(i) >= 0) StashPrompt(StashCamp(i), G.promptE, n, &G.okE);
-        else if (i == STN_FERRY_E || i == STN_FERRY_W) FerryPrompt(i, G.promptE, G.promptF, n, &G.okE, &G.okF);
         else StationPrompt(i, G.promptE, n, &G.okE);
         if (i == STN_SMELTER) ForgePrompt(G.promptF, n, &G.okF);
         if (i == STN_BENCH) CloakPrompt(G.promptF, n, &G.okF);
@@ -130,7 +129,7 @@ void FindTarget(bool play)
         for (int i = 0; i < G.resCount; i++)
             Consider(&best, &score, TGT_RES, i, G.res[i].pos, 2.4f);
         for (int i = 0; i < STN_COUNT; i++)
-            Consider(&best, &score, TGT_STATION, i, G.stations[i], 1.9f);
+            if (i != STN_FERRY_E && i != STN_FERRY_W) Consider(&best, &score, TGT_STATION, i, G.stations[i], 1.9f);
         for (int i = 0; i < MAX_PLOTS; i++)
             if (G.plots[i].state != PLOT_PALM) Consider(&best, &score, TGT_PLOT, i, G.plots[i].pos, 2.1f);
         Consider(&best, &score, TGT_COOP, 0, G.coop, 4.2f);
@@ -421,8 +420,6 @@ void Interact(bool alt)
     case TGT_RES:     if (!alt) Gather(i); break;
     case TGT_STATION:
         if (!alt && StashCamp(i) >= 0) TakeStash(StashCamp(i));
-        else if (!alt && (i == STN_FERRY_E || i == STN_FERRY_W)) TakeFerry(i);
-        else if (i == STN_FERRY_E || i == STN_FERRY_W) ChangeFare();
         else if (!alt) UseStation(i);
         else if (i == STN_SMELTER) UseForge();
         else if (i == STN_BENCH) SewCloak();

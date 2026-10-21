@@ -110,8 +110,12 @@ in `src/game.h`) holds the whole world.
   `HurtPlayer(dmg, by)` / `HurtSlot` / `NetHurt` with a cause (`BY_GUARD`, ..., `BY_PLAYER + slot`); the cause is
   what the death message names.
 - **Archers** (`Archery()`, `Loose()` in `combat.c`; `LooseFor`/`FlyNpcArrow` in `wildlife.c`): stand still for
-  `BOW_DRAW_TIME`, lead the target, arrows with `owner = -1` hit only players.
-- **NPC walking** (`StepToward`, `AroundWater`, `JumpWater` in `combat.c`/`city.c`): people jump canals like the player,
+  `BOW_DRAW_TIME`, lead the target, arrows with `owner = -1` hit only players. Drawn with a bow always visible:
+  `HoldBow` (held low between shots), `SlungBow` (city guards with a spear in hand), the bow pose while drawing.
+- **Water** (`WadeSpeed` in `world.c`): the player wades through water boxes (`MoveHorizontal` skips them): 40% speed in
+  canals, ponds and the harbor, 15% in the river (by x between `RIVER_X0`/`RIVER_X1`), floating head-out over the deep
+  river bed (`MoveVertical`). The ferry was removed; `STN_FERRY_E/W` remain only as the landing stages' positions.
+- **NPC walking** (`StepToward`, `AroundWater`, `JumpWater` in `combat.c`/`city.c`): people jump canals (they do not wade),
   or go round wide water by the bridges; townsfolk follow the street graph in `village.c`.
 - **Death** (`Collapse` in `game.c`): the player loses what they gathered that day (`G.safe[]` is the baseline kept
   by `TrackGoods`; storage deposits count as kept).
