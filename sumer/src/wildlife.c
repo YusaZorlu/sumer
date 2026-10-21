@@ -46,7 +46,7 @@ static const AnimalDef DEFS[AN_TYPES] = {
     [AN_GOOSE]   = { "Goose", { 0.3f, 0.3f, 0.55f }, 0.24f, { 204, 200, 190, 255 }, { 90, 90, 92, 255 },
                      0.8f, 5.5f, 15.0f, 1.6f, 0.45f, 12, IT_GOOSE, true, true },
     [AN_WOLF]    = { "Wolf", { 0.36f, 0.46f, 1.1f }, 0.55f, { 128, 122, 112, 255 }, { 72, 68, 62, 255 },
-                     1.8f, 7.0f, 22.0f, 1.0f, 1.0f, 60, IT_WOLF, false, false },
+                     1.8f, 7.0f, 22.0f, 1.0f, 1.0f, 78, IT_WOLF, false, false },
     [AN_SNAKE]   = { "Snake", { 0.14f, 0.1f, 1.2f }, 0.0f, { 112, 118, 64, 255 }, { 62, 68, 40, 255 },
                      0.7f, 3.2f, 3.0f, 1.0f, 1.0f, 16, IT_NONE, false, false },
 };
@@ -249,6 +249,24 @@ static bool Wounded(const Animal *a)
     return (float)a->hp < 0.45f * (float)DEFS[a->type].hp;
 }
 
+// No other of its pack on its feet within 40 m.
+static bool Lone(const Animal *a)
+{
+    for (int i = 0; i < G.animalCount; i++) {
+        const Animal *m = &G.animals[i];
+        if (m != a && m->active && m->state != ST_DEAD && m->state != ST_FLEE && m->type == a->type && m->pack == a->pack &&
+            XZDist(m->pos, a->pos) < 40.0f)
+            return false;
+    }
+    return true;
+}
+
+// A wolf runs from a fight only when it is badly hurt and has no pack beside it; with the pack it fights on.
+static bool Beaten(const Animal *a)
+{
+    return Wounded(a) && Lone(a);
+}
+
 static void StartleMates(const Animal *a);
 
 // Prey bolts; a charging boar keeps charging and a snake slips away into other grass.
@@ -286,23 +304,51 @@ static void Wander(Animal *a, const AnimalDef *d, float dt)
     a->speed = (GetRandomValue(0, 2) == 0) ? 0.0f : d->walk;
 }
 
+static bool Blocked(const Animal *a, const AnimalDef *d, float nx, float nz)
+{
+    bool airborne = d->flies && a->pos.y > RestHeight(a->pos.x, a->pos.z) + 0.8f;
+    return (!airborne && ((!d->swims && InWater(nx, nz)) || SolidAt(nx, nz, 0.4f))) ||
+           InsideWalls(nx, nz, a->type == AN_WOLF ? -8.0f : -4.0f) || fabsf(nx) > WORLD_LIMIT || fabsf(nz) > WORLD_LIMIT;
+}
+
+// Goes the way it heads; a tree, a rock or the water in the way, it tries ever wider side steps, first
+// to its own side (half the animals go round left, half right), and turns away only when none is free.
+// Two animals on the ground never stand in one another: the nearer is eased aside.
 static void Step(Animal *a, const AnimalDef *d, float dt)
 {
+    static const float tries[7] = { 0.0f, 0.6f, -0.6f, 1.2f, -1.2f, 1.8f, -1.8f };
     if (a->speed <= 0) return;
 
-    float nx = a->pos.x + sinf(a->heading) * a->speed * dt;
-    float nz = a->pos.z + cosf(a->heading) * a->speed * dt;
-    bool airborne = d->flies && a->pos.y > RestHeight(a->pos.x, a->pos.z) + 0.8f;
-    bool blocked = !airborne && ((!d->swims && InWater(nx, nz)) || SolidAt(nx, nz, 0.4f));
-    if (InsideWalls(nx, nz, a->type == AN_WOLF ? -8.0f : -4.0f)) blocked = true;
-
-    if (blocked || fabsf(nx) > WORLD_LIMIT || fabsf(nz) > WORLD_LIMIT) {
+    float side = ((a - G.animals) & 1) ? 1.0f : -1.0f, step = a->speed * dt;
+    int k = 0;
+    for (; k < 7; k++) {
+        float h = a->heading + tries[k] * side;
+        float nx = a->pos.x + sinf(h) * step, nz = a->pos.z + cosf(h) * step;
+        if (Blocked(a, d, nx, nz)) continue;
+        a->pos.x = nx;
+        a->pos.z = nz;
+        if (k > 2 && a->state != ST_HUNT) a->heading = h;   // a hunter heads for its prey again next step
+        break;
+    }
+    if (k == 7) {
         a->heading += (a->state == ST_FLEE) ? 1.2f : PI * 0.6f;
         return;
     }
-    a->pos.x = nx;
-    a->pos.z = nz;
-    if (!d->flies) a->pos.y = TerrainHeight(nx, nz);
+    if (!d->flies) {
+        for (int i = 0; i < G.animalCount; i++) {
+            const Animal *o = &G.animals[i];
+            if (o == a || !o->active || o->state == ST_DEAD || DEFS[o->type].flies) continue;
+            float dx = a->pos.x - o->pos.x, dz = a->pos.z - o->pos.z, dd = dx * dx + dz * dz;
+            float gap = (d->body.z + DEFS[o->type].body.z) * 0.45f;
+            if (dd >= gap * gap || dd < 1e-6f) continue;
+            float dist = sqrtf(dd), nx = o->pos.x + dx / dist * gap, nz = o->pos.z + dz / dist * gap;
+            if (!Blocked(a, d, nx, nz)) {
+                a->pos.x = nx;
+                a->pos.z = nz;
+            }
+        }
+        a->pos.y = TerrainHeight(a->pos.x, a->pos.z);
+    }
 }
 
 // A pack or a sounder keeps together: one that strays too far from the first of its group goes back to it.
@@ -324,7 +370,7 @@ static void HuntPack(const Animal *leader, int s)
 {
     for (int i = 0; i < G.animalCount; i++) {
         Animal *m = &G.animals[i];
-        if (m->active && m->type == AN_WOLF && m->pack == leader->pack && m->state != ST_DEAD && !Wounded(m) &&
+        if (m->active && m->type == AN_WOLF && m->pack == leader->pack && m->state != ST_DEAD && !Beaten(m) &&
             Vector3Distance(m->pos, leader->pos) < 45.0f) {
             m->state = ST_HUNT;
             m->timer = 0;
@@ -377,9 +423,9 @@ static void UpdateWolf(Animal *a, const AnimalDef *d, float dt)
         Vector3 to = p ? Vector3Subtract(p->pos, a->pos) : (Vector3){ 0, 0, 0 };
         to.y = 0;
         float dist = Vector3Length(to);
-        if (!p || !PlayerAwake(s) || (!p->alone && p->aggro <= 0) || dist > 80.0f || Intimidated(s) || Wounded(a)) {
+        if (!p || !PlayerAwake(s) || (!p->alone && p->aggro <= 0) || dist > 80.0f || Intimidated(s) || Beaten(a)) {
             a->state = ST_FLEE;
-            a->timer = Wounded(a) ? 12.0f : 6.0f;
+            a->timer = Beaten(a) ? 12.0f : 6.0f;
             if (p && Intimidated(s) && dist < 30.0f && Warn(s, WARN_WOLF, 30.0f)) SayTo(s, "The wolves shy away from your wolf-pelt cloak.");
             break;
         }
@@ -842,10 +888,10 @@ static void HitAnimal(Animal *a, int damage)
         Say(near ? "The snake strikes back!" : "The snake slithers away through the grass.");
     } else if (a->type == AN_WOLF) {
         if (PlayerIn(s)) G.peers[s].aggro = 90.0f;
-        if (Wounded(a)) {
+        if (Beaten(a)) {
             a->state = ST_FLEE;
             a->timer = 12.0f;
-            Say("Wolf badly wounded. It limps away.");
+            Say("Wolf badly wounded and alone. It limps away.");
         } else {
             HuntPack(a, s);
             Say("The wolf turns on you, and its pack with it!");

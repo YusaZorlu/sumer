@@ -468,7 +468,7 @@ const Phrase TR_PHRASES[] = {
     { "Wolves! They hunt people who are alone. Run to the city or to other people, or fight.", "Kurtlar! Yalnız insanları avlarlar. Kente ya da insanların yanına koş, ya da dövüş." },
     { "The wolves shy away from your wolf-pelt cloak.", "Kurtlar kurt postu pelerininden çekiniyor." },
     { "%s down! Walk up to it and press E to take the carcass.", "%s vuruldu! Yanına git ve avı almak için E'ye bas." },
-    { "Wolf badly wounded. It limps away.", "Kurt ağır yaralandı. Topallayarak uzaklaşıyor." },
+    { "Wolf badly wounded and alone. It limps away.", "Kurt ağır yaralı ve yalnız kaldı. Topallayarak uzaklaşıyor." },
     { "The wolf turns on you, and its pack with it!", "Kurt sana döndü, sürüsü de onunla!" },
     { "%s wounded. It bolts!", "%s yaralandı. Kaçıyor!" },
     { "Arrow recovered (%d/%d).", "Ok geri alındı (%d/%d)." },

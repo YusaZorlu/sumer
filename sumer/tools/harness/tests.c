@@ -74,7 +74,7 @@ static void TestHerds(void)
     }
     Check(cityPacks == 5 && cityOk, "city-side wolf packs: %d packs of 4", cityPacks);
     Check(westPacks == 3 && westOk, "west-bank wolf packs: %d packs of 5 or 6", westPacks);
-    Check(AnimalMaxHp(AN_WOLF) == 60, "wolf health %d (was 35)", AnimalMaxHp(AN_WOLF));
+    Check(AnimalMaxHp(AN_WOLF) == 78, "wolf health %d (was 60)", AnimalMaxHp(AN_WOLF));
     Check(AnimalMaxHp(AN_BOAR) == 135, "boar health %d (3 x 45)", AnimalMaxHp(AN_BOAR));
     Check(snakes > 0 && snakes <= 6, "snakes: %d in the whole world", snakes);
     bool hidden = true;
@@ -734,6 +734,82 @@ static void TestGuardRound(void)
     G.peers[0].wanted = 0;
     G.health = HEALTH_MAX;
     RespawnPeople();
+}
+
+// Wolves run round a tree between them and their prey, keep a body apart in the pack, and a badly hurt
+// wolf fights on while its pack is beside it and limps away only once it is alone.
+static void HuntFor(float secs, const Animal *w, float *closest)
+{
+    for (float t = 0; t < secs; t += 0.02f) {
+        G.peers[0].aggro = 90;
+        Wild(0.02f);
+        if (closest) *closest = fminf(*closest, XZDist(w->pos, G.player.pos));
+    }
+}
+
+static void TestWolfWays(void)
+{
+    G.self = G.actor = 0;
+    G.health = 1e6f;
+    Animal *w = First(AN_WOLF);
+    const Box *tree = NULL;
+    for (int i = 0; i < G.boxCount && !tree; i++) {
+        const Box *b = &G.boxes[i];
+        if (b->solid && !b->built && !b->water && b->size.x < 1.2f && b->size.y > 2.0f && b->pos.x > RIVER_X1 + 30 &&
+            !InsideWalls(b->pos.x, b->pos.z, -30.0f) && FreeSpot(b->pos.x - 5, b->pos.z, 0.6f) && FreeSpot(b->pos.x + 5, b->pos.z, 0.6f) &&
+            !SolidAt(b->pos.x - 2.5f, b->pos.z, 0.6f) && !SolidAt(b->pos.x + 2.5f, b->pos.z, 0.6f))
+            tree = b;
+    }
+    if (!w || !tree) {
+        Check(false, "a wolf and a lone tree on the plain");
+        return;
+    }
+    CalmBeasts(-1);
+    for (int i = 0; i < G.animalCount; i++)   // the rest of the world's beasts out of the way
+        if (&G.animals[i] != w) G.animals[i].pos.x += 3000;
+    PlaceAt(tree->pos.x + 5, tree->pos.z, 0);
+    w->pos = (Vector3){ tree->pos.x - 5, TerrainHeight(tree->pos.x - 5, tree->pos.z), tree->pos.z };
+    w->hp = AnimalMaxHp(AN_WOLF);
+    w->state = ST_HUNT;
+    w->target = 0;
+    w->timer = 0;
+    float closest = 1e9f;
+    HuntFor(4, w, &closest);
+    Check(closest < 1.6f, "a wolf runs round a tree between it and its prey (closest %.1f m)", closest);
+
+    // Its pack with it: four hunting from one side do not end up standing in one another.
+    Animal *pack[4] = { w };
+    int n = 1;
+    for (int i = 0; i < G.animalCount && n < 4; i++)
+        if (&G.animals[i] != w && G.animals[i].type == AN_WOLF && G.animals[i].pack == w->pack && G.animals[i].active) pack[n++] = &G.animals[i];
+    PlaceAt(tree->pos.x + 14, tree->pos.z, 0);
+    for (int k = 0; k < n; k++) {
+        Vector3 p = { tree->pos.x + 4, 0, tree->pos.z - 1.5f + (float)k };
+        p.y = TerrainHeight(p.x, p.z);
+        pack[k]->pos = p;
+        pack[k]->hp = AnimalMaxHp(AN_WOLF);
+        pack[k]->state = ST_HUNT;
+        pack[k]->target = 0;
+        pack[k]->timer = 0;
+    }
+    HuntFor(3, w, NULL);
+    float apart = 1e9f;
+    for (int i = 0; i < n; i++)
+        for (int j = i + 1; j < n; j++) apart = fminf(apart, XZDist(pack[i]->pos, pack[j]->pos));
+    Check(n == 4 && apart > 0.8f, "a pack of %d at its prey keeps a body apart (nearest two %.2f m)", n, apart);
+
+    w->hp = AnimalMaxHp(AN_WOLF) / 3;
+    HuntFor(1, w, NULL);
+    Check(w->state == ST_HUNT, "a badly hurt wolf fights on beside its pack (state %d)", w->state);
+    for (int k = 1; k < n; k++) pack[k]->pos.x += 3000;
+    HuntFor(0.1f, w, NULL);
+    Check(w->state == ST_FLEE, "alone, it limps away (state %d)", w->state);
+
+    for (int i = 0; i < G.animalCount; i++)
+        if (G.animals[i].pos.x > 2000) G.animals[i].pos.x -= 3000;
+    CalmBeasts(-1);
+    G.peers[0].aggro = 0;
+    G.health = HEALTH_MAX;
 }
 
 // The law: the city's guards keep the peace inside the canals only; a village stands together for two
@@ -1677,6 +1753,7 @@ static void RunTests(void)
     TestAim();
     TestLaw();
     TestGuardRound();
+    TestWolfWays();
     TestDeathLosses();
     TestCanals();
     TestArchers();
