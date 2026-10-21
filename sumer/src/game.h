@@ -434,6 +434,7 @@ typedef struct {
     int trader;
     Target target;
     bool cursorLocked, ignoreClick, quit, wasCaptured;
+    float escQuiet;   // a moment after the mouse was released by Esc, Esc does nothing
     float autosaveT;
 
     NetRole role;

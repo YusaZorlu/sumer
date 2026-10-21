@@ -114,7 +114,9 @@ in `src/game.h`) holds the whole world.
   `HoldBow` (held low between shots), `SlungBow` (city guards with a spear in hand), the bow pose while drawing.
 - **Water** (`WadeSpeed` in `world.c`): the player wades through water boxes (`MoveHorizontal` skips them): 40% speed in
   canals, ponds and the harbor, 15% in the river (by x between `RIVER_X0`/`RIVER_X1`), floating head-out over the deep
-  river bed (`MoveVertical`). The ferry was removed; `STN_FERRY_E/W` remain only as the landing stages' positions.
+  river bed (`MoveVertical`). Only below `WATER_LEVEL + 0.2` does water slow you, so bridges, piers and the (solid) harbor quays
+  are walked at full speed. Rain skips drops under any box whose bottom is 1.8 m over the ground (roofs, ceilings: `DrawRain`).
+  The camera stops at thin boxes overhead too (house roofs), so inside a roofed room it stays under the roof. The ferry was removed; `STN_FERRY_E/W` remain only as the landing stages' positions.
 - **NPC walking** (`StepToward`, `AroundWater`, `JumpWater` in `combat.c`/`city.c`): people jump canals (they do not wade),
   or go round wide water by the bridges; townsfolk follow the street graph in `village.c`.
 - **Death** (`Collapse` in `game.c`): the player loses what they gathered that day (`G.safe[]` is the baseline kept
@@ -273,13 +275,6 @@ no sound files. Read the comment at the top of the file and the notation comment
 - Sound effects live in `sfx.c` (see "When a swing lands" above); keep the "no files, nothing to license" property.
 
 ## Ideas that were mentioned and not done
-
-**To do next (the owner's list, in the order given):**
-- Rain falls inside the ziggurat (it should not fall under roofs).
-- Bridges, piers and quays slow you as if you were wading: only the water itself should.
-- Player houses get roofs. Like the ziggurat's top room (a closed room you can still see into), the roof
-  must not hide the player inside: see-through or hidden from inside, not an opaque lid.
-- Pressing Esc twice sometimes opens the pause menu again instead of closing it.
 
 - Firefox and Safari are untested (only Chromium here). Touch/gamepad input does not exist; the owner wants to decide
   the phone controls after the graphics work is done (the UI already fits phones and takes taps on its buttons).

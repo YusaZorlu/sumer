@@ -259,7 +259,7 @@ void UpdatePlayer(float dt, bool input)
     else if (p->running) speed = RUN_SPEED * Boost();
 
     // Water is waded through, slowly.
-    speed *= WadeSpeed(p->pos.x, p->pos.z);
+    if (p->pos.y < WATER_LEVEL + 0.2f) speed *= WadeSpeed(p->pos.x, p->pos.z);   // on a bridge or quay you walk
     if (p->moving) {
         move = Vector3Normalize(move);
         MoveHorizontal(p, move, speed, dt);
@@ -334,7 +334,7 @@ static void PlaceCamera(float dt)
 
     for (int i = 0; i < G.boxCount; i++) {
         const Box *b = &G.boxes[i];
-        if (b->size.y < 1.0f || b->water) continue;
+        if (b->water || (b->size.y < 1.0f && b->pos.y < target.y + 0.5f)) continue;   // thin things count only as roofs overhead
         float reach = dist + (b->size.x + b->size.z) * 0.5f;
         if (fabsf(b->pos.x - target.x) > reach || fabsf(b->pos.z - target.z) > reach) continue;
         BoundingBox bb = { Vector3Subtract(b->pos, Vector3Scale(b->size, 0.5f)),

@@ -600,6 +600,15 @@ void DrawRain(void)
     Vector3 fwd = Vector3Normalize(Vector3Subtract(G.cam.target, c));
     Vector3 right = Vector3Normalize(Vector3CrossProduct(fwd, (Vector3){ 0, 1, 0 }));
     Color drop = { 196, 206, 222, 120 };
+    // Roofs and ceilings near the camera (anything overhead, not standing on the ground) keep the rain off.
+    static int roofs[256];
+    int nroof = 0;
+    for (int i = 0; i < G.boxCount && nroof < 256; i++) {
+        const Box *b = &G.boxes[i];
+        float bottom = b->pos.y - b->size.y / 2;
+        if (b->water || fabsf(b->pos.x - c.x) > half + b->size.x / 2 || fabsf(b->pos.z - c.z) > half + b->size.z / 2) continue;
+        if (bottom > TerrainHeight(b->pos.x, b->pos.z) + 1.8f) roofs[nroof++] = i;
+    }
 
     rlBegin(RL_QUADS);
     for (int i = 0; i < 1400; i++) {
@@ -608,6 +617,12 @@ void DrawRain(void)
         z = c.z + z - span * floorf((z + half) / span);
         if ((x - c.x) * (x - c.x) + (z - c.z) * (z - c.z) < 6.0f) continue;
         float y = c.y + 14.0f - fmodf(t * 19.0f + Hash2(i, 3) * 28.0f, 28.0f);
+        bool dry = false;
+        for (int k = 0; k < nroof && !dry; k++) {
+            const Box *b = &G.boxes[roofs[k]];
+            dry = y < b->pos.y && fabsf(x - b->pos.x) < b->size.x / 2 && fabsf(z - b->pos.z) < b->size.z / 2;
+        }
+        if (dry) continue;
         float len = 0.55f + 0.35f * Hash2(i, 4), w = 0.018f + 0.012f * Hash2(i, 5);
         Vector3 top = { x + 0.12f, y + len, z + 0.05f }, bot = { x, y, z };
         if (i % 64 == 0) rlCheckRenderBatchLimit(256);

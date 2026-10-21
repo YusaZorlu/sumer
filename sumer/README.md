@@ -57,7 +57,7 @@ Playing together:
 
 - Each player has a house of their own and wears its color: blue for the host, then red, green,
   yellow, purple and teal. The five guest houses stand in a row south of the east-west street, doors to the
-  street, each with its own bed, storeroom, quern, trough, workbench and oven. The farm, the coop, the
+  street, each with its own bed, storeroom, quern, trough, workbench and oven, under a flat roof (inside, the camera stays under it). The farm, the coop, the
   hens and the eggs are shared.
 - The world never stops: the Esc menu only takes your hands off the keys, and time can't be
   fast-forwarded (T).
@@ -241,7 +241,7 @@ fields outside. Gates: south (main road), east, west, north, plus the harbor wat
 - A few snakes lie hidden in long grass outside the walls (river meadows on both banks)
 - Two raider camps on the city side of the river: one beside the southern trade road, one to the north
 - Water is waded: a canal or the harbor slows you by 60%, the big river's current by 85% (your head stays
-  above the water). There is no ferry any more; the old landing stages stand on both banks west of the
+  above the water). Bridges, piers and the harbor quays are walked at full speed. There is no ferry any more; the old landing stages stand on both banks west of the
   city. A shallow ford at the far north end can be walked at full speed, through wolf country
 - The west bank is green, rolling hill country: woods, flowering meadows rich in herbs, a reed-fringed
   pond with fish. Gazelles, onagers, boars and two wolf packs live there, and two barbarian war camps,

@@ -156,6 +156,9 @@ static void BuildHouse(int h)
     HBox(&f, 0, H - 0.42f, -D / 2 + t / 2, W + 0.08f, 0.24f, t + 0.08f, band, false);
     HBox(&f, 0, H - 0.42f, D / 2 - t / 2, W + 0.08f, 0.24f, t + 0.08f, band, false);
     HBox(&f, W / 2 - t / 2, H - 0.42f, 0, t + 0.08f, 0.24f, D - 2 * t, band, false);
+    // A flat roof of mud on palm beams; the camera stays under it inside, as in the ziggurat's top room.
+    HBox(&f, 0, H, 0, W + 0.3f, 0.35f, D + 0.3f, Mix(wall, COL_MUD_DARK, 0.3f), true);
+    for (int k = -2; k <= 2; k++) HBox(&f, -W / 2 - 0.25f, H - 0.12f, 1.8f * (float)k, 0.5f, 0.14f, 0.14f, COL_PALM_TRUNK, false);
 
     st[0] = HPoint(&f, 3.0f, -3.0f);
     HBox(&f, 3.0f, 0, -3.0f, 1.3f, 0.45f, 2.3f, COL_WOOD, true);

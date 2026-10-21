@@ -424,6 +424,8 @@ static bool HandleWindow(void)
     if (G.wasCaptured && !captured && G.panel == PANEL_NONE) {
         SetPanel(PANEL_PAUSE);
         paused = true;
+        // The Esc that released the mouse can reach the game a frame later; it must not close the menu again.
+        G.escQuiet = 0.3f;
     }
     G.wasCaptured = captured;
     // The click that takes the mouse back is not a shot.
@@ -434,7 +436,8 @@ static bool HandleWindow(void)
 // 'paused': the Esc that released the mouse already opened the pause menu; it does not close it again.
 static void HandleMenus(bool paused)
 {
-    if (KeyPressed(KEY_ESCAPE) && !paused) {
+    if (G.escQuiet > 0) G.escQuiet -= GetFrameTime();
+    if (KeyPressed(KEY_ESCAPE) && !paused && G.escQuiet <= 0) {
         SetPanel(G.panel == PANEL_NONE ? PANEL_PAUSE : PANEL_NONE);
     } else if (KeyPressed(KEY_H) && (G.panel == PANEL_NONE || G.panel == PANEL_PAUSE || G.panel == PANEL_HELP)) {
         SetPanel(G.panel == PANEL_HELP ? PANEL_NONE : PANEL_HELP);
