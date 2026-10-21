@@ -21,6 +21,7 @@
 #define WALL_TOP        6.5f
 #define CAMPS           4
 #define EAST_CAMPS      2
+#define BANDS           2
 #define RIVER_X0        (-150.0f)
 #define RIVER_X1        (-128.0f)
 #define FORD_Z0         (-518.0f)
@@ -41,7 +42,7 @@
 #define MAX_COWS        3
 #define MAX_SHEEP       3
 #define MAX_FLOCK       8
-#define MAX_RAIDERS     18
+#define MAX_RAIDERS     24   // 18 in the four camps, then the two roaming bands of three
 #define MAX_LADDERS     8
 #define MAX_FIGHTERS    128
 #define MAX_VILLAGERS   80
@@ -163,7 +164,7 @@ typedef enum { PLOT_EMPTY, PLOT_WHEAT, PLOT_SAPLING, PLOT_PALM, PLOT_DEAD } Plot
 typedef struct { Vector3 pos; PlotState state; float growth, dry; } Plot;
 
 typedef struct { Vector3 pos; float heading, timer, speed; } Wanderer;
-typedef enum { ROLE_CIVILIAN, ROLE_WORKER, ROLE_CLERIC, ROLE_MERCHANT, ROLE_GUARD, ROLE_RAIDER, ROLE_BARBARIAN, ROLE_COUNT } Role;
+typedef enum { ROLE_CIVILIAN, ROLE_WORKER, ROLE_CLERIC, ROLE_MERCHANT, ROLE_GUARD, ROLE_RAIDER, ROLE_BARBARIAN, ROLE_BANDIT, ROLE_COUNT } Role;
 
 // Combat state shared by every person; while 'override' is set, 'at' replaces their scripted position.
 // 'target' is the player they are hostile to (meaningful while 'hostile' runs); 'netAt' is where the
@@ -207,6 +208,7 @@ typedef struct {
     int bow;   // 0: no bow; 1-3: the bow they shoot with (hunting, composite, war)
     bool crouch;   // someone at work low down: grinding grain, mending a net, tending a fire
 } Villager;
+// 'camp' 0 to CAMPS-1 is the camp they live in; CAMPS + b is roaming band b.
 typedef struct { Vector3 home, pos, netPos; float face, timer, speed, respawnDay; bool moving; int camp; Vitals vit; } Raider;
 typedef struct { Vector3 wall, base, n; float top; } Ladder;
 
@@ -342,7 +344,7 @@ enum {
 #define REQ_ARGS 12
 enum { WARN_WOLF, WARN_SNAKE, WARN_KINDS };
 // What hurt a player last, so whoever is brought down hears by whom: BY_PLAYER + slot for a player.
-enum { BY_NONE, BY_GUARD, BY_CARAVAN, BY_TOWNSFOLK, BY_VILLAGERS, BY_RAIDER, BY_BARBARIAN, BY_WOLF, BY_BOAR, BY_SNAKE, BY_PLAYER };
+enum { BY_NONE, BY_GUARD, BY_CARAVAN, BY_TOWNSFOLK, BY_VILLAGERS, BY_RAIDER, BY_BARBARIAN, BY_WOLF, BY_BOAR, BY_SNAKE, BY_BANDIT, BY_PLAYER };
 
 typedef struct {
     Box boxes[MAX_BOXES];
@@ -722,6 +724,7 @@ void BuildRaiders(void);
 void UpdateRaiders(float dt);
 void DrawRaiders(void);
 bool RaiderBowman(int i);
+bool RaiderBandit(int i);
 void StashPrompt(int camp, char *buf, int size, bool *ok);
 void TakeStash(int camp);
 bool ClaimStash(int camp, const int *want, int *res, Vector3 by);

@@ -8,7 +8,8 @@ typedef struct {
     bool fights;
 } RoleDef;
 
-// Barbarians across the river are twice as strong as the raiders on the city side.
+// Barbarians across the river are twice as strong as the raiders on the city side; the roaming bandits
+// come between.
 static const RoleDef ROLES[ROLE_COUNT] = {
     [ROLE_CIVILIAN]  = { 120, 0.00f,  5, 1.35f, 1.5f, 3.8f, 24, true },
     [ROLE_WORKER]    = { 130, 0.00f,  8, 1.35f, 1.6f, 4.0f, 24, true },
@@ -17,6 +18,7 @@ static const RoleDef ROLES[ROLE_COUNT] = {
     [ROLE_GUARD]     = { 320, 0.35f, 13, 1.05f, 2.3f, 5.4f, 32, true },
     [ROLE_RAIDER]    = { 260, 0.20f, 19, 1.1f,  1.9f, 5.4f, 24, true },
     [ROLE_BARBARIAN] = { 520, 0.20f, 38, 1.1f,  2.0f, 5.4f, 26, true },
+    [ROLE_BANDIT]    = { 390, 0.25f, 28, 1.0f,  2.1f, 5.6f, 28, true },
 };
 
 #define WINDUP       NPC_WINDUP
@@ -73,7 +75,7 @@ static void Add(Vitals *v, Role role, Vector3 home, float face, int owner, int l
 
 static bool IsRaider(Role r)
 {
-    return r == ROLE_RAIDER || r == ROLE_BARBARIAN;
+    return r == ROLE_RAIDER || r == ROLE_BARBARIAN || r == ROLE_BANDIT;
 }
 
 // Rebuilt every frame after the scripted routines have moved everyone; a guest rebuilds it from
@@ -114,10 +116,11 @@ void CollectFighters(void)
     }
     for (int i = 0; i < MAX_RAIDERS; i++) {
         Raider *r = &G.raiders[i];
-        bool west = r->camp >= EAST_CAMPS;
-        Add(&r->vit, west ? ROLE_BARBARIAN : ROLE_RAIDER, r->pos, r->face, OWNER_RAIDER + i, west ? LOOT_BARBARIAN : LOOT_RAIDER, i,
-            RaiderBowman(i) ? "Barbarian bowman" : west ? "Barbarian" : "Raider", FK_RAIDER);
-        if (fighterCount > 0 && fighters[fighterCount - 1].v == &r->vit) fighters[fighterCount - 1].bow = RaiderBowman(i) ? 3 : 0;
+        bool bandit = RaiderBandit(i), west = !bandit && r->camp >= EAST_CAMPS, bow = RaiderBowman(i);
+        Add(&r->vit, bandit ? ROLE_BANDIT : west ? ROLE_BARBARIAN : ROLE_RAIDER, r->pos, r->face, OWNER_RAIDER + i,
+            bandit || west ? LOOT_BARBARIAN : LOOT_RAIDER, i,
+            bandit ? (bow ? "Bandit archer" : "Bandit") : bow ? "Barbarian bowman" : west ? "Barbarian" : "Raider", FK_RAIDER);
+        if (fighterCount > 0 && fighters[fighterCount - 1].v == &r->vit) fighters[fighterCount - 1].bow = bow ? (bandit ? 2 : 3) : 0;
     }
 }
 
@@ -149,7 +152,7 @@ static int Cause(const Fighter *f)
     case FK_CITY_GUARD: return BY_GUARD;
     case FK_CARAVAN: return BY_CARAVAN;
     case FK_VILLAGER: return BY_VILLAGERS;
-    case FK_RAIDER: return f->role == ROLE_BARBARIAN ? BY_BARBARIAN : BY_RAIDER;
+    case FK_RAIDER: return f->role == ROLE_BARBARIAN ? BY_BARBARIAN : f->role == ROLE_BANDIT ? BY_BANDIT : BY_RAIDER;
     default: return BY_TOWNSFOLK;
     }
 }

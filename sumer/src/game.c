@@ -183,6 +183,7 @@ static const char *BroughtDownInCity(int by)
     case BY_VILLAGERS: what = L("The villagers beat you down."); break;
     case BY_RAIDER: what = L("Raiders left you for dead."); break;
     case BY_BARBARIAN: what = L("Barbarians left you for dead."); break;
+    case BY_BANDIT: what = L("Bandits left you for dead."); break;
     case BY_WOLF: what = L("Wolves brought you down."); break;
     case BY_BOAR: what = L("A boar brought you down."); break;
     case BY_SNAKE: what = L("A snake's venom brought you down."); break;
@@ -205,6 +206,7 @@ static const char *BroughtDown(int by)
     case BY_VILLAGERS: return L("The villagers beat you down. A shepherd carried you home.");
     case BY_RAIDER: return L("Raiders left you for dead. A shepherd carried you home.");
     case BY_BARBARIAN: return L("Barbarians left you for dead. A shepherd carried you home.");
+    case BY_BANDIT: return L("Bandits left you for dead. A shepherd carried you home.");
     case BY_WOLF: return L("Wolves brought you down. A shepherd carried you home.");
     case BY_BOAR: return L("A boar brought you down. A shepherd carried you home.");
     case BY_SNAKE: return L("A snake's venom brought you down. A shepherd carried you home.");

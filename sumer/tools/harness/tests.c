@@ -812,6 +812,86 @@ static void TestWolfWays(void)
     G.health = HEALTH_MAX;
 }
 
+// Two bands of bandits, two swordsmen and an archer each, stronger than raiders, roam far from the city
+// and the villages, off the world's edge, and rest now and then, never on a road.
+static void TestBandits(void)
+{
+    G.self = G.actor = 0;
+    PlaceAt(3, 4, 0);
+    CollectFighters();
+    int bandits = 0, archers = 0;
+    float raiderHp = 0, banditHp = 0;
+    for (int i = 0; i < FighterCount(); i++) {
+        Vector3 p;
+        float hp, max;
+        const char *name;
+        bool hostile, dead;
+        FighterInfo(i, &p, &hp, &max, &name, &hostile, &dead);
+        if (strcmp(name, "Raider") == 0) raiderHp = max;
+        if (strncmp(name, "Bandit", 6) == 0) {
+            bandits++;
+            archers += strcmp(name, "Bandit archer") == 0;
+            banditHp = max;
+        }
+    }
+    Check(bandits == 6 && archers == 2, "two bands of three bandits, an archer in each (%d bandits, %d archers)", bandits, archers);
+    Check(banditHp > raiderHp && raiderHp > 0, "a bandit is tougher than a raider (%.0f against %.0f)", banditHp, raiderHp);
+
+    float nearCity = 1e9f, nearVillage = 1e9f, edge = 0, moved[BANDS] = { 0 }, restRoad = 1e9f, spread = 0;
+    int rests = 0;
+    Vector3 last[BANDS];
+    bool wasStill[BANDS] = { false };
+    for (int b = 0; b < BANDS; b++) last[b] = G.raiders[MAX_RAIDERS - BANDS * 3 + b * 3].pos;
+    if (getenv("TRACE")) printf("  bands start at (%.1f,%.1f) and (%.1f,%.1f)\n", last[0].x, last[0].z, last[1].x, last[1].z);
+    for (float t = 0; t < 900; t += 0.1f) {
+        CollectBodies();
+        UpdateRaiders(0.1f);
+        for (int b = 0; b < BANDS; b++) {
+            const Raider *lead = &G.raiders[MAX_RAIDERS - BANDS * 3 + b * 3];
+            Vector3 p = lead->pos;
+            nearCity = fminf(nearCity, hypotf(p.x, p.z - CITY_Z));
+            for (int v = 0; v < VILLAGES; v++) nearVillage = fminf(nearVillage, XZDist(p, VillageCenter(v)));
+            edge = fmaxf(edge, fmaxf(fabsf(p.x), fabsf(p.z)));
+            moved[b] += XZDist(p, last[b]);
+            last[b] = p;
+            if (!lead->moving && !wasStill[b]) {
+                rests++;
+                restRoad = fminf(restRoad, RoadDistance(p.x, p.z));
+            }
+            wasStill[b] = !lead->moving;
+            if (lead->moving)
+                for (int k = 1; k < 3; k++) {
+                    const Raider *m = &G.raiders[MAX_RAIDERS - BANDS * 3 + b * 3 + k];
+                    if (getenv("TRACE") && XZDist(p, m->pos) > 6 && fmodf(t, 0.5f) < 0.1f)
+                        printf("  t %.0f band %d lead (%.1f,%.1f) member %d (%.1f,%.1f) water %d solid %d\n", t, b, p.x, p.z, k, m->pos.x, m->pos.z,
+                               InWater(m->pos.x, m->pos.z), SolidAt(m->pos.x, m->pos.z, 0.6f));
+                    spread = fmaxf(spread, XZDist(p, m->pos));
+                }
+        }
+    }
+    Check(moved[0] > 150 && moved[1] > 150, "both bands roam (%.0f m and %.0f m in 15 minutes)", moved[0], moved[1]);
+    Check(nearCity > 200 && nearVillage > 100, "far from the city (%.0f m) and the villages (%.0f m)", nearCity, nearVillage);
+    Check(edge < WORLD_LIMIT - 50, "away from the edge of the world (%.0f m from the middle at most)", edge);
+    Check(rests > 0 && restRoad > 8, "they stop now and then (%d times), never on a road (%.0f m from one at least)", rests, restRoad);
+    Check(spread < 7, "the band keeps together on the move (%.1f m apart at most)", spread);
+
+    // Someone walking up to a band is set upon.
+    const Raider *lead = &G.raiders[MAX_RAIDERS - BANDS * 3];
+    PlaceAt(lead->pos.x + 8, lead->pos.z, 0);
+    G.health = HEALTH_MAX;
+    for (int k = 0; k < 40; k++) {
+        CollectBodies();
+        UpdateRaiders(0.05f);
+        UpdateCombat(0.05f);
+    }
+    Check(G.raiders[MAX_RAIDERS - BANDS * 3].vit.hostile > 0 && G.raiders[MAX_RAIDERS - BANDS * 3].vit.target == 0,
+          "the bandits go for a player who walks up to them");
+    ForgetFights(0);
+    RespawnPeople();
+    G.health = HEALTH_MAX;
+    PlaceAt(3, 4, 0);
+}
+
 // The law: the city's guards keep the peace inside the canals only; a village stands together for two
 // minutes; caravan and city guards do not chase far from their posts.
 static void TestLaw(void)
@@ -1227,9 +1307,9 @@ static void TestArchers(void)
     // A barbarian camp's bowman.
     int bowman = -1;
     for (int i = 0; i < MAX_RAIDERS && bowman < 0; i++)
-        if (RaiderBowman(i)) bowman = i;
+        if (RaiderBowman(i) && !RaiderBandit(i)) bowman = i;
     int bowmen = 0;
-    for (int i = 0; i < MAX_RAIDERS; i++) bowmen += RaiderBowman(i);
+    for (int i = 0; i < MAX_RAIDERS; i++) bowmen += RaiderBowman(i) && !RaiderBandit(i);
     Raider *b = &G.raiders[bowman];
     Vector3 c = CampCenter(b->camp);
     PlaceAt(c.x + 22, c.z, 0);
@@ -1754,6 +1834,7 @@ static void RunTests(void)
     TestLaw();
     TestGuardRound();
     TestWolfWays();
+    TestBandits();
     TestDeathLosses();
     TestCanals();
     TestArchers();
