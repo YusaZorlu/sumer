@@ -60,6 +60,8 @@ static void PlaceTorches(void)
         AddTorch(1.4f * f, 19.2f, -41.85f, false);
         AddTorch(6.5f * f, 16.5f, -48.5f, true);
         AddFire(4.3f * f, 8.1f, -48.6f);
+        AddTorch(9.8f * f, 9.4f, -41.0f, false);    // the guards' room and the tablet room
+        AddTorch(17.8f * f, 3.6f, -40.0f, false);   // the granary and the treasury
     }
     for (int c = 0; c < CAMPS; c++) {
         Vector3 camp = CampCenter(c);

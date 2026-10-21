@@ -111,7 +111,9 @@ static bool indoors;   // shotin: stand on the floor under a roof, not on the ro
 static void Shot(const char *out, float x, float z, float yaw, float pitch, float dist, float hour, int frames, bool rain)
 {
     Player *p = &G.player;
-    p->pos = (Vector3){ x, GroundHeight(x, z, indoors ? 1.0f : 50.0f), z };
+    // SHOT_FLOOR=<height> stands indoors on the floor just below that height (a ziggurat's upper rooms).
+    float from = getenv("SHOT_FLOOR") ? (float)atof(getenv("SHOT_FLOOR")) : indoors ? 1.0f : 50.0f;
+    p->pos = (Vector3){ x, GroundHeight(x, z, from), z };
     p->yaw = yaw;
     p->pitch = pitch;
     p->dist = dist;

@@ -239,7 +239,7 @@ void RemoveZigguratGuards(void)
     int kept = 0;
     for (int i = 0; i < G.villagerCount; i++) {
         const Villager *v = &G.villagers[i];
-        if (v->kind == NPC_GUARD && v->a.y >= 5.0f && v->b.y >= 5.0f) continue;
+        if (v->kind == NPC_GUARD && v->a.y >= 5.0f && v->b.y >= 5.0f && !v->crouch) continue;
         G.villagers[kept++] = G.villagers[i];
     }
     G.villagerCount = kept;
@@ -488,7 +488,32 @@ static void BuildTempleStaff(void)
     AddNpc(NPC_CLERIC, (Vector3){ -6, 16.5f, -40.5f }, (Vector3){ 6, 16.5f, -40.5f }, 0.4f, cleric, 0);
     AddNpc(NPC_CLERIC, (Vector3){ 24, 0, -28 }, (Vector3){ 24, 0, -58 }, 0.6f, cleric, 0);
     AddNpc(NPC_CLERIC, (Vector3){ 9, 0, -15.5f }, (Vector3){ 14, 0, -15.5f }, 0.4f, cleric, 0);
-    AddNpc(NPC_CLERIC, (Vector3){ -9, 7, -41 }, (Vector3){ -3, 7, -41 }, 0.4f, cleric, 0);
+    AddNpc(NPC_CLERIC, (Vector3){ -2.2f, 7, -41 }, (Vector3){ 2.2f, 7, -41 }, 0.4f, cleric, 0);
+
+    // Inside the ziggurat. Middle terrace: two guards off duty at supper in their room (they stay in a PvP
+    // game, where only the guards on duty go), two scribes in the tablet room, two worshippers kneeling
+    // before the god. Ground floor: the granary's keeper and a porter, the treasurer at his balance, and
+    // people going from stall to stall in the market hall.
+    static const struct { NpcKind kind; float ax, ay, az, bx, bz, speed, face; bool sit; } inside[] = {
+        { NPC_GUARD, -8.95f, 7, -40.6f, -8.95f, -40.6f, 0, PI / 2, true },
+        { NPC_GUARD, -6.85f, 7, -40.4f, -6.85f, -40.4f, 0, -PI / 2 - 0.4f, true },
+        { NPC_CLERIC, 7.4f, 7, -45.6f, 7.4f, -45.6f, 0, PI / 2, true },
+        { NPC_CLERIC, 8.1f, 7, -36.8f, 8.1f, -43.6f, 0.3f, 0, false },
+        { NPC_CIVILIAN, -0.8f, 7, -46.6f, -0.8f, -46.6f, 0, PI, true },
+        { NPC_CIVILIAN, 0.9f, 7, -46.9f, 0.9f, -46.9f, 0, PI, true },
+        { NPC_CLERIC, -12.6f, 0, -44.6f, -16.4f, -36.0f, 0.3f, 0, false },
+        { NPC_CIVILIAN, -10.6f, 0, -44.7f, -13.8f, -40.2f, 0.45f, 0, false },
+        { NPC_CLERIC, 14.6f, 0, -35.0f, 14.6f, -35.0f, 0, 0, false },
+        { NPC_CIVILIAN, -6.0f, 0, -38.0f, 6.0f, -42.0f, 0.5f, 0, false },
+        { NPC_CIVILIAN, 4.0f, 0, -34.0f, -2.0f, -46.0f, 0.45f, 0, false },
+    };
+    static const Color robes[] = { { 196, 170, 120, 255 }, { 120, 140, 160, 255 }, { 170, 110, 80, 255 } };
+    for (int k = 0; k < (int)(sizeof(inside) / sizeof(inside[0])); k++) {
+        Color robe = inside[k].kind == NPC_GUARD ? guard : inside[k].kind == NPC_CLERIC ? cleric : robes[k % 3];
+        int i = AddNpc(inside[k].kind, (Vector3){ inside[k].ax, inside[k].ay, inside[k].az }, (Vector3){ inside[k].bx, inside[k].ay, inside[k].bz },
+                       inside[k].speed, robe, inside[k].face);
+        if (i >= 0) G.villagers[i].crouch = inside[k].sit;
+    }
     (void)cz;
 }
 
@@ -954,7 +979,7 @@ void DrawVillage(void)
             continue;
         }
         // A warden's other hand holds the bow, so their torch stays on their belt.
-        bool torch = G.night >= 0.3f && (v->kind == NPC_TRAVELLER || v->kind == NPC_GUARD);
+        bool torch = G.night >= 0.3f && (v->kind == NPC_TRAVELLER || v->kind == NPC_GUARD) && !v->crouch;
         if (torch) GripAt(HAND_OTHER, -0.36f, 1.36f, 0.28f);
         if (v->kind == NPC_CIVILIAN || v->kind == NPC_VILLAGER || v->kind == NPC_TRAVELLER || v->kind == NPC_CLERIC) {
             // A villager standing still at the hunters' butt keeps drawing a bow.
@@ -965,6 +990,9 @@ void DrawVillage(void)
                 GripAt(HAND_WEAPON, 0.36f, 1.12f, 0.24f);
             }
             DrawHuman(pos, face, stride, look, v->crouch && !v->vit.override, archer, pull);
+        } else if (v->kind == NPC_GUARD && v->crouch && !v->vit.override) {
+            // A guard off duty sits at ease; their spear and shield hang on the rack until they are needed.
+            DrawHuman(pos, face, 0, look, true, false, 0);
         } else if (v->kind == NPC_WARDEN) {
             // A village guard: a leather jerkin and cap, and a bow always in hand, drawn or held ready.
             if (!v->vit.drawing) HoldBow(pos, face, false);

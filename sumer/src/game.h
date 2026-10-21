@@ -44,7 +44,7 @@
 #define MAX_FLOCK       8
 #define MAX_RAIDERS     24   // 18 in the four camps, then the two roaming bands of three
 #define MAX_LADDERS     8
-#define MAX_FIGHTERS    128
+#define MAX_FIGHTERS    160
 #define MAX_VILLAGERS   80
 #define MAX_WORKERS     16
 #define MAX_CARAVANS    2

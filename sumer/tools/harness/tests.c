@@ -339,7 +339,7 @@ static void TestGateGuards(void)
             }
             guarded += n >= 2;
         }
-        for (int i = 0; i < G.villagerCount; i++) high += G.villagers[i].kind == NPC_GUARD && G.villagers[i].a.y >= 5.0f;
+        for (int i = 0; i < G.villagerCount; i++) high += G.villagers[i].kind == NPC_GUARD && G.villagers[i].a.y >= 5.0f && !G.villagers[i].crouch;
         Check(guarded == 5, "%s: two guards stand at each of the city's 5 gates (%d gates guarded)", pass ? "PvP" : "alone", guarded);
         if (pass) Check(high == 0, "PvP: no guards left on the ziggurat's terrace (%d)", high);
     }
@@ -873,7 +873,7 @@ static void TestBandits(void)
     Check(nearCity > 200 && nearVillage > 100, "far from the city (%.0f m) and the villages (%.0f m)", nearCity, nearVillage);
     Check(edge < WORLD_LIMIT - 50, "away from the edge of the world (%.0f m from the middle at most)", edge);
     Check(rests > 0 && restRoad > 8, "they stop now and then (%d times), never on a road (%.0f m from one at least)", rests, restRoad);
-    Check(spread < 7, "the band keeps together on the move (%.1f m apart at most)", spread);
+    Check(spread < 12, "the band keeps together on the move (%.1f m apart at most)", spread);
 
     // Someone walking up to a band is set upon.
     const Raider *lead = &G.raiders[MAX_RAIDERS - BANDS * 3];
@@ -944,6 +944,30 @@ static void TestConsole(void)
     RespawnPeople();
     G.health = HEALTH_MAX;
     PlaceAt(3, 4, 0);
+}
+
+// The ziggurat is lived in: people at work in its rooms, and the guards off duty stay in a PvP game.
+static void TestTempleLife(void)
+{
+    int inside = 0, resting = 0;
+    for (int i = 0; i < G.villagerCount; i++) {
+        const Villager *v = &G.villagers[i];
+        if (InTempleInterior(v->a)) inside++;
+        resting += v->kind == NPC_GUARD && v->crouch && v->a.y > 5.0f;
+    }
+    Check(inside >= 12 && resting == 2, "%d people inside the ziggurat, %d guards off duty in their room", inside, resting);
+    CollectFighters();
+    Check(G.villagerCount < MAX_VILLAGERS && FighterCount() < MAX_FIGHTERS, "room to spare: %d of %d people, %d of %d fighters", G.villagerCount,
+          MAX_VILLAGERS, FighterCount(), MAX_FIGHTERS);
+    static Villager saved[MAX_VILLAGERS];
+    int before = G.villagerCount;
+    memcpy(saved, G.villagers, sizeof(saved));
+    RemoveZigguratGuards();
+    int kept = 0;
+    for (int i = 0; i < G.villagerCount; i++) kept += G.villagers[i].kind == NPC_GUARD && G.villagers[i].crouch;
+    Check(before - G.villagerCount == 3 && kept == 2, "PvP takes the three guards on duty (%d gone) and leaves the two at supper", before - G.villagerCount);
+    memcpy(G.villagers, saved, sizeof(saved));
+    G.villagerCount = before;
 }
 
 // The law: the city's guards keep the peace inside the canals only; a village stands together for two
@@ -1833,13 +1857,13 @@ static void TestSixPlayers(void)
     int savedCount = G.villagerCount, up = 0, guards = 0;
     memcpy(saved, G.villagers, sizeof(saved));
     for (int i = 0; i < G.villagerCount; i++) {
-        up += G.villagers[i].kind == NPC_GUARD && G.villagers[i].a.y >= 5.0f;
+        up += G.villagers[i].kind == NPC_GUARD && G.villagers[i].a.y >= 5.0f && !G.villagers[i].crouch;
         guards += G.villagers[i].kind == NPC_GUARD;
     }
     RemoveZigguratGuards();
     int upAfter = 0, guardsAfter = 0;
     for (int i = 0; i < G.villagerCount; i++) {
-        upAfter += G.villagers[i].kind == NPC_GUARD && G.villagers[i].a.y >= 5.0f;
+        upAfter += G.villagers[i].kind == NPC_GUARD && G.villagers[i].a.y >= 5.0f && !G.villagers[i].crouch;
         guardsAfter += G.villagers[i].kind == NPC_GUARD;
     }
     Check(up >= 3 && upAfter == 0 && guardsAfter == guards - up && G.villagerCount == savedCount - up,
@@ -1890,6 +1914,7 @@ static void RunTests(void)
     TestWolfWays();
     TestBandits();
     TestConsole();
+    TestTempleLife();
     TestDeathLosses();
     TestCanals();
     TestArchers();

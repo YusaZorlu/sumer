@@ -22,6 +22,10 @@ static const Rectangle BAND_ZONES[BANDS] = { { 200, -480, 280, 340 }, { 180, 150
 // Where each band is headed, how long it still sits where it is, how long it has got nowhere.
 static Vector3 bandGoal[BANDS];
 static float bandRest[BANDS], bandStuck[BANDS];
+// Where the leader has walked, a metre apart, newest first: a way round anything the followers meet.
+#define TRAIL 16
+static Vector3 bandTrail[BANDS][TRAIL];
+static int bandTrailN[BANDS];
 
 Vector3 CampCenter(int camp)
 {
@@ -223,6 +227,7 @@ void BuildRaiders(void)
         bandGoal[b] = at;
         bandRest[b] = 10.0f;
         bandStuck[b] = 0;
+        bandTrailN[b] = 0;
         for (int k = 0; k < BAND; k++) {
             Raider *r = &G.raiders[BAND_FIRST + b * BAND + k];
             *r = (Raider){ .camp = CAMPS + b, .speed = 1.3f, .face = (float)k * 2.1f };
@@ -299,6 +304,11 @@ static void Roam(int b, float dt)
     Walk(lead, li, bandGoal[b], lead->speed, dt);
     if (XZDist(was, lead->pos) < lead->speed * dt * 0.3f) bandStuck[b] += dt;
     else bandStuck[b] = fmaxf(0.0f, bandStuck[b] - dt);
+    if (bandTrailN[b] == 0 || XZDist(lead->pos, bandTrail[b][0]) > 1.0f) {
+        memmove(&bandTrail[b][1], &bandTrail[b][0], sizeof(Vector3) * (TRAIL - 1));
+        bandTrail[b][0] = lead->pos;
+        if (bandTrailN[b] < TRAIL) bandTrailN[b]++;
+    }
 
     float fx = sinf(lead->face), fz = cosf(lead->face), side = -1.0f;
     for (int k = 0; k < BAND; k++) {
@@ -309,14 +319,24 @@ static void Roam(int b, float dt)
         side = -side;
         float d = XZDist(r->pos, at);
         r->moving = true;
-        if (d > 0.3f) Walk(r, i, at, lead->speed * (d > 3.0f ? 1.6f : 1.15f), dt);
-        else r->face = lead->face;
-        // Left behind a while: round the other way.
+        if (d > 3.0f && bandTrailN[b] > 1) {
+            // Fallen behind: along the leader's own way, from the nearest point of it to the next.
+            int k = 0;
+            for (int t = 1; t < bandTrailN[b]; t++)
+                if (XZDist(r->pos, bandTrail[b][t]) < XZDist(r->pos, bandTrail[b][k])) k = t;
+            Walk(r, i, bandTrail[b][k > 0 ? k - 1 : 0], lead->speed * 1.6f, dt);
+        } else if (d > 0.3f) {
+            Walk(r, i, at, lead->speed * 1.15f, dt);
+        } else {
+            r->face = lead->face;
+        }
+        // Left behind a while: round the other way. Far behind with no one about to see: back in its place.
         r->timer = d > 4.0f ? r->timer + dt : 0.0f;
-        if (r->timer > 3.0f) {
+        if (r->timer > 2.0f) {
             sideOf[i] = (signed char)-sideOf[i];
             r->timer = 0;
         }
+        if (d > 20.0f && NearestAnyone(r->pos) > 100.0f && Free(r->pos, at.x, at.z, i)) r->pos = (Vector3){ at.x, Ground(at.x, at.z), at.z };
     }
 }
 
