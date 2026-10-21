@@ -250,7 +250,7 @@ typedef enum {
     STN_BED, STN_STORAGE, STN_QUERN, STN_TROUGH, STN_OVEN, STN_KILN, STN_SMELTER, STN_BENCH, STN_ALTAR, STN_STASH, STN_STASH2,
     STN_STASH3, STN_STASH4, STN_WELL, STN_DITCH, STN_FERRY_E, STN_FERRY_W, STN_COUNT
 } StationId;
-typedef enum { PANEL_NONE, PANEL_BAG, PANEL_STORAGE, PANEL_TRADE, PANEL_PAUSE, PANEL_HELP, PANEL_COOP, PANEL_LOOK, PANEL_CONSOLE } Panel;
+typedef enum { PANEL_NONE, PANEL_BAG, PANEL_STORAGE, PANEL_TRADE, PANEL_PAUSE, PANEL_HELP, PANEL_COOP, PANEL_LOOK, PANEL_CONSOLE, PANEL_SETTINGS } Panel;
 typedef enum { TGT_NONE, TGT_CARCASS, TGT_RES, TGT_STATION, TGT_PLOT, TGT_COOP, TGT_TRADER, TGT_BODY, TGT_OFFER, TGT_LADDER, TGT_WATER } TargetKind;
 enum { SPRING, SUMMER, FALL, WINTER };
 typedef struct { TargetKind kind; int index; } Target;
@@ -440,6 +440,7 @@ typedef struct {
     Target target;
     bool cursorLocked, ignoreClick, quit, wasCaptured;
     float escQuiet;   // a moment after the mouse was released by Esc, Esc does nothing
+    bool devTools;    // the host (or a player alone) turned on dev tools: the dev console can be opened
     bool god;         // dev console: nothing hurts this player
     float devSpeed;   // dev console: walking speed times this (0 means 1)
     float autosaveT;
@@ -718,6 +719,8 @@ int FighterCount(void);
 bool FighterInfo(int i, Vector3 *pos, float *hp, float *maxHp, const char **name, bool *hostile, bool *dead);
 void ConsoleRun(const char *text);
 float LandingHeight(float x, float z);
+void SaveGamePrefs(void);
+void LoadGamePrefs(void);
 int ConsoleLines(void);
 const char *ConsoleLine(int i);
 const char *ConsoleLast(void);
@@ -911,7 +914,7 @@ const char *NetFailure(void);
 const char *NetRoom(void);
 void NetLeave(void);
 void NetFrame(float dt);
-void NetRules(bool pvp, bool combat);
+void NetRules(bool pvp, bool combat, bool dev);
 const char *RulesText(void);
 const char *KillDeath(int s);
 

@@ -30,6 +30,7 @@ void GameInit(void)
     G.health = HEALTH_MAX;
     G.followArrow = -1;
     G.arrowCam = true;
+    LoadGamePrefs();
     G.day = 1;
     G.dawnDay = 1;
     G.hour = 7.0f;
@@ -300,6 +301,29 @@ static void NoteHit(float dmg, const Vector3 *src)
     G.flinchZ = away.y;
 }
 
+// The game settings each player keeps for themselves (sumer.prefs): the arrow camera and the first-person view.
+void SaveGamePrefs(void)
+{
+    FILE *f = fopen(DataPath("sumer.prefs"), "w");
+    if (!f) return;
+    fprintf(f, "arrowcam %d\nfirstperson %d\n", G.arrowCam ? 1 : 0, G.firstPerson ? 1 : 0);
+    fclose(f);
+    SyncStorage();
+}
+
+void LoadGamePrefs(void)
+{
+    char key[32];
+    int v;
+    FILE *f = fopen(DataPath("sumer.prefs"), "r");
+    if (!f) return;
+    while (fscanf(f, "%31s %d", key, &v) == 2) {
+        if (strcmp(key, "arrowcam") == 0) G.arrowCam = v != 0;
+        else if (strcmp(key, "firstperson") == 0) G.firstPerson = v != 0;
+    }
+    fclose(f);
+}
+
 void HurtPlayer(float dmg, int by)
 {
     HurtPlayerFrom(dmg, by, NULL);
@@ -443,12 +467,12 @@ static void HandleMenus(bool paused)
         SetPanel(G.panel == PANEL_NONE ? PANEL_PAUSE : PANEL_NONE);
     } else if (KeyPressed(KEY_H) && (G.panel == PANEL_NONE || G.panel == PANEL_PAUSE || G.panel == PANEL_HELP)) {
         SetPanel(G.panel == PANEL_HELP ? PANEL_NONE : PANEL_HELP);
-    } else if (KeyPressed(KEY_GRAVE) || KeyPressed(KEY_F2)) {
+    } else if (G.devTools && (KeyPressed(KEY_GRAVE) || KeyPressed(KEY_F2))) {
         if (G.panel == PANEL_NONE || G.panel == PANEL_BAG) SetPanel(PANEL_CONSOLE);
         else if (G.panel == PANEL_CONSOLE) SetPanel(PANEL_NONE);
     } else if (KeyPressed(KEY_TAB) || (KeyPressed(KEY_I) && G.panel != PANEL_CONSOLE)) {
         if (G.panel == PANEL_NONE) SetPanel(PANEL_BAG);
-        else if (G.panel != PANEL_PAUSE && G.panel != PANEL_HELP) SetPanel(PANEL_NONE);
+        else if (G.panel != PANEL_PAUSE && G.panel != PANEL_HELP && G.panel != PANEL_SETTINGS) SetPanel(PANEL_NONE);
     }
     if (G.panel == PANEL_PAUSE && KeyPressed(KEY_Q)) G.quit = true;
     if (KeyPressed(KEY_F5) && !G.sleeping) SaveNow();
@@ -524,7 +548,7 @@ void GameUpdate(void)
     G.requestSlot = 0;
     HandleMenus(HandleWindow());
     // Alone, the world waits while a menu is open; in company it goes on.
-    bool menu = G.panel == PANEL_PAUSE || G.panel == PANEL_HELP || G.panel == PANEL_LOOK;
+    bool menu = G.panel == PANEL_PAUSE || G.panel == PANEL_HELP || G.panel == PANEL_LOOK || G.panel == PANEL_SETTINGS;
     if (menu && !online) {
         if (G.panel == PANEL_LOOK) FollowCamera(dt);
         return;
@@ -576,6 +600,7 @@ void GameUpdate(void)
         }
         if (KeyPressed(KEY_Z)) {
             G.arrowCam = !G.arrowCam;
+            SaveGamePrefs();
             Say(G.arrowCam ? "Arrow camera on: the view follows each shot (Z to turn off)." : "Arrow camera off.");
         }
     }

@@ -1,6 +1,6 @@
-// The dev console (Tab, then "Dev console"; or ` or F2): typed commands that move you about, change the
-// hour and the weather, and set beasts and fighters where a test needs them. Commands that change the
-// shared world are for the host (or a game alone); in a joined PvP game a guest may only look.
+// The dev console (Tab, then "Dev console"; or ` or F2), there only when dev tools were turned on before
+// playing alone or hosting: typed commands that move you about, change the hour and the weather, and set
+// beasts and fighters where a test needs them. Commands that change the shared world are the host's.
 #include "game.h"
 #include <ctype.h>
 #include <stdarg.h>
@@ -47,13 +47,6 @@ static bool Host(void)
 {
     if (!IsClient()) return true;
     Out("Only the host can change the world.");
-    return false;
-}
-
-static bool Self(void)
-{
-    if (!IsClient() || !G.pvp) return true;
-    Out("Not for a guest in a PvP game.");
     return false;
 }
 
@@ -179,6 +172,10 @@ void ConsoleRun(const char *text)
     snprintf(buf, sizeof(buf), "%s", text);
     for (char *t = strtok(buf, " \t"); t && n < 6; t = strtok(NULL, " \t")) arg[n++] = t;
     if (!n) return;
+    if (!G.devTools) {
+        Out("Dev tools are off. Turn them on before playing alone or hosting (title screen).");
+        return;
+    }
     snprintf(last, sizeof(last), "%s", text);
     for (char *c = arg[0]; *c; c++) *c = (char)tolower((unsigned char)*c);
     Out("> %s", text);
@@ -199,20 +196,20 @@ void ConsoleRun(const char *text)
             }
         Out("At %.1f, %.1f (%.1f m up). Day %d, %02d:%02d. %s %.0f m away.", p->pos.x, p->pos.z, p->pos.y, G.day, (int)G.hour,
             (int)(fmodf(G.hour, 1.0f) * 60), VillageName(v), dv);
-    } else if (strcmp(cmd, "tp") == 0 && n >= 3 && Self()) {
+    } else if (strcmp(cmd, "tp") == 0 && n >= 3) {
         Teleport((float)atof(arg[1]), (float)atof(arg[2]));
-    } else if (strcmp(cmd, "tp") == 0 && n == 2 && Self()) {
+    } else if (strcmp(cmd, "tp") == 0 && n == 2) {
         float x = 0, z = 0;
         if (Place(arg[1], &x, &z)) Teleport(x, z);
         else Out("No such place. Places: city ziggurat hunters herders fishers camp1-4 band1 band2 wolf");
-    } else if (strcmp(cmd, "heal") == 0 && Self()) {
+    } else if (strcmp(cmd, "heal") == 0) {
         G.health = HEALTH_MAX;
         G.food = FOOD_MAX;
         Out("Health and food full.");
-    } else if (strcmp(cmd, "god") == 0 && Self()) {
+    } else if (strcmp(cmd, "god") == 0) {
         G.god = !G.god;
         Out(G.god ? "Nothing hurts you now (god again to stop)." : "You can be hurt again.");
-    } else if (strcmp(cmd, "gear") == 0 && Self()) {
+    } else if (strcmp(cmd, "gear") == 0) {
         G.bow = 2;
         G.weapon = 2;
         G.hasMace = true;
@@ -220,10 +217,10 @@ void ConsoleRun(const char *text)
         G.armor = ARMOR_BRONZE;
         G.quiver = G.quiverMax;
         Out("The best bow, sword, the war mace and bronze armor.");
-    } else if (strcmp(cmd, "arrows") == 0 && Self()) {
+    } else if (strcmp(cmd, "arrows") == 0) {
         G.quiver = G.quiverMax;
         Out("Quiver full.");
-    } else if (strcmp(cmd, "give") == 0 && n >= 2 && Self()) {
+    } else if (strcmp(cmd, "give") == 0 && n >= 2) {
         int count = n >= 3 ? atoi(arg[n - 1]) : 1;
         char name[WIDE] = "";
         for (int k = 1; k < (n >= 3 && atoi(arg[n - 1]) > 0 ? n - 1 : n); k++)
@@ -231,7 +228,7 @@ void ConsoleRun(const char *text)
         int item = ItemNamed(name);
         if (item == IT_NONE) Out("No such thing: %s", name);
         else Out("Put %d %s in your baskets.", BagAdd(item, count < 1 ? 1 : count), ItemName(item));
-    } else if (strcmp(cmd, "speed") == 0 && n >= 2 && Self()) {
+    } else if (strcmp(cmd, "speed") == 0 && n >= 2) {
         G.devSpeed = Clamp((float)atof(arg[1]), 0.2f, 10.0f);
         Out("Walking and running %.1f times as fast.", G.devSpeed);
     } else if (strcmp(cmd, "hour") == 0 && n >= 2 && Host()) {

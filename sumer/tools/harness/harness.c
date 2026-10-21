@@ -350,6 +350,7 @@ static void ShotPanel(const char *out, int panel, int lang, int trader)
     G.herbT = 12.0f;
     G.trader = trader;
     if (panel == PANEL_CONSOLE) {
+        G.devTools = true;
         ConsoleRun("help");
         ConsoleRun("where");
         ConsoleRun("give dates 5");

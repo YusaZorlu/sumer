@@ -37,7 +37,10 @@ static void UpdateLook(Player *p, float dt, bool input)
         if (G.firstPerson && wheel < 0) G.firstPerson = false;
         else if (!G.firstPerson && wheel > 0 && p->dist <= 3.0f) G.firstPerson = true;
         else if (!G.firstPerson) p->dist = Clamp(p->dist - wheel * 1.2f, 3.0f, 22.0f);
-        if (KeyPressed(KEY_P)) G.firstPerson = !G.firstPerson;
+        if (KeyPressed(KEY_P)) {
+            G.firstPerson = !G.firstPerson;
+            SaveGamePrefs();
+        }
     }
     p->pitch = Clamp(p->pitch, G.firstPerson ? -1.3f : -0.45f, 1.35f);
 }

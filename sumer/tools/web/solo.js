@@ -6,7 +6,7 @@ const SHOTS = __dirname + '/shots/';
   await sleep(3000);
   await page.screenshot({ path: SHOTS + 'lobby.png' });
   const t0 = Date.now();
-  await page.goto('http://localhost:8123/?auto=solo&name=Ann');
+  await page.goto('http://localhost:8123/?auto=solo&name=Ann&dev=1');
   const s = await waitFor(page, 'solo game', i => i.lobby === 0 && i.role === 0);
   console.log('solo started in', Date.now() - t0, 'ms', JSON.stringify({ x: s.x, z: s.z, day: s.day, hour: s.hour, msg: s.msg }));
   await sleep(4000);

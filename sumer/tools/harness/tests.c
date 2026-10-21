@@ -896,6 +896,12 @@ static void TestBandits(void)
 static void TestConsole(void)
 {
     G.self = G.actor = 0;
+    G.devTools = false;
+    G.hour = 12;
+    ConsoleRun("hour 22");
+    Check(fabsf(G.hour - 12) < 0.01f && strstr(ConsoleLine(ConsoleLines() - 1), "off") != NULL,
+          "console: does nothing while dev tools are off (\"%s\")", ConsoleLine(ConsoleLines() - 1));
+    G.devTools = true;
     ConsoleRun("tp 120 -40");
     Check(XZDist(G.player.pos, (Vector3){ 120, 0, -40 }) < 0.1f, "console: tp 120 -40 moves you there (%.1f, %.1f)", G.player.pos.x, G.player.pos.z);
     ConsoleRun("tp hunters");
@@ -941,6 +947,7 @@ static void TestConsole(void)
     Check(strstr(ConsoleLine(ConsoleLines() - 1), "Unknown") != NULL, "console: an unknown command says so");
     ConsoleRun("speed 1");
     G.devSpeed = 0;
+    G.devTools = false;
     RespawnPeople();
     G.health = HEALTH_MAX;
     PlaceAt(3, 4, 0);

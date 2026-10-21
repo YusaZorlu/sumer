@@ -281,7 +281,7 @@ static void DrawBagPanel(void)
                     G.coopEggs, G.coopWater, G.farmWater), x0, y, 18, C_TEXT);
     Text(hoverText[0] ? hoverText : "Click or 1-6: eat / drink / chew herbs / refill quiver    Right-click or X: drop    Tab: close",
          x0, r.y + r.height - 34, 16, hoverText[0] ? C_GOLD : C_DIM);
-    if (Button((Rectangle){ r.x + r.width - 164, r.y + 14, 144, 30 }, "Dev console", true, 0)) SetPanel(PANEL_CONSOLE);
+    if (G.devTools && Button((Rectangle){ r.x + r.width - 164, r.y + 14, 144, 30 }, "Dev console", true, 0)) SetPanel(PANEL_CONSOLE);
 }
 
 // The dev console: what the commands said, the line being typed, and buttons for the usual ones.
@@ -429,17 +429,7 @@ static void DrawNetPausePanel(void)
         y += 24;
     }
 
-    const char *lang = Language() == LANG_TR ? "Dil / Language: Türkçe" : "Language / Dil: English";
-    if (Button((Rectangle){ bx, r.y + 274, 290, 34 }, lang, true, KEY_L)) {
-        SetLanguage(Language() == LANG_TR ? LANG_EN : LANG_TR);
-        SaveLanguage();
-    }
-    if (Button((Rectangle){ bx + 300, r.y + 274, r.width - 100 - 300, 34 }, TextFormat(L("Music: %s (N)"), L(MusicLevelName())), true, KEY_N))
-        MusicSetLevel((MusicLevel() + 1) % 4);
-    if (Button((Rectangle){ bx, r.y + 316, 290, 34 }, TextFormat(L("Graphics: %s (G)"), GfxLabel()), true, KEY_G))
-        GfxSetChoice(GfxChoice() + 1);
-    if (Button((Rectangle){ bx + 300, r.y + 316, r.width - 100 - 300, 34 }, TextFormat(L("Sounds: %s"), L(SfxLevelName())), true, 0))
-        SfxSetLevel((SfxLevel() + 1) % 4);
+    if (Button((Rectangle){ bx, r.y + 316, r.width - 100, 34 }, "Game settings (S)", true, KEY_S)) SetPanel(PANEL_SETTINGS);
     if (Button((Rectangle){ bx, r.y + 358, r.width - 100, 34 }, "Your look", true, 0)) SetPanel(PANEL_LOOK);
     CenterText(RulesText(), r.x + r.width / 2, r.y + 398, 15, C_GOLD);
     y = r.y + r.height - 96;
@@ -476,17 +466,7 @@ static void DrawPausePanel(void)
             G.requestSlot = k + 1;
     }
 
-    const char *lang = Language() == LANG_TR ? "Dil / Language: Türkçe" : "Language / Dil: English";
-    if (Button((Rectangle){ bx, r.y + 274, 290, 34 }, lang, true, KEY_L)) {
-        SetLanguage(Language() == LANG_TR ? LANG_EN : LANG_TR);
-        SaveLanguage();
-    }
-    if (Button((Rectangle){ bx + 300, r.y + 274, r.width - 100 - 300, 34 }, TextFormat(L("Music: %s (N)"), L(MusicLevelName())), true, KEY_N))
-        MusicSetLevel((MusicLevel() + 1) % 4);
-    if (Button((Rectangle){ bx, r.y + 316, 290, 34 }, TextFormat(L("Graphics: %s (G)"), GfxLabel()), true, KEY_G))
-        GfxSetChoice(GfxChoice() + 1);
-    if (Button((Rectangle){ bx + 300, r.y + 316, r.width - 100 - 300, 34 }, TextFormat(L("Sounds: %s"), L(SfxLevelName())), true, 0))
-        SfxSetLevel((SfxLevel() + 1) % 4);
+    if (Button((Rectangle){ bx, r.y + 316, r.width - 100, 34 }, "Game settings (S)", true, KEY_S)) SetPanel(PANEL_SETTINGS);
     if (Button((Rectangle){ bx, r.y + 358, r.width - 100, 34 }, "Your look", true, 0)) SetPanel(PANEL_LOOK);
 
     float y = r.y + r.height - 110;
@@ -501,6 +481,39 @@ static void DrawPausePanel(void)
         else G.confirmNew = true;
     }
     if (Button((Rectangle){ bx + bw + gap, y + 54, bw, 40 }, "Save & quit (Q)", true, 0)) G.quit = true;
+}
+
+// The settings that only change how the game looks and sounds to this player, not how it plays.
+static void DrawSettingsPanel(void)
+{
+    Rectangle r = PanelRect(560, 440);
+    float bx = r.x + 50, bw = r.width - 100, y = r.y + 96;
+
+    CenterText("Game settings", r.x + r.width / 2, r.y + 20, 30, C_GOLD);
+    CenterText("Kept in this browser. The keys work while you play, too.", r.x + r.width / 2, r.y + 60, 15, C_DIM);
+    const char *lang = Language() == LANG_TR ? "Dil / Language: Türkçe (L)" : "Language / Dil: English (L)";
+    if (Button((Rectangle){ bx, y, bw, 34 }, lang, true, KEY_L)) {
+        SetLanguage(Language() == LANG_TR ? LANG_EN : LANG_TR);
+        SaveLanguage();
+    }
+    y += 42;
+    if (Button((Rectangle){ bx, y, bw, 34 }, TextFormat(L("Graphics: %s (G)"), GfxLabel()), true, KEY_G)) GfxSetChoice(GfxChoice() + 1);
+    y += 42;
+    if (Button((Rectangle){ bx, y, bw, 34 }, TextFormat(L("Music: %s (N)"), L(MusicLevelName())), true, KEY_N))
+        MusicSetLevel((MusicLevel() + 1) % 4);
+    y += 42;
+    if (Button((Rectangle){ bx, y, bw, 34 }, TextFormat(L("Sounds: %s"), L(SfxLevelName())), true, 0)) SfxSetLevel((SfxLevel() + 1) % 4);
+    y += 42;
+    if (Button((Rectangle){ bx, y, bw, 34 }, G.arrowCam ? "Arrow camera: on (Z)" : "Arrow camera: off (Z)", true, KEY_Z)) {
+        G.arrowCam = !G.arrowCam;
+        SaveGamePrefs();
+    }
+    y += 42;
+    if (Button((Rectangle){ bx, y, bw, 34 }, G.firstPerson ? "View: first person (P)" : "View: behind you (P)", true, KEY_P)) {
+        G.firstPerson = !G.firstPerson;
+        SaveGamePrefs();
+    }
+    if (Button((Rectangle){ bx, r.y + r.height - 58, bw, 40 }, "Back", true, KEY_BACKSPACE)) SetPanel(PANEL_PAUSE);
 }
 
 // Choosing how you look: hair, beard, what you wear and your jewellery, shown on your own body
@@ -612,8 +625,8 @@ static void DrawHelpPanel(void)
         { "E", "use, talk, pick up, climb, search" }, { "F", "alternate action" },
         { "R", "refill the quiver" }, { "Z", "arrow camera on/off" }, { "Tab", "baskets and equipment" },
         { "M", "map zoom" }, { "N", "music: off, low, medium, high" }, { "G", "graphics: auto, high, low, classic" }, { "T (hold)", "fast-forward time" }, { "F5", "save" },
-        { "F11", "fullscreen" }, { "Esc", "pause, save slots, language, your look" }, { "H", "this window" },
-        { "` or F2", "dev console" },
+        { "F11", "fullscreen" }, { "Esc", "pause, save slots, game settings, your look" }, { "H", "this window" },
+        { "` or F2", "dev console (when dev tools are on)" },
     };
     static const char *const tips[] = {
         "Parry: a yellow mark means a blow is coming, over a person or a player swinging at you (a player gives you less "
@@ -1043,6 +1056,7 @@ void DrawUI(void)
     case PANEL_COOP:    DrawCoopPanel(); break;
     case PANEL_LOOK:    DrawLookPanel(); break;
     case PANEL_CONSOLE: DrawConsolePanel(); break;
+    case PANEL_SETTINGS: DrawSettingsPanel(); break;
     default: break;
     }
 
