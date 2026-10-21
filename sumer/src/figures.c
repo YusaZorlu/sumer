@@ -127,22 +127,24 @@ void (*ExtraFigures)(void);
 static unsigned chosen = HAIR_SHORT | BEARD_FULL << 2 | DRESS_FLEECE << 4, chosenSet;
 static bool chosenLoaded;
 
-unsigned char PackStyle(int hair, int beard, int dress, int jewel)
+unsigned short PackStyle(int hair, int beard, int dress, int jewel)
 {
-    return (unsigned char)((hair & 3) | (beard & 3) << 2 | (dress & 3) << 4 | (jewel & 3) << 6);
+    return (unsigned short)((hair & 3) | (beard & 3) << 2 | (dress & 3) << 4 | (jewel & 3) << 6);
 }
 
-static Look Styled(Look l, unsigned char style)
+static Look Styled(Look l, unsigned short style)
 {
+    l.woman = (style & STYLE_WOMAN) != 0;
     l.hairStyle = style & 3;
     l.beard = style >> 2 & 3;
     l.dress = style >> 4 & 3;
     l.jewel = style >> 6 & 3;
+    if (l.woman) l.beard = BEARD_NONE;
     return l;
 }
 
 // A player: their color on what they wear, the look they chose, the armor they have on.
-Look PlayerLook(int slot, unsigned char style, int armor)
+Look PlayerLook(int slot, unsigned short style, int armor)
 {
     Color own = PlayerColor(slot);
     Look l = { COL_SKIN, own, Mix(own, COL_LINEN, 0.55f), COL_HAIR, 0, 0, 0, 0, HEAD_NONE, (unsigned char)armor, false };
@@ -273,17 +275,17 @@ static void LoadChosen(void)
     chosenLoaded = true;
     FILE *f = fopen(DataPath(LOOK_FILE), "r");
     if (!f) return;
-    if (fscanf(f, "%u", &v) == 1 && v < 256) {
+    if (fscanf(f, "%u", &v) == 1 && v < 512) {
         chosen = v;
         chosenSet = true;
     }
     fclose(f);
 }
 
-unsigned char ChosenStyle(void)
+unsigned short ChosenStyle(void)
 {
     if (!chosenLoaded) LoadChosen();
-    return (unsigned char)chosen;
+    return (unsigned short)chosen;
 }
 
 bool StyleChosen(void)
@@ -292,7 +294,7 @@ bool StyleChosen(void)
     return chosenSet;
 }
 
-void ChooseStyle(unsigned char style)
+void ChooseStyle(unsigned short style)
 {
     chosen = style;
     chosenSet = chosenLoaded = true;
@@ -723,20 +725,36 @@ static void BowPart(float x, float y, float z, float w, float h, float d, Color 
     DrawShadedBox((Vector3){ x, y, z }, (Vector3){ w, h, d }, c);
 }
 
-// A bow held low in the other hand, ready to draw: an archer between shots, or walking.
-void HoldBow(Vector3 pos, float facing, bool crouch)
+// A bow held ready to draw, in front of the body, tilted, the other hand on its grip and the hand that
+// draws resting on the string: an archer between shots, or walking. With a torch in the other hand the bow
+// hangs from the drawing hand instead. The hands sway a little as the body breathes.
+void HoldBowFor(Vector3 pos, float facing, bool crouch, bool torch)
 {
+    float t = (float)GetTime() + pos.x * 0.37f, sway = 0.012f * sinf(t * 1.7f);
     rlPushMatrix();
     rlTranslatef(pos.x, pos.y + (crouch ? 0.92f : 1.3f), pos.z);
     rlRotatef(facing * RAD2DEG, 0, 1, 0);
-    rlTranslatef(-0.4f, 0, 0.12f);
-    rlRotatef(-12.0f, 1, 0, 0);
-    GripHere(HAND_OTHER, 0, 0, 0);
+    if (torch) {
+        rlTranslatef(0.4f, 0, 0.12f);
+        rlRotatef(-12.0f, 1, 0, 0);
+        GripHere(HAND_WEAPON, 0, 0, 0);
+    } else {
+        rlTranslatef(-0.1f, -0.02f + sway, 0.36f);
+        rlRotatef(-28.0f, 0, 0, 1);
+        rlRotatef(-8.0f, 1, 0, 0);
+        GripHere(HAND_OTHER, 0, 0, 0);
+        GripHere(HAND_WEAPON, 0, 0.1f, -0.09f);
+    }
     BowPart(0, 0, 0, 0.05f, 0.9f, 0.06f, COL_WOOD);
     BowPart(0, 0.5f, 0.05f, 0.04f, 0.16f, 0.05f, COL_WOOD);
     BowPart(0, -0.5f, 0.05f, 0.04f, 0.16f, 0.05f, COL_WOOD);
     BowPart(0, 0, -0.07f, 0.015f, 1.05f, 0.015f, COL_LINEN);
     rlPopMatrix();
+}
+
+void HoldBow(Vector3 pos, float facing, bool crouch)
+{
+    HoldBowFor(pos, facing, crouch, false);
 }
 
 // A bow carried across the back, string out, for someone whose hands are full.

@@ -30,6 +30,7 @@ void GameInit(void)
     G.health = HEALTH_MAX;
     G.followArrow = -1;
     G.arrowCam = true;
+    G.torchOn = true;
     LoadGamePrefs();
     G.day = 1;
     G.dawnDay = 1;

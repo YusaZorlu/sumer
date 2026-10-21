@@ -24,7 +24,7 @@ void SyncSelf(void)
     p->swingT = G.swingT;
     p->flags = (pl->crouching ? PF_CROUCH : 0) | (pl->running ? PF_RUN : 0) | (pl->moving ? PF_MOVE : 0) |
                (pl->grounded ? PF_GROUND : 0) | (pl->aiming ? PF_AIM : 0) | (G.sleeping || G.waitBed ? PF_SLEEP : 0) |
-               (G.climb ? PF_CLIMB : 0) | (G.parryT > 0 ? PF_PARRY : 0) | (G.waitBed ? PF_BED : 0);
+               (G.climb ? PF_CLIMB : 0) | (G.parryT > 0 ? PF_PARRY : 0) | (G.waitBed ? PF_BED : 0) | (TorchBurning() ? PF_TORCH : 0);
     p->equip = G.equip;
     p->weapon = UseWeapon();
     p->bow = UseBow();
@@ -277,10 +277,12 @@ void DrawPeers(void)
             HoldWeapon(p->shown, p->shownFacing, (p->flags & PF_CROUCH) != 0, mace, SwingElapsed(p->swingT, mace), (p->flags & PF_PARRY) && !mace);
             DrawWeaponPart(mace ? WEAPON_MACE : p->weapon);
         }
-        if (G.night >= 0.3f) GripAt(HAND_OTHER, -0.36f, 1.36f, 0.28f);
+        bool torch = (p->flags & PF_TORCH) && !aim;
+        if (torch) GripAt(HAND_OTHER, -0.36f, 1.36f, 0.28f);
+        if (p->equip == EQ_BOW && !aim && !(p->flags & PF_CLIMB)) HoldBowFor(p->shown, p->shownFacing, (p->flags & PF_CROUCH) != 0, torch);
         DrawHuman(p->shown, p->shownFacing, p->stride, hit > 0 ? Flushed(look, hit) : look, (p->flags & PF_CROUCH) != 0, aim, p->draw);
         if (degrees > 0.5f) EndLean();
-        if (G.night >= 0.3f) DrawHandTorch(p->shown, p->shownFacing);
+        if (torch) DrawHandTorch(p->shown, p->shownFacing);
     }
     G.drawTorch = G.drawFog = 0;
 }

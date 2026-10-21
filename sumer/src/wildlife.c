@@ -393,7 +393,8 @@ static Vector3 AwayFromPlayers(const Animal *a)
 static float WolfRange(int s, bool night)
 {
     int f = G.peers[s].flags;
-    return (night ? 38.0f : 22.0f) * ((f & PF_CROUCH) ? 0.6f : (f & PF_RUN) ? 1.3f : 1.0f);
+    // A torch in the dark is seen from far off.
+    return (night ? 38.0f : 22.0f) * ((f & PF_CROUCH) ? 0.6f : (f & PF_RUN) ? 1.3f : 1.0f) * ((f & PF_TORCH) ? 1.6f : 1.0f);
 }
 
 // Hunts a player who is alone outside the walls, or one who shot at the pack; bites, circles, bites again.
@@ -667,6 +668,7 @@ void UpdateWildlife(float dt)
         int s = NearestPlayer(a->pos, &dist);
         Vector3 away = AwayFromPlayers(a);
         float range = d->sense * (s >= 0 ? PlayerStance(s) : 1.0f) * Lerp(1.0f, d->nightSense, G.night);
+        if (s >= 0 && (G.peers[s].flags & PF_TORCH)) range *= Lerp(1.0f, 2.2f, G.night);   // prey sees a torch coming
 
         if (dist < range) a->awareness += d->wariness * (1.0f - dist / range) * 1.8f * dt;
         else a->awareness -= 0.15f * dt;

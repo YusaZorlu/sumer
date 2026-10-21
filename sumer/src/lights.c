@@ -140,6 +140,11 @@ void UpdateLights(void)
         const Villager *v = &G.villagers[i];
         if ((v->kind == NPC_GUARD || v->kind == NPC_TRAVELLER) && !v->vit.dead) AddDynNear(VillagerPos(v), v->vit.override ? v->vit.face : v->face);
     }
+    for (int s = 0; s < MAX_PLAYERS; s++) {
+        const Peer *p = &G.peers[s];
+        if (s == G.self ? TorchBurning() : (p->active && (p->flags & PF_TORCH)))
+            AddDynNear(s == G.self ? G.player.pos : p->shown, s == G.self ? G.player.facing : p->shownFacing);
+    }
     for (int c = 0; c < MAX_CARAVANS; c++) {
         for (int k = 0; k < 3 + CARAVAN_GUARDS; k++) {
             Vector3 p;
@@ -206,10 +211,10 @@ float TileLight(int i, int j)
     return fminf(sum * 0.8f, LIGHT_MAX) * G.night;
 }
 
-static void Flame(Vector3 p, float t, float seed)
+static void Flame(Vector3 p, float t, float seed, float size)
 {
     if (GfxOn()) {
-        GfxFlame(p, 1.1f);
+        GfxFlame(p, size);
         return;
     }
     float k = 0.85f + 0.15f * sinf(t * 13.0f + seed) * sinf(t * 7.0f + seed * 2.0f);
@@ -229,7 +234,7 @@ void DrawTorches(void)
         bool fire = false;
         for (int k = 0; k < fireCount; k++)
             if (fires[k].x == G.torches[i].x && fires[k].z == G.torches[i].z) fire = true;
-        if (!fire && XZDist(G.torches[i], G.cam.position) < 180.0f) Flame(G.torches[i], t, (float)i);
+        if (!fire && XZDist(G.torches[i], G.cam.position) < 180.0f) Flame(G.torches[i], t, (float)i, 1.1f);
     }
 }
 
@@ -237,5 +242,5 @@ void DrawHandTorch(Vector3 pos, float facing)
 {
     Vector3 h = HandPos(pos, facing);
     DrawShadedBox((Vector3){ h.x, h.y - 0.2f, h.z }, (Vector3){ 0.06f, 0.6f, 0.06f }, COL_WOOD);
-    Flame((Vector3){ h.x, h.y + 0.18f, h.z }, (float)GetTime(), pos.x);
+    Flame((Vector3){ h.x, h.y + 0.12f, h.z }, (float)GetTime(), pos.x, 0.7f);
 }

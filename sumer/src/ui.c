@@ -282,6 +282,10 @@ static void DrawBagPanel(void)
     Text(hoverText[0] ? hoverText : "Click or 1-6: eat / drink / chew herbs / refill quiver    Right-click or X: drop    Tab: close",
          x0, r.y + r.height - 34, 16, hoverText[0] ? C_GOLD : C_DIM);
     if (G.devTools && Button((Rectangle){ r.x + r.width - 164, r.y + 14, 144, 30 }, "Dev console", true, 0)) SetPanel(PANEL_CONSOLE);
+    if (Button((Rectangle){ r.x + r.width - 344, r.y + 14, 170, 30 }, G.torchOn ? "Torch: on (B)" : "Torch: off (B)", true, 0)) {
+        G.torchOn = !G.torchOn;
+        Say(G.torchOn ? "You take up your torch (B). It burns after dark." : "You put your torch away (B).");
+    }
 }
 
 // The dev console: what the commands said, the line being typed, and buttons for the usual ones.
@@ -520,11 +524,11 @@ static void DrawSettingsPanel(void)
 // beside the choices (the armor you have on goes over it). Each change is kept at once.
 static void DrawLookPanel(void)
 {
-    static const char *const rows[4] = { "Hair", "Beard", "Clothes", "Jewellery" };
-    static const int counts[4] = { HAIR_KINDS, BEARD_KINDS, DRESS_KINDS, JEWEL_KINDS };
-    unsigned char style = ChosenStyle();
-    int v[4] = { style & 3, style >> 2 & 3, style >> 4 & 3, style >> 6 & 3 };
-    float h = 392, w = 400;
+    static const char *const rows[5] = { "Body", "Hair", "Beard", "Clothes", "Jewellery" };
+    static const int counts[5] = { 2, HAIR_KINDS, BEARD_KINDS, DRESS_KINDS, JEWEL_KINDS };
+    unsigned short style = ChosenStyle();
+    int v[5] = { (style & STYLE_WOMAN) != 0, style & 3, style >> 2 & 3, style >> 4 & 3, style >> 6 & 3 };
+    float h = 450, w = 400;
     Rectangle r = { 20, (UiHeight() - h) / 2, w, h };
     DrawRectangleRec(r, C_PANEL);
     DrawRectangleLinesEx(r, 2, C_EDGE);
@@ -532,9 +536,16 @@ static void DrawLookPanel(void)
     CenterText("Everyone sees you like this, in your own color.", r.x + w / 2, r.y + 52, 14, C_DIM);
 
     bool changed = false;
-    for (int k = 0; k < 4; k++) {
+    for (int k = 0; k < 5; k++) {
         float y = r.y + 82 + 58.0f * (float)k;
-        const char *name = k == 0 ? HairName(v[k]) : k == 1 ? BeardName(v[k]) : k == 2 ? DressName(v[k]) : JewelName(v[k]);
+        // A woman has no beard: that row stays empty for her.
+        if (k == 2 && v[0]) {
+            Text(TextFormat("%d  %s", k + 1, L(rows[k])), r.x + 20, y, 16, C_DIM);
+            DrawRectangle((int)r.x + 66, (int)y + 20, (int)w - 152, 30, C_SLOT);
+            CenterText("None", r.x + w / 2, y + 26, 17, C_DIM);
+            continue;
+        }
+        const char *name = k == 0 ? (v[0] ? "Woman" : "Man") : k == 1 ? HairName(v[k]) : k == 2 ? BeardName(v[k]) : k == 3 ? DressName(v[k]) : JewelName(v[k]);
         Text(TextFormat("%d  %s", k + 1, L(rows[k])), r.x + 20, y, 16, C_DIM);
         if (Button((Rectangle){ r.x + 20, y + 20, 40, 30 }, "<", true, 0)) {
             v[k] = (v[k] + counts[k] - 1) % counts[k];
@@ -547,10 +558,11 @@ static void DrawLookPanel(void)
             changed = true;
         }
     }
-    if (changed) ChooseStyle(PackStyle(v[0], v[1], v[2], v[3]));
-    CenterText("1-4: next choice    Left/Right arrows: turn the view", r.x + w / 2, r.y + h - 76, 14, C_DIM);
+    unsigned short chosen = PackStyle(v[1], v[2], v[3], v[4]) | (v[0] ? STYLE_WOMAN : 0);
+    if (changed) ChooseStyle(chosen);
+    CenterText("1-5: next choice    Left/Right arrows: turn the view", r.x + w / 2, r.y + h - 76, 14, C_DIM);
     if (Button((Rectangle){ r.x + 20, r.y + h - 52, w - 40, 38 }, "Done (Enter)", true, KEY_ENTER)) {
-        ChooseStyle(PackStyle(v[0], v[1], v[2], v[3]));
+        ChooseStyle(chosen);
         SetPanel(PANEL_NONE);
     }
 }
@@ -623,7 +635,7 @@ static void DrawHelpPanel(void)
         { "Left mouse", "draw and release (bow), strike (melee)" },
         { "Right mouse, Q", "parry with the melee weapon" }, { "V", "strike" },
         { "E", "use, talk, pick up, climb, search" }, { "F", "alternate action" },
-        { "R", "refill the quiver" }, { "Z", "arrow camera on/off" }, { "Tab", "baskets and equipment" },
+        { "R", "refill the quiver" }, { "B", "torch on/off (after dark)" }, { "Z", "arrow camera on/off" }, { "Tab", "baskets and equipment" },
         { "M", "map zoom" }, { "N", "music: off, low, medium, high" }, { "G", "graphics: auto, high, low, classic" }, { "T (hold)", "fast-forward time" }, { "F5", "save" },
         { "F11", "fullscreen" }, { "Esc", "pause, save slots, game settings, your look" }, { "H", "this window" },
         { "` or F2", "dev console (when dev tools are on)" },

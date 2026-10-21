@@ -295,7 +295,7 @@ typedef enum { NET_SOLO, NET_HOST, NET_CLIENT } NetRole;
 #define CONTACT_TIME PVP_WINDUP     // a swing's weapon meets its target this long after it starts, whatever it hits
 #define HITSTOP_TIME 0.07f          // a landed blow holds the swing still this long (the mace a little longer)
 #define FLINCH_TIME  0.45f
-enum { PF_CROUCH = 1, PF_RUN = 2, PF_MOVE = 4, PF_GROUND = 8, PF_AIM = 16, PF_SLEEP = 32, PF_CLIMB = 64, PF_PARRY = 128, PF_BED = 256 };
+enum { PF_CROUCH = 1, PF_RUN = 2, PF_MOVE = 4, PF_GROUND = 8, PF_AIM = 16, PF_SLEEP = 32, PF_CLIMB = 64, PF_PARRY = 128, PF_BED = 256, PF_TORCH = 512 };
 #define NAME_LEN 16
 #define SAFE_RADIUS 22.0f
 
@@ -307,7 +307,7 @@ typedef struct {
     Vector3 pos, shown;
     float facing, shownFacing, stride, draw, health, swingT, wanted, aggro, heard;
     int flags, equip, weapon, bow, armor, net;
-    unsigned char style;   // how they chose to look (PackStyle)
+    unsigned short style;   // how they chose to look (PackStyle, and STYLE_WOMAN)
     int kills, deaths;   // players brought down by this one, and times brought down by a player
     // The warning mark over this player's head while they swing at someone, then how it came out
     // (MARK_*, the host decides); and how long since this machine saw them hurt (a flinch).
@@ -418,6 +418,10 @@ typedef struct {
     float followT, camBlend;
     Vector3 followPos, followDir;
     bool arrowCam;
+    // The player's torch: wanted (B), in hand and burning, and how far through the second it takes to take
+    // it up or put it away (it waits for that after a shot or a change of weapon too).
+    bool torchOn, torchHeld;
+    float torchT;
     float food, hungerNag;
     float health, hurtT, safeT;
     // How much of each thing in the baskets the player had when the day began (or took out of
@@ -488,13 +492,15 @@ extern void (*ExtraFigures)(void);
 void GripHere(int hand, float x, float y, float z);
 void GripAt(int hand, float x, float y, float z);
 void HoldBow(Vector3 pos, float facing, bool crouch);
+void HoldBowFor(Vector3 pos, float facing, bool crouch, bool torch);
 void SlungBow(Vector3 pos, float facing);
-Look PlayerLook(int slot, unsigned char style, int armor);
+Look PlayerLook(int slot, unsigned short style, int armor);
 Look PersonLook(int role, unsigned seed, Color robe);
-unsigned char PackStyle(int hair, int beard, int dress, int jewel);
-unsigned char ChosenStyle(void);
+#define STYLE_WOMAN 256   // a woman's body (slighter, no beard), above the four two-bit choices
+unsigned short PackStyle(int hair, int beard, int dress, int jewel);
+unsigned short ChosenStyle(void);
 bool StyleChosen(void);
-void ChooseStyle(unsigned char style);
+void ChooseStyle(unsigned short style);
 const char *HairName(int k);
 const char *BeardName(int k);
 const char *DressName(int k);
@@ -1015,6 +1021,7 @@ const char *GfxChoiceName(int choice);
 const char *GfxLabel(void);
 bool GfxOn(void);
 void GfxFlame(Vector3 p, float size);
+bool TorchBurning(void);
 bool DrawingAll(void);             // drawing the whole map once for the shaders' meshes: no culling
 void GfxWorldChanged(void);
 bool GfxDrawWorld(void);           // the 3D world through the shaders; false when the classic way must draw it

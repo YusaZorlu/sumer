@@ -977,6 +977,48 @@ static void TestTempleLife(void)
     G.villagerCount = before;
 }
 
+// The torch: it takes a second to take up, goes down while weapons change, burns only after dark, others see
+// it and it lights the way; a woman's body has no beard.
+static void TestTorch(void)
+{
+    G.self = G.actor = 0;
+    PlaceAt(3, 4, 0);
+    SetEquip(EQ_NONE);
+    G.night = 1.0f;
+    G.torchOn = true;
+    G.torchHeld = false;
+    G.torchT = 0;
+    UpdatePlayer(0.5f, false);
+    bool early = G.torchHeld;
+    UpdatePlayer(0.6f, false);
+    Check(!early && G.torchHeld, "torch: in hand after a second, not before (%d then %d)", early, G.torchHeld);
+    SyncSelf();
+    Check((G.peers[0].flags & PF_TORCH) != 0, "torch: other players are told it burns");
+    float daylight = G.daylight;
+    G.daylight = 0;
+    UpdateLights();
+    G.daylight = daylight;
+    Check(G.dynCount >= 1, "torch: it lights the way (%d lights)", G.dynCount);
+    SetEquip(EQ_MELEE);
+    bool down = !G.torchHeld;
+    UpdatePlayer(1.05f, false);
+    Check(down && G.torchHeld, "torch: down while the sword is drawn, back a second later");
+    G.torchOn = false;
+    UpdatePlayer(0.5f, false);
+    bool still = G.torchHeld;
+    UpdatePlayer(0.6f, false);
+    Check(still && !G.torchHeld, "torch: put away takes a second too");
+    G.night = 0;
+    G.torchOn = true;
+    G.torchHeld = true;
+    Check(!TorchBurning(), "torch: by day it does not burn");
+    Look w = PlayerLook(1, PackStyle(HAIR_BUN, BEARD_LONG, DRESS_ROBE, JEWEL_GOLD) | STYLE_WOMAN, 0);
+    Look m = PlayerLook(1, PackStyle(HAIR_BUN, BEARD_LONG, DRESS_ROBE, JEWEL_GOLD), 0);
+    Check(w.woman && w.beard == BEARD_NONE && !m.woman && m.beard == BEARD_LONG, "body: a woman's body (no beard) and a man's from the same choices");
+    SetEquip(EQ_BOW);
+    G.torchHeld = false;
+}
+
 // The law: the city's guards keep the peace inside the canals only; a village stands together for two
 // minutes; caravan and city guards do not chase far from their posts.
 static void TestLaw(void)
@@ -1922,6 +1964,7 @@ static void RunTests(void)
     TestBandits();
     TestConsole();
     TestTempleLife();
+    TestTorch();
     TestDeathLosses();
     TestCanals();
     TestArchers();
