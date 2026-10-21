@@ -70,7 +70,7 @@ EMSCRIPTEN_KEEPALIVE void TestCommand(int cmd, float a, float b)
     Player *p = &G.player;
     switch (cmd) {
     case 1:
-        p->pos = (Vector3){ a, GroundHeight(a, b, 50.0f), b };
+        p->pos = (Vector3){ a, LandingHeight(a, b), b };
         p->vy = 0;
         break;
     case 2: Interact(false); break;

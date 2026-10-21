@@ -123,7 +123,8 @@ touch controls yet: play with a keyboard (a USB-C or Bluetooth one works; WASD t
 | Z | Arrow camera on/off |
 | E / F | Use, talk, pick up, climb a ladder, search a body, fill or pour a bucket, open the coop / alternate action (plant a date) |
 | R | Refill quiver from carried arrow baskets |
-| Tab | Baskets (inventory), equipment and armor |
+| Tab | Baskets (inventory), equipment and armor; its "Dev console" button opens the dev console |
+| ` or F2 | Dev console (see below) |
 | T (hold) | Fast-forward time (playing alone) |
 | F5 | Save |
 | F11 or Alt+Enter | Borderless fullscreen on/off |
@@ -136,6 +137,25 @@ touch controls yet: play with a keyboard (a USB-C or Bluetooth one works; WASD t
 Panels also take number keys (barter offer N, with 0, - and = for offers 10-12; use basket N; coop actions
 1-4), so nothing depends on a click landing. The game pauses when the window loses focus (a screenshot tool, switching apps);
 Resume or Esc takes the mouse back.
+
+## Dev console
+
+For testing: Tab, then the "Dev console" button, or the ` key (F2 on keyboards without it). Type a command
+and press Enter; the up arrow brings back the last one, Tab or Esc closes. Buttons below do the usual ones.
+
+| Command | Does |
+|---|---|
+| `where` | Where you are, the day and hour, the nearest village |
+| `tp <x> <z>` / `tp <place>` | Moves you; places: city, ziggurat, hunters, herders, fishers, camp1-4, band1, band2, wolf |
+| `heal`, `god`, `gear`, `arrows` | Full health and food; nothing hurts you (again to stop); the best bow, sword, war mace and bronze armor; a full quiver |
+| `give <item> [n]` | Puts things in your baskets, by the start of their English name (`give bread 5`) |
+| `speed <x>` | Walking and running that many times as fast |
+| `hour <h>`, `rain on/off` | Sets the time of day; starts or stops rain (host) |
+| `spawn <beast> [n]` | Brings that many calm gazelles, onagers, boars, geese, wolves or snakes in front of you (host) |
+| `kill [m]` | Brings down every foe and beast within m metres, 20 if not given (host) |
+| `calm` | Beasts and fighters let you be, and you are no longer wanted (host) |
+
+In a joined game the world commands are the host's; in a PvP game a guest can only use `where` and `help`.
 
 ## Language
 
@@ -241,6 +261,8 @@ fields outside. Gates: south (main road), east, west, north, plus the harbor wat
   where the packs start is different every game. A den sits by the ford at the far north end
 - A few snakes lie hidden in long grass outside the walls (river meadows on both banks)
 - Two raider camps on the city side of the river: one beside the southern trade road, one to the north
+- Two bands of bandits roam the eastern hills, one south-east and one north-east, far from the city and
+  the villages
 - Water is waded: a canal or the harbor slows you by 60%, the big river's current by 85% (your head stays
   above the water). Bridges, piers and the harbor quays are walked at full speed. There is no ferry any more; the old landing stages stand on both banks west of the
   city. A shallow ford at the far north end can be walked at full speed, through wolf country
@@ -250,8 +272,13 @@ fields outside. Gates: south (main road), east, west, north, plus the harbor wat
 - Ladders lead up to the wall walk at seven points around the city
 - Guards: two at the temple gate and two inside each of the city's five gates (south, north, east, west and
   on the quays of the harbor's water gate), more on patrol in the east and west quarters and about the
-  temple; clerics in the temple courtyard and on the ziggurat. A PvP game only takes away the three on the
-  ziggurat's first terrace; every gate keeps its guards
+  temple; clerics in the temple courtyard and on the ziggurat. A PvP game only takes away the three on duty
+  on the ziggurat's first terrace; every gate keeps its guards, and the two off duty in the ziggurat stay
+- Inside the ziggurat: the market hall with its three traders on the ground floor, the granary (heaps of
+  barley, a storekeeper and a porter) and the treasury (a balance for weighing metal, the treasurer) in
+  its wings. On the middle terrace the guards' room (cots, a rack of spears and shields, two guards at
+  supper), the tablet house (shelves of clay tablets, scribes at work) and the sanctuary, where
+  worshippers kneel before the god. The priest's shrine is on top
 - Torches line the streets, gates and temple at night; guards and caravans carry torches
 - At night distant things fade into the dark; torchlit places stay visible
 - Townsfolk walk all over the city: along the streets from crossing to crossing, keeping to the right,
@@ -406,6 +433,12 @@ Archers stop to draw: a second or so before each shot, which is your moment to s
 Each camp's chest holds bronze, tin, ore, arrows and the like; it is restocked each dawn, and dead
 raiders return the next day while you are away from the camp.
 
+Two bands of bandits roam the eastern hills, three each: two swordsmen with bronze sickle-swords and an
+archer with a composite bow, in dark cloth and leather. They are tougher than raiders and weaker than
+barbarians (390 health, some armor, blows of 28), keep well away from the city, the villages, the camps and
+the edge of the world, wander from spot to spot and now and then sit down a while, never on a road. They
+set on anyone who comes near. The fallen come back the next day where their band is.
+
 Barbarians hold two war camps across the river, north-west and south-west, behind palisades with a
 lookout, a war banner and skulls on poles. They are twice as strong as the raiders (520 health, blows
 of 38) and wear horned helmets and carry bronze axes; each camp also has a bowman with a war bow who
@@ -475,8 +508,10 @@ Wolves hunt you only when you are alone outside the walls: no worker, villager, 
 within about 20 m. By day the job sites and the villages are safe; at night, or out in the empty
 steppe, a pack will chase you. Packs are four strong on the city side (five packs, two of them roaming the open east plain) and
 five or six across the river (three packs), and a
-wolf takes 60 damage to kill. Each bite hurts, and the pack circles between bites. Hitting a wolf turns
-its pack on you, even near people; a badly wounded wolf runs off. Run back to the city, crouch to be
+wolf takes 78 damage to kill. Each bite hurts, and the pack circles between bites. Hitting a wolf turns
+its pack on you, even near people. A badly wounded wolf fights on while its pack is beside it and limps
+away only once no other wolf of its pack is on its feet nearby. Wolves (and all animals) go round trees,
+rocks and water in their way and keep a body apart from one another. Run back to the city, crouch to be
 noticed later, or wear a wolf-pelt cloak. Gazelles, onagers and geese notice you less at night; boars
 and wolves don't.
 

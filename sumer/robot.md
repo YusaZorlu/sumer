@@ -37,7 +37,7 @@ All from the repository root. `tools/out/` is for build products and is git-igno
 |---|---|
 | Build the browser version into `web/` (needs Emscripten on PATH: `source emsdk_env.sh`) | `sh build-web.sh` |
 | Play the browser version, alone or together | `python3 server.py` then open the address it prints |
-| Logic tests (native, about 150 checks, needs `xvfb` or a display) | `sh tools/harness/run.sh` |
+| Logic tests (native, about 190 checks, needs `xvfb` or a display) | `sh tools/harness/run.sh` |
 | Browser test build (with `tools/web/testhooks.c`) | `bash tools/web/build.sh` |
 | Serve the test build on :8123 | `sh tools/web/serve.sh &` |
 | Browser suites (host + guests in headless Chromium; needs Playwright, `PLAYWRIGHT=<module path>`) | `sh tools/web/run-suites.sh` |
@@ -54,6 +54,10 @@ All from the repository root. `tools/out/` is for build products and is git-igno
 | A line-up of people: players' choices with armor (0), townsfolk and other roles (1), poses (2), heads up close (3) | `tools/out/harness lineup out.png <0-3> [hour]` |
 | The "Your look" window on the player | `tools/out/harness ui out.png 7 <lang 0/1>` |
 | Every guard's post, alone and after PvP takes the ziggurat's away | `tools/out/harness guards` |
+| Things standing on the ground that hang above it as drawn (worst first, and how many) | `tools/out/harness floaters [min gap]` (0 or 1 expected) |
+| A screenshot standing on an upper floor (the ziggurat's middle terrace: 8) | `SHOT_FLOOR=8 tools/out/harness shotin out.png x z yaw pitch dist hour` |
+| The dev console, as panel 8 (runs help, where and give first) | `tools/out/harness ui out.png 8 <lang 0/1>` |
+| Run a dev console command from a browser test | `consoleCmd(page, "tp band1")` in `tools/web/lib.js` (hook `TestConsole` in `testhooks.c`) |
 | Free patches in the city (for placing a house) | `tools/out/harness spots x0 z0 x1 z1 step half [skip]`; also test a spot against what is built before the city houses (see the sixth house's history in `git log`) |
 
 The harness has more modes (`shot`, `citymap`, `textmap`, `wetways`, `canals`, `pvp`, `archers`, `aim`,
@@ -117,6 +121,20 @@ in `src/game.h`) holds the whole world.
   river bed (`MoveVertical`). Only below `WATER_LEVEL + 0.2` does water slow you, so bridges, piers and the (solid) harbor quays
   are walked at full speed. Rain skips drops under any box whose bottom is 1.8 m over the ground (roofs, ceilings: `DrawRain`).
   The camera stops at thin boxes overhead too (house roofs), so inside a roofed room it stays under the roof. The ferry was removed; `STN_FERRY_E/W` remain only as the landing stages' positions.
+- **Dev console** (`src/console.c`, panel `PANEL_CONSOLE` drawn in `ui.c`): `ConsoleRun(text)` parses and runs a command
+  and writes its answer to a 14-line scrollback. World commands check `Host()`, self commands `Self()` (a guest in a PvP
+  game may only look). Add a command as one more `else if` in `ConsoleRun`, a line in `Help()`, a row in the README's
+  table, Turkish for its answers, and a check in `TestConsole()`.
+- **Ground as drawn** (`SettleOnGround` in `world.c`, after `BuildTerrain`): things are placed on `TerrainHeight`, but the
+  ground is drawn as 6 m triangles (`GroundSurface`/`MeshHeight`), which sag below it over hills. The pass extends
+  whatever stands on the land down to the drawn ground (boxes and cylinders grow down, blobs and cones sink). Anything
+  added after `BuildTerrain` must use `GroundSurface` itself.
+- **Bandits** (`raiders.c`, `BANDS`, `BAND_FIRST`): two roaming bands of three after the camps in `G.raiders` (camp index
+  `CAMPS + b`, `RaiderBandit(i)`), role `ROLE_BANDIT`, cause `BY_BANDIT`. `Roam()` leads the first living member to
+  random stops (`BandSpot`: far from city, villages, camps and edge, off roads), sits the band down at some of them, and
+  keeps followers on the leader's trail. Only the host moves them; guests see the snapshots.
+- **Wolves** (`wildlife.c`): `Step()` tries side steps round anything solid and eases ground animals apart; a wolf flees
+  a fight only when `Beaten()` (badly hurt and `Lone()`: no pack mate on its feet within 40 m).
 - **NPC walking** (`StepToward`, `AroundWater`, `JumpWater` in `combat.c`/`city.c`): people jump canals (they do not wade),
   or go round wide water by the bridges; townsfolk follow the street graph in `village.c`.
 - **Death** (`Collapse` in `game.c`): the player loses what they gathered that day (`G.safe[]` is the baseline kept
@@ -280,8 +298,10 @@ no sound files. Read the comment at the top of the file and the notation comment
   the phone controls after the graphics work is done (the UI already fits phones and takes taps on its buttons).
 - Graphics, later steps (the owner wants CC0-only art, a 25-50 MB download at most, and to weigh each effect's cost):
   buildings and props, then effects (wind on cloth and palms, light shafts, ambient occlusion, water reflections,
-  sharper far shadows, grass and reeds). Animals are still boxes and blobs. Free model sites (poly.pizza, kenney.nl,
-  quaternius.com, opengameart.org) were blocked from the cloud sandbox, so people were made in code instead.
+  sharper far shadows, grass and reeds). Animals are still boxes and blobs. Free model and texture sites (poly.pizza,
+  kenney.nl, quaternius.com, opengameart.org, polyhaven.com, ambientcg.com) were still denied by the cloud sandbox's
+  network policy in October 2026 (403 from the proxy), so nothing has been downloaded; the owner must allow those
+  hosts in the environment's network settings first. The game has no model or texture loader yet either.
 - A body choice (man or woman) for players: the townsfolk have it (`Look.woman`), the "Your look" window does not;
   the owner asked for few options.
 - More sound effects: footsteps, the bow, animals, ambience (blows, parries and arrows have theirs).

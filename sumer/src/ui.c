@@ -613,6 +613,7 @@ static void DrawHelpPanel(void)
         { "R", "refill the quiver" }, { "Z", "arrow camera on/off" }, { "Tab", "baskets and equipment" },
         { "M", "map zoom" }, { "N", "music: off, low, medium, high" }, { "G", "graphics: auto, high, low, classic" }, { "T (hold)", "fast-forward time" }, { "F5", "save" },
         { "F11", "fullscreen" }, { "Esc", "pause, save slots, language, your look" }, { "H", "this window" },
+        { "` or F2", "dev console" },
     };
     static const char *const tips[] = {
         "Parry: a yellow mark means a blow is coming, over a person or a player swinging at you (a player gives you less "
@@ -628,9 +629,10 @@ static void DrawHelpPanel(void)
         "you. Tin comes with the caravans. Picking dates is free; all other gathering costs food, mining the most, then "
         "woodcutting. Health returns while food is at 20% or more. Brought down, you lose what you gathered that day unless "
         "it is in your storage.",
-        "Ziggurat: market in the base. The priest at the top blesses you for a day: +20% running and attack speed. "
-        "Guards fight raiders who follow you. Raiders camp south and north of the city; barbarians twice as strong camp "
-        "across the river. Wade the canals and the river (the canals slow you by 60%, the river's current by 85%). The far north ford is wolf country.",
+        "Ziggurat: market in the base, the granary and treasury in its wings; the guards' room, the tablet house and the "
+        "sanctuary on the middle terrace. The priest at the top blesses you for a day: +20% running and attack speed. "
+        "Guards fight raiders who follow you. Raiders camp south and north of the city, bandits roam the eastern hills; "
+        "barbarians twice as strong camp across the river. Wade the canals and the river (the canals slow you by 60%, the river's current by 85%). The far north ford is wolf country.",
         "Roads on the map lead east to the hunters' village and south-west to the herders' village; the fishers live across "
         "the river from the city and sell a fine net that doubles your catch. Each village has a guard with a bow. Travellers walk the "
         "roads, and wolves leave you alone in company. Only the shepherd sells sheepskin and sheep.",

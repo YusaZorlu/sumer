@@ -717,6 +717,7 @@ bool FighterIsFoe(int i);
 int FighterCount(void);
 bool FighterInfo(int i, Vector3 *pos, float *hp, float *maxHp, const char **name, bool *hostile, bool *dead);
 void ConsoleRun(const char *text);
+float LandingHeight(float x, float z);
 int ConsoleLines(void);
 const char *ConsoleLine(int i);
 const char *ConsoleLast(void);

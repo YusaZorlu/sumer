@@ -57,10 +57,17 @@ static bool Self(void)
     return false;
 }
 
+// Onto the lowest floor there (inside a house, not on its roof), or on top if that is inside something solid.
+float LandingHeight(float x, float z)
+{
+    float y = GroundHeight(x, z, TerrainHeight(x, z) + 1.0f);
+    return PointInSolid((Vector3){ x, y + 1.0f, z }) ? GroundHeight(x, z, 50.0f) : y;
+}
+
 static void Teleport(float x, float z)
 {
     Player *p = &G.player;
-    p->pos = (Vector3){ x, GroundHeight(x, z, 50.0f), z };
+    p->pos = (Vector3){ x, LandingHeight(x, z), z };
     p->vy = 0;
     SyncSelf();
     Out("Moved to %.0f, %.0f.", x, z);
