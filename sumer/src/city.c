@@ -319,6 +319,27 @@ void BuildCityHouses(void)
                 float wz = (wside == 2) ? -d / 2 : (wside == 3) ? d / 2 : 0.0f;
                 AddBox(cx + wx, h - 1.3f, cz + wz, wx != 0 ? 0.1f : 0.55f, 0.4f, wz != 0 ? 0.1f : 0.55f, COL_DOORWAY, false);
             }
+            // Life at the door and on the roof: a cloth awning, jars and baskets, a reed shade up top.
+            float ox = (float)((dx > 0) - (dx < 0)), oz = (float)((dz > 0) - (dz < 0));   // out of the door
+            if (Hash2(ix + 61, iz + 7) < 0.35f) {
+                static const Color cloths[4] = { { 222, 210, 180, 255 }, { 160, 70, 52, 255 }, { 70, 92, 130, 255 }, { 190, 150, 80, 255 } };
+                Color cl = cloths[(int)(Hash2(ix + 2, iz + 66) * 3.99f)];
+                AddBox(cx + dx + ox * 0.6f, 2.35f, cz + dz + oz * 0.6f, ox != 0 ? 1.2f : 2.0f, 0.05f, oz != 0 ? 1.2f : 2.0f, cl, false);
+                for (int k = -1; k <= 1; k += 2)
+                    AddBox(cx + dx + ox * 1.15f + oz * 0.95f * (float)k, 0, cz + dz + oz * 1.15f + ox * 0.95f * (float)k, 0.08f, 2.4f, 0.08f, COL_WOOD, false);
+            }
+            int jars = (int)(Hash2(ix + 33, iz + 12) * 3.99f) - 1;
+            for (int k = 0; k < jars; k++) {
+                float along = (k == 0 ? -1.0f : 1.0f) * (0.95f + 0.35f * (float)(k / 2)), out = 0.35f;
+                float px = cx + dx + ox * out + oz * along, pz = cz + dz + oz * out + ox * along;
+                if (Hash2(ix + k, iz + 44) < 0.6f) AddShape(px, -0.05f, pz, 0.48f, 0.62f, 0.48f, COL_POT, false, SHAPE_BLOB);
+                else AddShape(px, 0, pz, 0.55f, 0.42f, 0.55f, COL_STRAW, false, SHAPE_CYL);
+            }
+            if (!court && Hash2(ix + 71, iz + 19) < 0.3f) {
+                float sx = cx - (Hash2(ix, iz + 61) < 0.5f ? -1.0f : 1.0f) * w / 4, sz = cz + d / 4;
+                for (int k = 0; k < 4; k++) AddBox(sx + ((k & 1) ? 0.9f : -0.9f), h, sz + ((k & 2) ? 0.9f : -0.9f), 0.08f, 1.6f, 0.08f, COL_WOOD, false);
+                AddBox(sx, h + 1.6f, sz, 2.1f, 0.08f, 2.1f, COL_STRAW, false);
+            }
             if (Hash2(ix + 5, iz + 91) < 0.16f) {
                 float nx = (dx > 0) - (dx < 0), nz = (dz > 0) - (dz < 0);
                 AddTorch(cx + dx + nx * 0.2f + nz * 0.9f, 2.3f, cz + dz + nz * 0.2f + nx * 0.9f, false);

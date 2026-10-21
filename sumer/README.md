@@ -208,6 +208,7 @@ fields outside. Gates: south (main road), east, west, north, plus the harbor wat
   way stays open until dawn. Behind it: the priests' halls inside the second stage, then the shrine of
   Nanna on top, where the priest blesses you once a day: full health and, for 24 hours, running and
   attacking 20% faster
+- City houses: some have a cloth awning over the door, jars and baskets by it, or a reed sun shade on the roof
 - Craft quarter (west, by the harbor): potters, kiln, smelter, smith
 - Caravans walk the southern trade road and set up stalls in the temple courtyard for a while; each
   travels with two spear-armed guards
