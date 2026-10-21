@@ -257,6 +257,7 @@ void UpdatePlayer(float dt, bool input)
     float speed = hungry ? HUNGRY_SPEED : WALK_SPEED;
     if (p->crouching) speed = CROUCH_SPEED;
     else if (p->running) speed = RUN_SPEED * Boost();
+    if (G.devSpeed > 0) speed *= G.devSpeed;
 
     // Water is waded through, slowly.
     if (p->pos.y < WATER_LEVEL + 0.2f) speed *= WadeSpeed(p->pos.x, p->pos.z);   // on a bridge or quay you walk

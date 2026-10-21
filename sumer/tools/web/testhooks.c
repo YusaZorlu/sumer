@@ -107,3 +107,10 @@ EMSCRIPTEN_KEEPALIVE void TestCommand(int cmd, float a, float b)
     default: break;
     }
 }
+
+// Runs a dev console command (see src/console.c) and returns what it said last.
+EMSCRIPTEN_KEEPALIVE const char *TestConsole(const char *cmd)
+{
+    ConsoleRun(cmd);
+    return ConsoleLines() ? ConsoleLine(ConsoleLines() - 1) : "";
+}

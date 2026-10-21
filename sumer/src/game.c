@@ -307,7 +307,7 @@ void HurtPlayer(float dmg, int by)
 
 void HurtPlayerFrom(float dmg, int by, const Vector3 *src)
 {
-    if (G.sleeping) return;
+    if (G.sleeping || G.god) return;
     // This happens to this machine's player, whoever struck: what it says is for them.
     int actor = G.actor;
     G.actor = G.self;
@@ -443,7 +443,10 @@ static void HandleMenus(bool paused)
         SetPanel(G.panel == PANEL_NONE ? PANEL_PAUSE : PANEL_NONE);
     } else if (KeyPressed(KEY_H) && (G.panel == PANEL_NONE || G.panel == PANEL_PAUSE || G.panel == PANEL_HELP)) {
         SetPanel(G.panel == PANEL_HELP ? PANEL_NONE : PANEL_HELP);
-    } else if (KeyPressed(KEY_TAB) || KeyPressed(KEY_I)) {
+    } else if (KeyPressed(KEY_GRAVE) || KeyPressed(KEY_F2)) {
+        if (G.panel == PANEL_NONE || G.panel == PANEL_BAG) SetPanel(PANEL_CONSOLE);
+        else if (G.panel == PANEL_CONSOLE) SetPanel(PANEL_NONE);
+    } else if (KeyPressed(KEY_TAB) || (KeyPressed(KEY_I) && G.panel != PANEL_CONSOLE)) {
         if (G.panel == PANEL_NONE) SetPanel(PANEL_BAG);
         else if (G.panel != PANEL_PAUSE && G.panel != PANEL_HELP) SetPanel(PANEL_NONE);
     }

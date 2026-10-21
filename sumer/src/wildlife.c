@@ -719,6 +719,20 @@ static void Kill(Animal *a)
     a->awareness = 0;
 }
 
+// Dev console: every beast on its feet within r of p falls dead; how many.
+int KillAnimalsNear(Vector3 p, float r)
+{
+    int n = 0;
+    for (int i = 0; i < G.animalCount; i++) {
+        Animal *a = &G.animals[i];
+        if (!a->active || a->state == ST_DEAD || XZDist(a->pos, p) > r) continue;
+        a->hp = 0;
+        Kill(a);
+        n++;
+    }
+    return n;
+}
+
 // An arrow that hisses past or lands close by: wolves come for the archer, everything else runs.
 static void React(Animal *a)
 {

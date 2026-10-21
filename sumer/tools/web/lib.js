@@ -28,6 +28,11 @@ async function cmd(page, c, a = 0, b = 0) {
   return page.evaluate(([c, a, b]) => Module.ccall('TestCommand', null, ['number', 'number', 'number'], [c, a, b]), [c, a, b]);
 }
 
+// A dev console command, as typed; returns what the console said last.
+async function consoleCmd(page, text) {
+  return page.evaluate((t) => Module.ccall('TestConsole', 'string', ['string'], [t]), text);
+}
+
 async function waitFor(page, what, pred, timeout = 90000) {
   const t0 = Date.now();
   let last = null;
@@ -39,4 +44,4 @@ async function waitFor(page, what, pred, timeout = 90000) {
   throw new Error(`${page.name}: timed out waiting for ${what}; last state ${JSON.stringify(last && { lobby: last.lobby, role: last.role, players: last.players, msg: last.msg, x: last.x, z: last.z })}`);
 }
 
-module.exports = { chromium, launch, open, info, cmd, waitFor, sleep };
+module.exports = { chromium, launch, open, info, cmd, consoleCmd, waitFor, sleep };
