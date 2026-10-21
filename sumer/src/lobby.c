@@ -193,7 +193,7 @@ void LobbyFrame(void)
     DrawRectangleRec(panel, (Color){ 30, 24, 20, 238 });
     DrawRectangleLinesEx(panel, 2, (Color){ 150, 120, 80, 255 });
     Centered("SUMER", cx, panel.y + 18, 50, gold);
-    Centered("Ur, c. 2100 BC", cx, panel.y + 74, 20, text);
+    Centered(Royale() ? "Battle royale: up to twenty players" : "Ur, c. 2100 BC", cx, panel.y + 74, 20, Royale() ? gold : text);
 
     float x = panel.x + 40, y = panel.y + 120;
     Label("Your name", x, y + 8, 20, text);
@@ -209,34 +209,47 @@ void LobbyFrame(void)
     Label(TextFormat(L("Room: %s   (add ?room=a-name to the address for a game of your own)"), room), x, y, 15, dim);
     y += 40;
 
-    bool menu = stage == LOBBY_MENU, named = name[0] != '\0';
-    if (Choice((Rectangle){ x, y, 250, 46 }, "Play alone", menu)) PlayAlone();
-    Label("Kept in this browser, in three save slots.", x + 270, y + 14, 15, dim);
-    y += 62;
-    if (Choice((Rectangle){ x, y, 250, 46 }, "Host a game", menu && named)) Connect(true);
-    int day;
-    float hour;
-    Label("Up to five friends join from this same address.", x + 270, y + 4, 15, dim);
-    if (NetSaveSummary(&day, &hour)) {
-        // The hosted world carries on until its host starts a new one (two clicks).
-        Label(TextFormat(L("Your hosted world: day %d."), day), x + 270, y + 26, 15, dim);
-        if (Choice((Rectangle){ panel.x + panel.width - 160, y + 22, 120, 24 }, confirmNew ? "Erase it?" : "New world", menu)) {
-            if (confirmNew) {
-                DeleteNetGame();
-                snprintf(note, sizeof(note), "%s", L("The hosted world is erased. Host a game to begin a new one."));
-            }
-            confirmNew = !confirmNew;
-        }
+    bool menu = stage == LOBBY_MENU, named = name[0] != '\0', royale = Royale();
+    if (!royale) {
+        if (Choice((Rectangle){ x, y, 250, 46 }, "Play alone", menu)) PlayAlone();
+        Label("Kept in this browser, in three save slots.", x + 270, y + 14, 15, dim);
+        y += 62;
     }
-    y += 62;
-    // The rules of the game this player hosts; whoever joins plays by them.
-    Label("Rules when you host:", x, y + 6, 15, dim);
-    if (Choice((Rectangle){ x + 200, y, 190, 28 }, pvp ? "PvP: on" : "PvP: off", menu)) pvp = !pvp;
-    if (Choice((Rectangle){ x + 400, y, 240, 28 }, pvp && combat ? "Combat mode: on" : "Combat mode: off", menu && pvp)) combat = !combat;
-    y += 40;
-    if (Choice((Rectangle){ x, y, 250, 46 }, "Join a game", menu && named)) Connect(false);
-    Label("Joins the game hosted in this room.", x + 270, y + 14, 15, dim);
-    y += 70;
+    if (royale) {
+        // A battle royale: no saves, no rules to pick. The host starts each round when everyone is in.
+        if (Choice((Rectangle){ x, y, 250, 46 }, "Host a battle royale", menu && named)) Connect(true);
+        Label("Up to nineteen friends join from this same address.", x + 270, y + 4, 15, dim);
+        Label("No guards or raiders; a sandstorm closes in on the city.", x + 270, y + 26, 15, dim);
+        y += 62;
+        if (Choice((Rectangle){ x, y, 250, 46 }, "Join the battle royale", menu && named)) Connect(false);
+        Label("Joins the game hosted in this room.", x + 270, y + 14, 15, dim);
+        y += 132;
+    } else {
+        if (Choice((Rectangle){ x, y, 250, 46 }, "Host a game", menu && named)) Connect(true);
+        int day;
+        float hour;
+        Label("Up to five friends join from this same address.", x + 270, y + 4, 15, dim);
+        if (NetSaveSummary(&day, &hour)) {
+            // The hosted world carries on until its host starts a new one (two clicks).
+            Label(TextFormat(L("Your hosted world: day %d."), day), x + 270, y + 26, 15, dim);
+            if (Choice((Rectangle){ panel.x + panel.width - 160, y + 22, 120, 24 }, confirmNew ? "Erase it?" : "New world", menu)) {
+                if (confirmNew) {
+                    DeleteNetGame();
+                    snprintf(note, sizeof(note), "%s", L("The hosted world is erased. Host a game to begin a new one."));
+                }
+                confirmNew = !confirmNew;
+            }
+        }
+        y += 62;
+        // The rules of the game this player hosts; whoever joins plays by them.
+        Label("Rules when you host:", x, y + 6, 15, dim);
+        if (Choice((Rectangle){ x + 200, y, 190, 28 }, pvp ? "PvP: on" : "PvP: off", menu)) pvp = !pvp;
+        if (Choice((Rectangle){ x + 400, y, 240, 28 }, pvp && combat ? "Combat mode: on" : "Combat mode: off", menu && pvp)) combat = !combat;
+        y += 40;
+        if (Choice((Rectangle){ x, y, 250, 46 }, "Join a game", menu && named)) Connect(false);
+        Label("Joins the game hosted in this room.", x + 270, y + 14, 15, dim);
+        y += 70;
+    }
 
     if (stage == LOBBY_CONNECT) {
         Centered(connectT < 8.0f ? "Connecting..." : "Still connecting. Is server.py running?", cx, y, 20, gold);

@@ -49,6 +49,32 @@ The title screen asks for your name, then:
 - **Join a game**: joins the game hosted in the same room. Join again under the same name and your
   things and your house are waiting.
 
+### Battle royale (this branch)
+
+`python3 server.py` also serves a battle royale on a second port, **8001** (`--br-port` changes it, `0` turns
+it off): open `http://<address>:8001/` (the page becomes `?mode=br` by itself). Up to twenty players; its
+rooms are its own, apart from the usual game's on port 8000.
+
+- **The map**: the same land with no city guards, village guards, raiders, barbarians or caravans; the
+  townsfolk, villagers, traders and wild animals stay. About 150 more trees stand out in the land. Houses
+  are of no use: beds, storerooms, querns, troughs, workbenches and ovens do nothing. Nothing is saved.
+- **Rules**: PvP and combat mode are always on (the best gear, unlimited arrows).
+- **A round**: everyone gathers in the city; the host presses **Enter** to start a round. Each player is set
+  down somewhere out in the land, 240-420 m from the city and far from the others, with full health.
+- **The sandstorm**: a wall of dust that closes in on the city in stages. It waits a minute, closes to
+  380 m (4 minutes in), rests, to 190 m, rests, to 90 m, rests, and ends 25 m round the middle of the city
+  13 minutes in. Inside it you lose health every second (2 at first, up to 12 at the end; armor softens
+  it) and the screen turns dusty. The map shows its edge as an orange circle; the line at the top of the
+  screen counts down to its next move. The map shows no other players.
+- **Statues**: fifteen gypsum worshippers on brick plinths (five in the city, ten out in the land; gold
+  marks on the map, a burning light over each while its blessing is there). Press E to pray; the first one
+  there takes the blessing for the rest of the round: Ninurta's +5% attack speed (swings and drawing the
+  bow), Enlil's +5% running speed, or Gula's +10% healing. Blessings add up.
+- **Out**: whoever is brought down is out for the round and watches someone still in it (click or Space:
+  the next one). Someone who joins while a round is on watches too. The last one standing wins; the host
+  presses Enter for the next round.
+- The Esc menu lists everyone in two columns with their kills and who is out.
+
 Everyone who opens the same address plays in the same room; add `?room=any-name` to the address to run
 another game on the same server. To play over the internet, run `server.py` on a machine the others
 can reach (its port open); behind HTTPS the page connects securely by itself.

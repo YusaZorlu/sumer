@@ -419,6 +419,7 @@ void BuildWorld(void)
     BuildRaiders();
     BuildVillages();
     BuildCityHouses();
+    BuildRoyale();
     building = false;
     BuildVegetation();
     BuildTerrain();

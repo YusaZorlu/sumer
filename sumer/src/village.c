@@ -87,20 +87,30 @@ static void Fence(float x0, float z0, float x1, float z1)
 
 // Each player's home: the first one by the farm, the others in a row south of the east-west street,
 // their doors toward it. A house is laid out in its own frame with the door on its -x side.
-static const float HOUSE_SPOTS[MAX_PLAYERS][3] = { { 20, 22, 0 }, { 14, 50, 1 }, { 28, 50, 1 }, { 42, 50, 1 }, { -14, 50, 1 }, { 56, 50, 1 } };
+static const float HOUSE_SPOTS[MAX_HOUSES][3] = { { 20, 22, 0 }, { 14, 50, 1 }, { 28, 50, 1 }, { 42, 50, 1 }, { -14, 50, 1 }, { 56, 50, 1 } };
 static const int HOUSE_STATIONS[HOUSE_STN] = { STN_BED, STN_STORAGE, STN_QUERN, STN_TROUGH, STN_BENCH, STN_OVEN };
+
+// The six houses go round: in a battle royale (twenty players) several share one, which is of no use there anyway.
+int HouseOf(int slot)
+{
+    return slot >= 0 ? slot % MAX_HOUSES : 0;
+}
 
 Color PlayerColor(int slot)
 {
     static const Color colors[MAX_PLAYERS] = {
         { 38, 84, 160, 255 }, { 176, 46, 40, 255 }, { 46, 128, 62, 255 }, { 222, 162, 30, 255 }, { 118, 60, 150, 255 }, { 30, 150, 150, 255 },
+        { 226, 118, 30, 255 }, { 220, 110, 160, 255 }, { 236, 232, 220, 255 }, { 40, 36, 34, 255 }, { 120, 76, 40, 255 }, { 150, 200, 50, 255 },
+        { 26, 40, 96, 255 }, { 120, 24, 36, 255 }, { 120, 120, 40, 255 }, { 120, 200, 230, 255 }, { 200, 40, 200, 255 }, { 130, 130, 130, 255 },
+        { 200, 170, 60, 255 }, { 60, 100, 70, 255 },
     };
     return colors[slot >= 0 && slot < MAX_PLAYERS ? slot : 0];
 }
 
 const char *PlayerColorName(int slot)
 {
-    static const char *const names[MAX_PLAYERS] = { "blue", "red", "green", "yellow", "purple", "teal" };
+    static const char *const names[MAX_PLAYERS] = { "blue", "red", "green", "yellow", "purple", "teal", "orange", "pink", "white", "black",
+                                                    "brown", "lime", "navy", "maroon", "olive", "sky blue", "magenta", "grey", "gold", "pine" };
     return L(names[slot >= 0 && slot < MAX_PLAYERS ? slot : 0]);
 }
 
@@ -198,7 +208,7 @@ static void BuildHouse(int h)
 // The stations of the house this player lives in become theirs to use.
 void SetHome(int slot)
 {
-    const House *home = &G.houses[slot >= 0 && slot < MAX_PLAYERS ? slot : 0];
+    const House *home = &G.houses[HouseOf(slot)];
     G.home = home->center;
     for (int k = 0; k < HOUSE_STN; k++) G.stations[HOUSE_STATIONS[k]] = home->stations[k];
 }
@@ -208,7 +218,7 @@ void SetHome(int slot)
 // open turns up, it is the player's own door.
 Vector3 CitySpawn(int slot)
 {
-    Vector3 best = G.houses[slot >= 0 && slot < MAX_PLAYERS ? slot : 0].door;
+    Vector3 best = G.houses[HouseOf(slot)].door;
     float bestAway = -1.0f;
     int found = 0;
 
@@ -244,7 +254,7 @@ void RemoveZigguratGuards(void)
 
 static void BuildHome(void)
 {
-    for (int h = 0; h < MAX_PLAYERS; h++) BuildHouse(h);
+    for (int h = 0; h < MAX_HOUSES; h++) BuildHouse(h);
     SetHome(0);
 }
 

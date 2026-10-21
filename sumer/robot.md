@@ -39,7 +39,7 @@ All from the repository root. `tools/out/` is for build products and is git-igno
 | Play the browser version, alone or together | `python3 server.py` then open the address it prints |
 | Logic tests (native, about 150 checks, needs `xvfb` or a display) | `sh tools/harness/run.sh` |
 | Browser test build (with `tools/web/testhooks.c`) | `bash tools/web/build.sh` |
-| Serve the test build on :8123 | `sh tools/web/serve.sh &` |
+| Serve the test build on :8123 (battle royale on :8133) | `sh tools/web/serve.sh &` |
 | Browser suites (host + guests in headless Chromium; needs Playwright, `PLAYWRIGHT=<module path>`) | `sh tools/web/run-suites.sh` |
 | Real-click tests of the production build (serve `web/` on :8124 first) | `node tools/web/click/click3.js`, `flow.js`, `tap.js`, `swing2.js` |
 | Strings without a Turkish entry | `python3 tools/trcheck.py src` (only non-text literals such as file names and "WASD" may remain) |
@@ -161,6 +161,17 @@ in `src/game.h`) holds the whole world.
   transform (or `GripAt` with a point on the body); the next `DrawHuman` reaches that hand there (two-bone `Reach`).
   The player's and other players' weapons go through `HoldWeapon`/`DrawWeaponPart` (player.c), whose frames
   (`SwordFrame`, `ArmFrame`, `BlowFrame` for people's tools and axes) the swing trail also uses: change them together.
+- **Battle royale** (`src/royale.c`, branch `battle-royale` only until the owner says otherwise): `Royale()` is true when
+  the page address has `?mode=br` (server.py's `--br-port`, default 8001, redirects there; its own rooms and up to 19
+  guests). `MAX_PLAYERS` is 20; `PlayerLimit()` is 6 outside it; there are `MAX_HOUSES` 6 houses (`HouseOf(slot)`). The
+  world is built with `BuildRoyale()` (statues, more trees; same on every machine) and `ShapeRoyale()` after `GameInit`
+  builds it (no guards or wardens, caravans away; raiders are skipped in their own functions). The host runs the round
+  (`rnd`: phase `RP_WAIT/RUN/OVER`, its clock, the claimed statues as a bit mask, the winner), sent in every snapshot
+  (`WriteRoyale`/`ReadRoyale`); `EV_ROUND` sets a guest down for a new round; `RQ_STATUE` claims a statue. A fallen player
+  sets `PF_OUT` in their own flags (`RoyaleFall` from `Collapse`); out players are not bodies, targets or drawn, and their
+  camera follows another (`RoyaleCamera`). The storm hurts through `HurtSlotFrom(.., BY_STORM, ..)` on the host. Tests:
+  `TestRoyale` (harness), `tools/web/royale.js` (needs serve.sh's battle royale port 8133), `harness royale out.png x z
+  yaw t [statue]` for pictures.
 - **Music** (`src/music.c`): see its own section below.
 - **Drawing**: see "Graphics: how drawing works" below.
 - **Web specifics:** `src/web.c` (storage in IndexedDB: call `SyncStorage()` after writing a file), `src/shell.html`

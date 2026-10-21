@@ -5,7 +5,7 @@
 cd "$(dirname "$0")"
 mkdir -p ../out/web-logs
 status=0
-for t in mp mp2 mp3 mp6 pvp audio; do
+for t in mp mp2 mp3 mp6 pvp audio royale; do
     echo "=== $t"
     node $t.js > ../out/web-logs/$t.log 2>&1 || status=1
     grep -E "PASS|FAIL|ERROR|passed|FAILED" ../out/web-logs/$t.log

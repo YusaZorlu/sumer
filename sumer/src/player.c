@@ -81,7 +81,7 @@ static void HandleBow(Player *p, float dt, bool input)
             return;
         }
         p->aiming = true;
-        p->draw = fminf(1.0f, p->draw + dt * Boost() / DRAW_TIME);
+        p->draw = fminf(1.0f, p->draw + dt * Boost() * RoyaleAttack() / DRAW_TIME);
         return;
     }
 
@@ -217,7 +217,7 @@ void UpdatePlayer(float dt, bool input)
     }
     if (input && armed && G.swingCool <= 0 && G.parryT <= 0 && (strike || KeyPressed(KEY_V))) {
         G.swingT = mace ? MACE_TIME : SWING_TIME;
-        G.swingCool = (mace ? MACE_COOL : SWING_COOL) / Boost();
+        G.swingCool = (mace ? MACE_COOL : SWING_COOL) / (Boost() * RoyaleAttack());
         G.strikePending = true;
         MeleeStrike(STRIKE_START);
     }
@@ -256,7 +256,7 @@ void UpdatePlayer(float dt, bool input)
 
     float speed = hungry ? HUNGRY_SPEED : WALK_SPEED;
     if (p->crouching) speed = CROUCH_SPEED;
-    else if (p->running) speed = RUN_SPEED * Boost();
+    else if (p->running) speed = RUN_SPEED * Boost() * RoyaleRun();
 
     // Water is waded through, slowly.
     speed *= WadeSpeed(p->pos.x, p->pos.z);
@@ -378,6 +378,11 @@ void FollowCamera(float dt)
     if (G.panel == PANEL_LOOK) {
         LookCamera(dt);
         return;
+    }
+    // Out of a battle royale round: the camera follows a player still in it.
+    if (RoyaleOut()) {
+        UpdateLook(&G.player, dt, G.panel == PANEL_NONE);
+        if (RoyaleCamera()) return;
     }
     PlaceCamera(dt);
     // A landed blow kicks the view, more sharply for the mace.
@@ -578,7 +583,7 @@ void DrawPlayer(void)
     const Player *p = &G.player;
     Look look = PlayerLook(G.self, ChosenStyle(), UseArmor());
 
-    if (G.camDist < 1.3f && G.panel != PANEL_LOOK) return;
+    if ((G.camDist < 1.3f && G.panel != PANEL_LOOK) || RoyaleOut()) return;
     LightFor(p->pos);
     if (G.waitBed) {
         DrawInBed(G.self, p->pos, p->facing, look);

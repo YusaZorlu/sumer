@@ -2,11 +2,14 @@
 """Sumer multiplayer server.
 
 Serves the browser build of the game (the web/ folder next to this file) and relays messages between
-the player who hosts a game and up to five guests. The host's browser runs the world; this server only
+the player who hosts a game and its guests. The host's browser runs the world; this server only
 forwards messages and never looks inside them. Needs nothing but Python 3.8 or newer.
 
-    python3 server.py              # http://localhost:8000
-    python3 server.py --port 9000
+Two ports: the usual game (alone, together or PvP, up to six players) and the battle royale (up to
+twenty), each with rooms of its own.
+
+    python3 server.py              # http://localhost:8000, battle royale on http://localhost:8001
+    python3 server.py --port 9000 --br-port 9001
 
 Everyone opens the printed address in a browser. One player presses "Host a game", the others "Join".
 Add ?room=name to the address to run more than one game on the same server.
@@ -21,7 +24,7 @@ import struct
 import urllib.parse
 
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
-MAX_GUESTS = 5
+MAX_GUESTS = {"game": 5, "br": 19}
 MAX_MESSAGE = 4 << 20
 SEND_BACKLOG = 400
 
@@ -169,12 +172,12 @@ async def serve_host(conn, name):
         print("room '%s': host left, game over" % name)
 
 
-async def serve_guest(conn, name):
+async def serve_guest(conn, name, mode):
     room = rooms.get(name)
     if room is None or room.host is None:
         conn.send(bytes([S_NOHOST]))
         return
-    free = [i for i in range(1, MAX_GUESTS + 1) if i not in room.guests]
+    free = [i for i in range(1, MAX_GUESTS[mode] + 1) if i not in room.guests]
     if not free:
         conn.send(bytes([S_FULL]))
         return
@@ -206,7 +209,7 @@ async def respond(writer, status, body=b"", kind="text/plain; charset=utf-8", he
     await writer.drain()
 
 
-async def handle(reader, writer):
+async def handle(reader, writer, mode="game"):
     try:
         request = await reader.readuntil(b"\r\n\r\n")
     except (asyncio.IncompleteReadError, asyncio.LimitOverrunError, ConnectionError, OSError):
@@ -234,12 +237,13 @@ async def handle(reader, writer):
             await writer.drain()
             query = urllib.parse.parse_qs(url.query)
             role = query.get("role", ["join"])[0]
-            room = query.get("room", ["sumer"])[0][:32] or "sumer"
+            # The two ports keep separate rooms, even when they share a name.
+            room = mode + ":" + (query.get("room", ["sumer"])[0][:32] or "sumer")
             conn = Conn(reader, writer)
             if role == "host":
                 await serve_host(conn, room)
             else:
-                await serve_guest(conn, room)
+                await serve_guest(conn, room, mode)
             conn.close()
             await conn.task
             return
@@ -248,6 +252,12 @@ async def handle(reader, writer):
             await respond(writer, "405 Method Not Allowed", b"method not allowed")
             return
         path = urllib.parse.unquote(url.path)
+        # The battle royale port opens the same game in its battle royale mode (?mode=br).
+        if mode == "br" and path in ("/", "/index.html") and "mode=br" not in url.query:
+            query = "mode=br" + ("&" + url.query if url.query else "")
+            writer.write(("HTTP/1.1 302 Found\r\nLocation: /?%s\r\nContent-Length: 0\r\nConnection: close\r\n\r\n" % query).encode("latin1"))
+            await writer.drain()
+            return
         if path.endswith("/"):
             path += "index.html"
         file = os.path.normpath(os.path.join(WEB_DIR, path.lstrip("/")))
@@ -286,7 +296,8 @@ def addresses():
 
 async def main():
     parser = argparse.ArgumentParser(description="Serve Sumer to browsers and relay multiplayer games.")
-    parser.add_argument("--port", type=int, default=8000, help="port to listen on (default 8000)")
+    parser.add_argument("--port", type=int, default=8000, help="port for the usual game (default 8000)")
+    parser.add_argument("--br-port", type=int, default=8001, help="port for the battle royale (default 8001; 0: none)")
     parser.add_argument("--bind", default="0.0.0.0", help="address to listen on (default: all)")
     args = parser.parse_args()
 
@@ -294,13 +305,20 @@ async def main():
         print("No web build found in %s. Build it with: sh build-web.sh" % WEB_DIR)
         return
     server = await asyncio.start_server(handle, args.bind, args.port)
-    print("Sumer is being served on port %d." % args.port)
+    servers = [server]
+    print("Sumer is being served on port %d (alone, together, PvP: up to six players)." % args.port)
     print("  On this computer:  http://localhost:%d/" % args.port)
     for address in addresses():
         print("  On your network:   http://%s:%d/" % (address, args.port))
-    print("One player presses 'Host a game', the others 'Join a game'. Ctrl+C stops the server.")
-    async with server:
-        await server.serve_forever()
+    if args.br_port:
+        royale = await asyncio.start_server(lambda r, w: handle(r, w, "br"), args.bind, args.br_port)
+        servers.append(royale)
+        print("Battle royale (up to twenty players) on port %d." % args.br_port)
+        print("  On this computer:  http://localhost:%d/" % args.br_port)
+        for address in addresses():
+            print("  On your network:   http://%s:%d/" % (address, args.br_port))
+    print("One player presses 'Host', the others 'Join'. Ctrl+C stops the server.")
+    await asyncio.gather(*(s.serve_forever() for s in servers))
 
 
 if __name__ == "__main__":
