@@ -179,12 +179,27 @@ static int fieldFirst[MAX_FIELDS], fieldLast[MAX_FIELDS], fieldCount;
 
 static void Field(float x0, float z0, float x1, float z1)
 {
-    AddBox((x0 + x1) / 2, 0, (z0 + z1) / 2, x1 - x0, 0.1f, z1 - z0, COL_SOIL, false);
+    const Color bank = { 112, 90, 64, 252 }, ditch = { 76, 60, 46, 252 };
+    float cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    AddBox(cx, 0, cz, x1 - x0, 0.1f, z1 - z0, COL_SOIL, false);
+    AddBox(cx, 0, z0 - 0.4f, x1 - x0 + 1.6f, 0.22f, 0.8f, bank, false);
+    AddBox(cx, 0, z1 + 0.4f, x1 - x0 + 1.6f, 0.22f, 0.8f, bank, false);
+    AddBox(x0 - 0.4f, 0, cz, 0.8f, 0.22f, z1 - z0, bank, false);
+    AddBox(x1 + 0.4f, 0, cz, 0.8f, 0.22f, z1 - z0, bank, false);
+    AddBox(cx, 0, z0 - 1.3f, x1 - x0 + 1.6f, 0.05f, 1.0f, ditch, false);
+    // the shaduf: a sweep on a post that lifts the ditch water in a skin bucket
+    AddBox(x0 + 1.0f, 0, z0 - 1.9f, 0.18f, 2.2f, 0.18f, COL_WOOD, false);
+    AddBox(x0 + 1.0f, 2.1f, z0 - 1.9f, 3.6f, 0.1f, 0.1f, COL_WOOD, false);
+    AddShape(x0 - 0.6f, 1.95f, z0 - 1.9f, 0.45f, 0.35f, 0.45f, (Color){ 118, 96, 74, 255 }, false, SHAPE_BLOB);
+    AddBox(x0 + 2.6f, 0.6f, z0 - 1.9f, 0.04f, 1.5f, 0.04f, (Color){ 150, 128, 92, 255 }, false);
+    AddShape(x0 + 2.6f, 0.3f, z0 - 1.9f, 0.4f, 0.35f, 0.4f, (Color){ 120, 84, 54, 255 }, false, SHAPE_CYL);
+    for (int k = 0; k < 3; k++)
+        AddShape(x1 + 1.4f + 0.9f * (float)k, 0, z1 + 1.3f, 0.7f, 1.1f, 0.7f, TAG_CROP(COL_STRAW), false, SHAPE_CONE);
     if (fieldCount < MAX_FIELDS) fieldFirst[fieldCount] = G.boxCount;
     for (float z = z0 + 0.7f; z < z1 - 0.4f; z += 1.6f)
-        AddBox((x0 + x1) / 2, 0.1f, z, x1 - x0 - 0.8f, 0.6f, 0.6f, COL_WHEAT_GREEN, false);
+        AddBox((x0 + x1) / 2, 0.1f, z, x1 - x0 - 0.8f, 0.6f, 0.6f, TAG_CROP(COL_WHEAT_GREEN), false);
     if (fieldCount < MAX_FIELDS) fieldLast[fieldCount++] = G.boxCount;
-    KeepOut(x0, z0, x1, z1);
+    KeepOut(x0 - 2.0f, z0 - 2.5f, x1 + 3.6f, z1 + 2.0f);
 }
 
 // Each field runs a little ahead of or behind its neighbour.
@@ -194,8 +209,8 @@ void UpdateFields(void)
         float growth;
         bool stubble, bare = !CropStage(0.06f * (float)(f % 3) - 0.06f, &growth, &stubble);
         float h = bare ? 0.03f : stubble ? 0.14f : 0.1f + 0.75f * growth;
-        Color c = bare ? (Color){ 84, 64, 44, 255 } : stubble ? COL_STRAW
-                : growth >= 1.0f ? COL_WHEAT_RIPE : Mix(COL_WHEAT_GREEN, COL_WHEAT_RIPE, growth * 0.4f);
+        Color c = bare ? (Color){ 84, 64, 44, 252 } : TAG_CROP(stubble ? COL_STRAW
+                : growth >= 1.0f ? COL_WHEAT_RIPE : Mix(COL_WHEAT_GREEN, COL_WHEAT_RIPE, growth * 0.4f));
         for (int i = fieldFirst[f]; i < fieldLast[f]; i++) {
             G.boxes[i].size.y = h;
             G.boxes[i].pos.y = 0.1f + h / 2;

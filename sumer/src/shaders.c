@@ -63,10 +63,12 @@ const char *SH_WORLD_FS =
     "uniform int torchSlots; uniform int gridN; uniform float gridCell; uniform float torchRadius;\n"
     "uniform int dynCount; uniform vec4 dynLights[8];\n"
     "uniform mat4 lightVP; uniform sampler2D shadowMap; uniform sampler2D heightMap; uniform sampler2D torchGrid; uniform sampler2D torchData;\n"
-    "uniform sampler2D detailMap; uniform sampler2D detailMap2;\n"
+    "uniform sampler2D detailMap; uniform sampler2D detailMap2; uniform sampler2D detailMap3;\n"
     // A photo's light and dark, about -1..1: on the faces turned most toward each axis, blended (no UVs needed)
     "float det(vec3 p,vec3 n,float s,int c){ vec3 w=pow(abs(n),vec3(4.0)); w/=w.x+w.y+w.z;\n"
     "  return (texture(detailMap,p.zy*s)[c]*w.x+texture(detailMap,p.xz*s)[c]*w.y+texture(detailMap,p.xy*s)[c]*w.z)*3.2-1.6; }\n"
+    "float det3(vec3 p,vec3 n,float s,int c){ vec3 w=pow(abs(n),vec3(4.0)); w/=w.x+w.y+w.z;\n"
+    "  return (texture(detailMap3,p.zy*s)[c]*w.x+texture(detailMap3,p.xz*s)[c]*w.y+texture(detailMap3,p.xy*s)[c]*w.z)*3.2-1.6; }\n"
     "float unpackDepth(vec4 c){ return dot(c.rgb,vec3(1.0,1.0/255.0,1.0/65025.0)); }\n"
     "float tap(vec2 uv,float z){ return z>unpackDepth(texture(shadowMap,uv))?0.0:1.0; }\n"
     "float bilinearTap(vec2 uv,float z){ vec2 st=uv/shadowTexel-0.5; vec2 f=fract(st); vec2 b=(floor(st)+0.5)*shadowTexel;\n"
@@ -117,6 +119,10 @@ const char *SH_WORLD_FS =
     "    n=normalize(vec3(-(hx-h0)/e*0.35,1.0,-(hz-h0)/e*0.35)); n=normalize(mix(n,vec3(0.0,1.0,0.0),1.0-near*0.8));\n"
     "    rough=0.05; spec=0.02; float deep=max(wpos.y-groundAt(wpos.xz),0.0);\n"
     "    base=mix(vec3(0.05,0.10,0.08),vec3(0.015,0.05,0.055),smoothstep(0.2,2.0,deep));\n"
+    "  } else if(vmat!=4 && vcol.a>0.982 && vcol.a<0.998){\n" // trees and fields: bark, leaves, tilled earth, straw
+    "    int tag=int(255.0-vcol.a*255.0+0.5); float s=tag==1?0.9:tag==2?0.9:tag==3?0.3:1.3;\n"
+    "    base*=max(1.0+det3(wpos,n,s,tag-1)*(tag==2?0.7:tag==1?0.6:0.5)*mix(0.4,1.0,near),0.2);\n"
+    "    if(tag==2){ base*=0.78+0.42*fbm(wpos*2.2); rough=0.6; } else rough=tag==4?0.7:0.92;\n"
     "  } else if(vmat==5 && lum>0.42 && sat<0.32 && vcol.r>=vcol.g && vcol.g>=vcol.b*0.9){\n" // mud brick and plaster
     "    if(abs(fn.y)<0.35){\n"
     "      float u=abs(fn.x)>abs(fn.z)?wpos.z:wpos.x; vec2 uv=vec2(u,wpos.y)*0.55;\n"
@@ -155,7 +161,7 @@ const char *SH_WORLD_FS =
     "    col=mix(base*(amb+lightCol*0.1+torch),skyColor(r)*1.1,fres)+min(lightCol*sp*sh*0.35,vec3(2.5)); }\n"
     "  float fog=1.0-exp(-dist*fogDensity);\n"
     "  col=mix(col,skyColor(-V)*1.05,fog);\n"
-    "  finalColor=vec4(toScreen(col),(vmat==4||vmat==1)?1.0:vcol.a);\n"
+    "  finalColor=vec4(toScreen(col),(vmat==4||vmat==1||vcol.a>0.982)?1.0:vcol.a);\n"
     "}\n";
 
 // The sun's view, for the shadow: depth packed into the color, which every WebGL 2 device can render

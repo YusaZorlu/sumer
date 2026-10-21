@@ -36,6 +36,7 @@ extern const char *SH_BRIGHT_FS, *SH_BLUR_FS, *SH_POST_FS;
 #define TEX_TORCH       13
 #define TEX_DETAIL      14
 #define TEX_DETAIL2     15
+#define TEX_DETAIL3     9                   // WebGL 2 promises only 16 units
 
 // 24 bytes: position, normal (0 when the shader is to work it out), color, material.
 typedef struct { float x, y, z; signed char n[4]; unsigned char c[4]; unsigned char m[4]; } GVert;
@@ -54,7 +55,7 @@ typedef struct {
     int mvp, camPos, sunDir, sunGlow, skyZen, skyHor, exposure, quality, lightDir, lightCol, ambSky, ambGround;
     int torchCol, fogDensity, time, worldHalf, night, wet, shadowTexel, shadowRange, groundTile, groundN;
     int heightScale, heightBase, torchSlots, gridN, gridCell, torchRadius, dynCount, dynLights, lightVP;
-    int shadowMap, heightMap, torchGrid, torchData, moonDir, cloudy, texel, bloom, bloomAmt, dir, detailMap, detailMap2;
+    int shadowMap, heightMap, torchGrid, torchData, moonDir, cloudy, texel, bloom, bloomAmt, dir, detailMap, detailMap2, detailMap3;
 } Locs;
 
 typedef struct {
@@ -78,7 +79,7 @@ static unsigned int quadIndex;
 static Block dynBlocks[MAX_DYN_BLOCKS], skyBlock;
 static int dynUsed;
 static VList dyn, scratch;
-static Texture2D heightTex, gridTex, torchTex, detailTex, detail2Tex, flameTex;
+static Texture2D heightTex, gridTex, torchTex, detailTex, detail2Tex, detail3Tex, flameTex;
 static float heightScale = 1.0f, heightBase;
 static RenderTexture2D scene, brightRT, blurRT, shadowRT;
 static int sceneW, sceneH, shadowSize, targetTier = -1;
@@ -312,7 +313,7 @@ static Locs Find(Shader s)
     L_(lightCol); L_(ambSky); L_(ambGround); L_(torchCol); L_(fogDensity); L_(time); L_(worldHalf); L_(night); L_(wet);
     L_(shadowTexel); L_(shadowRange); L_(groundTile); L_(groundN); L_(heightScale); L_(heightBase); L_(torchSlots);
     L_(gridN); L_(gridCell); L_(torchRadius); L_(dynCount); L_(dynLights); L_(lightVP); L_(shadowMap); L_(heightMap);
-    L_(torchGrid); L_(torchData); L_(moonDir); L_(cloudy); L_(texel); L_(bloom); L_(bloomAmt); L_(dir); L_(detailMap); L_(detailMap2);
+    L_(torchGrid); L_(torchData); L_(moonDir); L_(cloudy); L_(texel); L_(bloom); L_(bloomAmt); L_(dir); L_(detailMap); L_(detailMap2); L_(detailMap3);
 #undef L_
     return l;
 }
@@ -347,7 +348,7 @@ static void MakeSky(void)
 
 // The pictures in assets/ (built by tools/assets/make_detail.py from CC0 sources; the browser build carries
 // them inside it). detail.png: light and dark for the ground (R), mud-brick walls (G), wood (B) and rock (A);
-// detail2.png: woven cloth (R), fleece and fur (G), leather (B) and the roads (A); flame.png: two frames of a
+// detail2.png: woven cloth (R), fleece and fur (G), leather (B) and the roads (A); detail3.png: bark (R), leaves (G), tilled earth (B) and straw (A); flame.png: two frames of a
 // flame. Mid grey, which changes nothing, if a file is missing.
 static Texture2D LoadAsset(const char *name, bool repeat)
 {
@@ -367,6 +368,7 @@ static void LoadDetail(void)
 {
     detailTex = LoadAsset("detail.png", true);
     detail2Tex = LoadAsset("detail2.png", true);
+    detail3Tex = LoadAsset("detail3.png", true);
     flameTex = LoadAsset("flame.png", false);
 }
 
@@ -1048,6 +1050,7 @@ static void WorldUniforms(const SkyNow *s, Matrix lightVP, int quality)
     BindTexture(TEX_TORCH, torchTex.id, l->torchData);
     BindTexture(TEX_DETAIL, detailTex.id, l->detailMap);
     BindTexture(TEX_DETAIL2, detail2Tex.id, l->detailMap2);
+    BindTexture(TEX_DETAIL3, detail3Tex.id, l->detailMap3);
     rlActiveTextureSlot(0);
 }
 

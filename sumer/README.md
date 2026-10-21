@@ -123,6 +123,7 @@ touch controls yet: play with a keyboard (a USB-C or Bluetooth one works; WASD t
 | Z | Arrow camera on/off |
 | E / F | Use, talk, pick up, climb a ladder, search a body, fill or pour a bucket, open the coop / alternate action (plant a date) |
 | R | Refill quiver from carried arrow baskets |
+| B | Torch on/off (it burns only after dark; also a button in Tab, see Combat) |
 | Tab | Baskets (inventory), equipment and armor; with dev tools on, its "Dev console" button opens the dev console |
 | ` or F2 | Dev console, when dev tools are on (see below) |
 | T (hold) | Fast-forward time (playing alone) |
@@ -228,8 +229,12 @@ People's clothes and the roads take their grain from four textures from [ambient
 `Fabric019` (woven cloth), `Carpet016` (fleece skirts, pelts and felt), `Leather037` (leather armor, caps and
 sandals) and `Pathway004` (the roads' packed earth), in `assets/detail2.png`. The grain moves with each body, so
 it does not slide over people as they walk. Torch and fire flames are two frames from Kenney's
-[Particle Pack](https://kenney.nl/assets/particle-pack) (**CC0**), in `assets/flame.png`. The same script builds
-both. Everything else is drawn in code.
+[Particle Pack](https://kenney.nl/assets/particle-pack) (**CC0**), in `assets/flame.png`.
+
+Trees and fields: `palm_tree_bark` (bark on every trunk), `forest_leaves_02` (leaves and shrubs) and
+`dry_mud_field_001` (the tilled earth of the fields and garden plots) from Poly Haven, and `ThatchedRoof001A`
+(straw: the standing crop, stubble and sheaves) from ambientCG, all **CC0**, in `assets/detail3.png`. The same
+script builds all of them. Everything else is drawn in code.
 
 ## Where things are
 
@@ -301,6 +306,10 @@ fields outside. Gates: south (main road), east, west, north, plus the harbor wat
   its wings. On the middle terrace the guards' room (cots, a rack of spears and shields, two guards at
   supper), the tablet house (shelves of clay tablets, scribes at work) and the sanctuary, where
   worshippers kneel before the god. The priest's shrine is on top
+- The big fields outside the walls have earthen banks round them, a feeder ditch with a shaduf (the
+  water-lifting sweep) and sheaves at the corner; garden plots are tilled in ridges under the rows
+- Out on the land: feathery tamarisk by the water, low camelthorn on the dry steppe, fallen limbs and
+  stumps of dead wood, flat stone slabs and scatters of stones on the rises. None of it is in your way
 - Torches line the streets, gates and temple at night; guards and caravans carry torches
 - At night distant things fade into the dark; torchlit places stay visible
 - Townsfolk walk all over the city: along the streets from crossing to crossing, keeping to the right,
@@ -403,6 +412,13 @@ seed, so it is never stored.
   is no shield yet. Other players give the same warning, over their head, with less time to react
   (see Playing together).
 - Only what is in your hand is drawn and used: 1 bow, 2 melee weapon, 3 war mace, 4 hands free.
+- **Your torch** (B, or the button in Tab): with bare hands, the sword or the mace it rides in your other
+  hand and burns after dark, lighting the ground round you. Turn it off if you like. Drawing the bow needs
+  both hands, so the torch goes down while you draw and comes back after the shot. Taking it up or putting
+  it down takes a second, and so does changing weapons: the torch is back in your hand a second after the
+  shot, the change or the switch. A burning torch gives you away to animals at night: wolves notice you
+  from about half as far again, and gazelles, onagers and geese up to twice as far as in the dark without
+  one. Other players see your torch and its light.
 - A swing lands when the weapon comes down on its target, 0.3 seconds after you press: you raise it,
   bring it down hard, and the blow meets whatever is in front of you at that moment (the war mace
   sweeps across and meets everything in front as it passes straight ahead). People's own swings and
@@ -485,11 +501,13 @@ clothes of the time.
   from the east wear leather and a grey cap; barbarians from the west, wolf pelts or leather and horned
   helmets.
 - **Hands hold things:** the arm follows the sword, club and mace through a swing (both hands on the mace), the
-  bow, a spear, a staff, a tool or a torch.
+  bow (in both hands, across the body, ready to draw), a spear, a staff, a tool or a torch. Your hands sway
+  a little as you walk and settle while you aim. In first person you see your own hands: the bow and the
+  drawing hand, the weapon, and the torch.
 
 **Your look:** the first time you play on a computer or in a browser, a "Your look" window comes up before
-the game: hair, beard, clothes and jewellery, four choices each, shown on your own body (the arrow keys turn
-the view; 1-4 step through a row). Change it any time with "Your look" in the Esc menu. It is kept in
+the game: body (a man or a woman), hair, beard (none for a woman), clothes and jewellery, shown on your own body (the arrow keys turn
+the view; 1-5 step through a row). Change it any time with "Your look" in the Esc menu. It is kept in
 `sumer.look`; the other players see it, in your player color. Armor is worn over the clothes: the wolf pelt
 over the shoulders with its head as a hood, leather in laced bands, bronze armor as the soldiers' studded
 cloak (and helmet in combat mode).

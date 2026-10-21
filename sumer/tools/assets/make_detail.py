@@ -5,6 +5,8 @@
   R the ground, G mud-brick walls, B wood, A rock.
 - assets/detail2.png: the same for people and roads, from ambientCG (ambientcg.com): R woven cloth,
   G fleece and fur, B leather, A the roads' packed earth.
+- assets/detail3.png: trees and fields: R palm bark, G leaves, B tilled soil (Poly Haven), A straw for the
+  crops (ambientCG).
 - assets/flame.png: two frames of a flame side by side, from Kenney's Particle Pack (kenney.nl).
 
 The game keeps its own colors and takes only light and dark from the textures.
@@ -24,6 +26,7 @@ SOURCES = ['dry_ground_rocks', 'white_sandstone_bricks_03', 'wood_planks_dirt', 
 # ambientCG material and the map to take: the weave of cloth is in its color, fleece and leather show in
 # their height maps.
 PEOPLE = [('Fabric019', 'Color'), ('Carpet016', 'Displacement'), ('Leather037', 'Displacement'), ('Pathway004', 'Color')]
+TREES = [('ph', 'palm_tree_bark'), ('ph', 'forest_leaves_02'), ('ph', 'dry_mud_field_001'), ('cg', 'ThatchedRoof001A')]
 KENNEY = 'https://kenney.nl/media/pages/assets/particle-pack/f8fe0f8cb8-1677578741/kenney_particle-pack.zip'
 FLAMES = ['flame_05', 'flame_06']
 SIZE = 512
@@ -89,8 +92,10 @@ def main():
     Image.merge('RGBA', chans).save(os.path.join(ROOT, 'assets', 'detail.png'), optimize=True)
     chans = [detail(fetch_cg(a, k)) for a, k in PEOPLE]
     Image.merge('RGBA', chans).save(os.path.join(ROOT, 'assets', 'detail2.png'), optimize=True)
+    chans = [detail(fetch(a) if site == 'ph' else fetch_cg(a, 'Color')) for site, a in TREES]
+    Image.merge('RGBA', chans).save(os.path.join(ROOT, 'assets', 'detail3.png'), optimize=True)
     flames()
-    print('wrote assets/detail.png, detail2.png and flame.png')
+    print('wrote assets/detail.png, detail2.png, detail3.png and flame.png')
 
 
 if __name__ == '__main__':

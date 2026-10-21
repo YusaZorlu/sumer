@@ -979,6 +979,24 @@ static void TestTempleLife(void)
 
 // The torch: it takes a second to take up, goes down while weapons change, burns only after dark, others see
 // it and it lights the way; a woman's body has no beard.
+// Bark, leaves, tilled earth and straw are tagged for the shaders' grain; the open land has its
+// shrubs, dead wood and stones, none of them in the way, and the world still fits its boxes.
+static void TestWilds(void)
+{
+    int tag[5] = { 0 }, wood = 0, solidWild = 0;
+    for (int i = 0; i < G.boxCount; i++) {
+        const Box *b = &G.boxes[i];
+        if (b->water || b->glow || b->color.a < 251 || b->color.a > 254) continue;
+        tag[255 - b->color.a]++;
+        if (b->color.a == 254 && b->size.y < 0.7f && !InsideWalls(b->pos.x, b->pos.z, 0)) wood++;
+        if (b->solid && b->color.a == 253 && b->shape == SHAPE_CONE) solidWild++;
+    }
+    Check(tag[1] > 100 && tag[2] > 300 && tag[3] > 20 && tag[4] > 40, "tagged bark %d, leaves %d, earth %d, straw %d", tag[1], tag[2], tag[3], tag[4]);
+    Check(wood >= 60, "fallen wood out on the land: %d", wood);
+    Check(solidWild == 0, "shrubs do not block the way (%d do)", solidWild);
+    Check(G.boxCount < MAX_BOXES - 1500, "boxes %d of %d", G.boxCount, MAX_BOXES);
+}
+
 static void TestTorch(void)
 {
     G.self = G.actor = 0;
@@ -1523,8 +1541,9 @@ static void TestHostWorld(void)
     // Wolves go for the guest alone out on the plain, not for the host at home.
     Animal *w = NULL;
     for (int i = 0; i < G.animalCount && !w; i++)
-        if (G.animals[i].active && G.animals[i].type == AN_WOLF && G.animals[i].pos.x > RIVER_X1 + 20) w = &G.animals[i];
-    if (!w) { Check(false, "no wolf east of the river"); return; }
+        if (G.animals[i].active && G.animals[i].type == AN_WOLF && G.animals[i].pos.x > RIVER_X1 + 20 &&
+            !PeopleNear((Vector3){ G.animals[i].pos.x + 10, 0, G.animals[i].pos.z }, SAFE_RADIUS)) w = &G.animals[i];
+    if (!w) { Check(false, "no wolf east of the river away from people"); return; }
     Calm(w);
     G.peers[1].pos = (Vector3){ w->pos.x + 10, TerrainHeight(w->pos.x + 10, w->pos.z), w->pos.z };
     G.peers[1].aggro = 0;
@@ -1964,6 +1983,7 @@ static void RunTests(void)
     TestBandits();
     TestConsole();
     TestTempleLife();
+    TestWilds();
     TestTorch();
     TestDeathLosses();
     TestCanals();

@@ -33,7 +33,7 @@
 #define STARVE_DAYS     6.0f
 #define FEED_MAX        30.0f
 
-#define MAX_BOXES       20000
+#define MAX_BOXES       24000
 #define MAX_RES         512
 #define MAX_ANIMALS     96
 #define MAX_ARROWS      40
@@ -84,13 +84,16 @@
 #define COL_WATER       CLITERAL(Color){  58, 110, 128, 255 }
 #define COL_ROAD        CLITERAL(Color){ 168, 148, 110, 255 }
 #define COL_PALM_TRUNK  CLITERAL(Color){ 118,  88,  58, 255 }
-#define COL_PALM_LEAF   CLITERAL(Color){  62, 118,  52, 255 }
+// Alpha 254..251 asks the shaders for the grain in assets/detail3.png: bark, leaves, tilled earth, straw.
+#define COL_BARK        CLITERAL(Color){ 118,  88,  58, 254 }
+#define TAG_CROP(c)     ((Color){ (c).r, (c).g, (c).b, 251 })
+#define COL_PALM_LEAF   CLITERAL(Color){  62, 118,  52, 253 }
 #define COL_DATES       CLITERAL(Color){ 150,  72,  30, 255 }
 #define COL_REED        CLITERAL(Color){ 146, 160,  70, 255 }
 #define COL_STRAW       CLITERAL(Color){ 190, 168, 104, 255 }
 #define COL_GRASS       CLITERAL(Color){  92, 128,  54, 255 }
 #define COL_SHRUB       CLITERAL(Color){ 118, 122,  70, 255 }
-#define COL_TREE        CLITERAL(Color){  74, 108,  58, 255 }
+#define COL_TREE        CLITERAL(Color){  74, 108,  58, 253 }
 #define COL_WOOD        CLITERAL(Color){ 112,  80,  50, 255 }
 #define COL_LINEN       CLITERAL(Color){ 232, 226, 210, 255 }
 #define COL_BLANKET     CLITERAL(Color){ 150,  60,  44, 255 }
@@ -102,7 +105,7 @@
 #define COL_BRONZE      CLITERAL(Color){ 190, 130,  60, 255 }
 #define COL_POT         CLITERAL(Color){ 178, 104,  64, 255 }
 #define COL_BRICK       CLITERAL(Color){ 160, 112,  76, 255 }
-#define COL_SOIL        CLITERAL(Color){  98,  74,  50, 255 }
+#define COL_SOIL        CLITERAL(Color){  98,  74,  50, 252 }
 #define COL_WHEAT_GREEN CLITERAL(Color){ 110, 150,  60, 255 }
 #define COL_WHEAT_RIPE  CLITERAL(Color){ 222, 188,  92, 255 }
 #define COL_FIRE        CLITERAL(Color){ 255, 150,  50, 255 }

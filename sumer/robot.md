@@ -132,6 +132,18 @@ in `src/game.h`) holds the whole world.
   their own body in the 2nd-4th material bytes (`VVertex` in `gfx.c`), so the grain moves with them. Roads are
   ground with alpha 254. Flames: `Flame()`/`DrawTorches()` call `GfxFlame()`, and `DrawFlames()` in `gfx.c` draws
   them after the world as additive billboards from `assets/flame.png`; without shaders the old glow boxes stay.
+- **Trees and fields**: `assets/detail3.png` (R bark, G leaves, B tilled earth, A straw) on texture unit 9 (WebGL 2
+  promises only units 0-15). Any non-figure color with alpha 254 bark (`COL_BARK`), 253 leaves (`COL_TREE`,
+  `COL_PALM_LEAF`, the tree literals in `world.c`), 252 tilled earth (`COL_SOIL`), 251 straw (`TAG_CROP()`) gets it,
+  triplanar in world space (`det3()`), and is drawn opaque. Keep plain `COL_PALM_TRUNK` (255) for beams and
+  posts, and do not `Mix()` a tagged color with an untagged one (the alpha lands on a random tag).
+- **The open land** (`BuildWilds()` in `world.c`): tamarisk, camelthorn, fallen wood and stones, none solid, kept off
+  roads, fields and walls by `InKeepOut`. It draws from the world's random numbers before the herbs, so moving it
+  moves everything placed after it (tests that pick "the first wolf east of the river" must not lean on luck).
+- **Player torch** (`UpdateTorch()` in `player.c`): `G.torchOn` is the wish (B), `G.torchHeld` what the hand holds,
+  1 s (`TORCH_TIME`) to change, reset by `SetEquip()`; down while the bow is drawn. `TorchBurning()` sets `PF_TORCH`
+  in the peer flags, which gives the light (`UpdateLights`) and the wider notice for wolves and prey (`wildlife.c`).
+  Bodies: `STYLE_WOMAN` (256) in the 16-bit style. First person: `ViewModel()` in `player.c`.
 - **Dev console** (`src/console.c`, panel `PANEL_CONSOLE` drawn in `ui.c`): only when `G.devTools` (the "Dev tools" rule
   on the title screen, sent to guests as rules bit 4). `ConsoleRun(text)` parses and runs a command and writes its
   answer to a 14-line scrollback. World commands check `Host()`. Add a command as one more `else if` in `ConsoleRun`, a line in `Help()`, a row in the README's
@@ -313,10 +325,8 @@ no sound files. Read the comment at the top of the file and the notation comment
   kenney.nl, quaternius.com, opengameart.org, polyhaven.com, ambientcg.com) were still denied by the cloud sandbox's
   network policy in October 2026 (403 from the proxy), so nothing has been downloaded; the owner must allow those
   hosts in the environment's network settings first. Since then the owner opened them (poly.pizza still 403s); four
-  CC0 textures went in as surface detail (see "Photo detail"). Next by what is seen most: palm and tree models (Quaternius
-  nature packs are CC0 low-poly with flat colors, which suits baking into the static meshes), then thatch/reed and a
-  second ground (grass) map. There is no model loader yet.
-- A body choice (man or woman) for players: the townsfolk have it (`Look.woman`), the "Your look" window does not;
-  the owner asked for few options.
+  CC0 textures went in as surface detail (see "Photo detail", then "Trees and fields"). Next by what is seen most: palm
+  and tree models (Quaternius nature packs are CC0 low-poly with flat colors, which suits baking into the static
+  meshes), then a second ground (grass) map. There is no model loader yet.
 - More sound effects: footsteps, the bow, animals, ambience (blows, parries and arrows have theirs).
 - `web/` is rebuilt by hand; there is no CI. The desktop branch needs its own catching up if it is ever revived.
