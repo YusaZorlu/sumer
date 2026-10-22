@@ -993,6 +993,7 @@ int MusicLevel(void);              // 0 off, 1 low, 2 medium, 3 high
 void MusicSetLevel(int level);
 const char *MusicLevelName(void);
 const char *MusicTitle(int mood);
+int MusicPlace(void);
 int MusicMood(void);               // 0 morning, 1 the fight, 2 the night
 void MusicRender(int mood, float *out, int frames);
 float MusicPartBeats(int mood, int part);

@@ -176,8 +176,15 @@ düğmesine (ya da L'ye) bas.
 
 ## Music
 
-Three tunes play, and the game makes every note itself: a small synthesizer in `src/music.c`, so there are
-no sound files, samples or recordings, and nothing to license. Press **N** (or use the button in the Esc
+**Music of places.** In the game, a recorded track plays for the part of the map you are in, faded across
+as you go from one to another: the city (hand drums), a village (a plucked melody), the open land (a sparse
+tune over the wind) and the halls of the ziggurat (a slow drone). They are CC0 (public domain) tracks from
+OpenGameArt, listed in the credits below, in `assets/music/` (4.7 MB). When a fight starts the game's own
+fight tune takes over, and the place's track comes back after it.
+
+The game's own tunes are made by a small synthesizer in `src/music.c` (no samples or recordings): the
+morning tune on the title screen, the fight tune, and the night tune (heard in a game only if the music
+files are missing). Press **N** (or use the button in the Esc
 menu or on the title screen) to step the volume through off, low, medium and high; the choice is kept in
 `sumer.music` next to the saves. It starts on medium.
 
@@ -230,6 +237,11 @@ People's clothes and the roads take their grain from four textures from [ambient
 sandals) and `Pathway004` (the roads' packed earth), in `assets/detail2.png`. The grain moves with each body, so
 it does not slide over people as they walk. Torch and fire flames are two frames from Kenney's
 [Particle Pack](https://kenney.nl/assets/particle-pack) (**CC0**), in `assets/flame.png`.
+
+The music of places is four **CC0** tracks from [OpenGameArt](https://opengameart.org), made smaller and
+even in loudness by `sh tools/assets/make_music.sh` (curl, ffmpeg): the city plays "Darbuka Delight" by
+Adiutorium, a village "Hyyoshi Arabian Style Background Music RPG" (submitted by Tozan), the open land
+"Caught in the Desert Plains" (Tozan) and the ziggurat "Egyptian meditation music" by HaelDB.
 
 Trees and fields: `palm_tree_bark` (bark on every trunk), `forest_leaves_02` (leaves and shrubs) and
 `dry_mud_field_001` (the tilled earth of the fields and garden plots) from Poly Haven, and `ThatchedRoof001A`

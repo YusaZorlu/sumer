@@ -982,9 +982,77 @@ void MusicInit(void)
     streaming = true;
 }
 
+// ---- The music of places ----
+// Recorded tracks (CC0, in assets/music/, made by tools/assets/make_music.sh): the city, a village, the
+// open land and the ziggurat's halls. In the game they play instead of the made tunes, faded across as
+// the player goes from place to place; a fight brings in the made fight tune instead.
+enum { PLACE_CITY, PLACE_VILLAGE, PLACE_WILD, PLACE_TEMPLE, PLACES };
+static const char *const PLACE_FILES[PLACES] = { "city.ogg", "village.ogg", "wild.ogg", "temple.ogg" };
+static Music placeMusic[PLACES];
+static float placeGain[PLACES];
+static bool placesTried, placeStarted[PLACES];
+static int placeNow = -1;
+
+// Which place's track is being heard (0 city, 1 village, 2 open land, 3 ziggurat), or -1: for tests.
+int MusicPlace(void)
+{
+    return placeNow;
+}
+
+static int PlaceNow(void)
+{
+    Vector3 p = G.player.pos;
+    if (InTempleInterior(p)) return PLACE_TEMPLE;
+    if (InsideWalls(p.x, p.z, 0.0f)) return PLACE_CITY;
+    return VillageAt(p) >= 0 ? PLACE_VILLAGE : PLACE_WILD;
+}
+
+static void LoadPlaces(void)
+{
+    placesTried = true;
+    // A second of sound in each buffer, so a slow frame (or a browser tab drawing a few frames a second)
+    // does not run them dry.
+    SetAudioStreamBufferSizeDefault(44100);
+    for (int k = 0; k < PLACES; k++) {
+        const char *path = TextFormat("assets/music/%s", PLACE_FILES[k]);
+        if (!FileExists(path)) path = TextFormat("%s../../assets/music/%s", GetApplicationDirectory(), PLACE_FILES[k]);
+        placeMusic[k] = LoadMusicStream(path);
+        placeMusic[k].looping = true;
+    }
+    SetAudioStreamBufferSizeDefault(STREAM_FRAMES);
+}
+
+// Fades this place's track in and the others out; true while a place's track is what should be heard.
+static bool UpdatePlaces(float dt, bool inGame)
+{
+    if (!placesTried) LoadPlaces();
+    int want = inGame && mood != MOOD_COMBAT ? PlaceNow() : -1;
+    if (want >= 0 && placeMusic[want].frameCount == 0) want = -1;   // a missing file: the made tunes play on
+    placeNow = want;
+    for (int k = 0; k < PLACES; k++) {
+        if (placeMusic[k].frameCount == 0) continue;
+        float target = k == want ? 1.0f : 0.0f;
+        placeGain[k] += (target - placeGain[k]) * fminf(1.0f, dt * 0.8f);
+        if (target == 0 && placeGain[k] < 0.003f) placeGain[k] = 0;
+        if (placeGain[k] == 0 || volume < 0.001f) {   // faded out, or the music turned off: not playing at all
+            placeGain[k] = 0;
+            if (IsMusicStreamPlaying(placeMusic[k])) PauseMusicStream(placeMusic[k]);
+            continue;
+        }
+        if (!placeStarted[k]) PlayMusicStream(placeMusic[k]);
+        else if (!IsMusicStreamPlaying(placeMusic[k])) ResumeMusicStream(placeMusic[k]);
+        placeStarted[k] = true;
+        SetMusicVolume(placeMusic[k], placeGain[k] * volume);
+        UpdateMusicStream(placeMusic[k]);
+    }
+    return want >= 0;
+}
+
 void MusicClose(void)
 {
     if (!streaming) return;
+    for (int k = 0; k < PLACES; k++)
+        if (placeMusic[k].frameCount) UnloadMusicStream(placeMusic[k]);
     UnloadAudioStream(stream);
     CloseAudioDevice();
     streaming = false;
@@ -1003,6 +1071,8 @@ void MusicUpdate(float dt, bool inGame)
     volume += (level - volume) * fminf(1.0f, dt * 8.0f);
     if (fabsf(level - volume) < 0.002f) volume = level;
     SetAudioStreamVolume(stream, volume);
+    if (UpdatePlaces(dt, inGame))
+        for (int m = 0; m < MOODS; m++) tracks[m].target = 0.0f;
     if (!started) {
         started = true;
         PlayAudioStream(stream);
@@ -1010,8 +1080,11 @@ void MusicUpdate(float dt, bool inGame)
     for (int round = 0; round < 2; round++) {
         bool want = IsAudioStreamProcessed(stream);
         int slices = want ? STREAM_FRAMES / SLICE : 1;
-        // With the music off and faded out there is nothing to make: silence.
-        bool silent = level <= 0 && volume <= 0;
+        // With the music off and faded out, or a place's track playing and the made tunes faded, there is
+        // nothing to make: silence, and no time spent on it.
+        bool idle = true;
+        for (int m = 0; m < MOODS; m++) idle = idle && tracks[m].target <= 0.0f && tracks[m].gain <= 0.0f;
+        bool silent = (level <= 0 && volume <= 0) || idle;
         while (staged < STREAM_FRAMES && slices-- > 0) {
             if (silent) memset(mixBuf + 2 * staged, 0, (size_t)SLICE * 2 * sizeof(float));
             else MusicMix(mixBuf + 2 * staged, SLICE);

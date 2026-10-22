@@ -145,6 +145,11 @@ in `src/game.h`) holds the whole world.
   loop that draws figures. Guests carry other players on at their last speed (`PeerMoved`, `vel`) and
   animals along their heading (`Ease` in `mp.c`), so they glide between the host's ten pictures a second.
   `TestFaster` checks all three.
+- **Music of places** (`UpdatePlaces` in `music.c`, files in `assets/music/` from `tools/assets/make_music.sh`): one
+  raylib music stream per place (city, village, open land, ziggurat), each with a 1 s buffer so slow frames do
+  not starve it; while one plays, the synthesizer's tracks are silent and not computed at all (`idle`). The
+  fight mood brings the synthesizer back. Only CC0 music; list it in the README's credits. `audio.js` checks
+  each place (`MusicPlace()` in the test info).
 - **Alehouse** (`BuildAlehouse`, `AlehouseFolk`, `InAlehouse` in `village.c`; the rule in `AlehouseRule` and
   `SetEquip` in `player.c`): built before the city's houses so they keep clear of it. Its folk are appended
   last (`Villager.talks`: they turn and gesture while drawn). No drink is sold there yet, by the owner's wish.
