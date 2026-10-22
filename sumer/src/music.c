@@ -993,6 +993,15 @@ static float placeGain[PLACES];
 static bool placesTried, placeStarted[PLACES];
 static int placeNow = -1;
 
+#ifdef SUMER_TEST
+// For tests: the made tunes' gains (day, fight, night) and the places' (city, village, open land, ziggurat).
+void MusicGains(float *out)
+{
+    for (int m = 0; m < MOODS; m++) out[m] = tracks[m].gain;
+    for (int k = 0; k < PLACES; k++) out[MOODS + k] = IsMusicStreamPlaying(placeMusic[k]) ? placeGain[k] : -placeGain[k];
+}
+#endif
+
 // Which place's track is being heard (0 city, 1 village, 2 open land, 3 ziggurat), or -1: for tests.
 int MusicPlace(void)
 {
@@ -1064,8 +1073,15 @@ void MusicClose(void)
 void MusicUpdate(float dt, bool inGame)
 {
     if (!ready) return;
-    if (inGame) ChooseMood(dt);
-    else mood = MOOD_DAY;
+    if (inGame) {
+        ChooseMood(dt);
+    } else {
+        // Back at the title the fight is over: a game entered afterwards starts in peace, not with the old
+        // fight tune still running under the title's and the place's.
+        mood = MOOD_DAY;
+        combatT = 0;
+        lastHealth = 0;
+    }
     for (int m = 0; m < MOODS; m++) tracks[m].target = m == mood ? 1.0f : 0.0f;
     if (!streaming) return;
     volume += (level - volume) * fminf(1.0f, dt * 8.0f);

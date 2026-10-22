@@ -1046,6 +1046,63 @@ static void TestFaster(void)
     *p = (Peer){ 0 };
 }
 
+// Dawn sends everyone back to their posts, but not a guard still after a player who is on their feet and
+// within twice a guard's bowshot (and that player stays wanted); a fallen guard does come back.
+static void TestDawn(void)
+{
+    G.self = G.actor = 0;
+    RespawnPeople();
+    PlaceAt(3, 4, 0);
+    int g[3], n = 0;
+    for (int i = 0; i < G.villagerCount && n < 3; i++)
+        if (G.villagers[i].kind == NPC_GUARD) g[n++] = i;
+    if (n < 3) {
+        Check(false, "three guards");
+        return;
+    }
+    Vitals *fight = &G.villagers[g[0]].vit, *fallen = &G.villagers[g[1]].vit, *far = &G.villagers[g[2]].vit;
+    *fight = (Vitals){ .override = true, .hostile = 60, .target = 0, .at = { 20, 0, 4 } };
+    *fallen = (Vitals){ .dead = true, .target = 0 };
+    *far = (Vitals){ .override = true, .hostile = 60, .target = 0, .at = { 3 + 120, 0, 4 } };
+    G.peers[0].wanted = 100;
+    DawnPeople();
+    Check(fight->override && fight->hostile > 0 && fight->at.x == 20 && !fallen->dead && !far->override && G.peers[0].wanted > 0,
+          "at dawn the guard still fighting fights on (%d), the fallen one is back (%d), the one 120 m off goes home (%d); still wanted (%.0f)",
+          fight->override, !fallen->dead, !far->override, G.peers[0].wanted);
+    RespawnPeople();
+}
+
+bool StepTowardForTest(Vitals *v, Vector3 goal, float speed, float dt);
+
+// Someone shut in a U of walls with the one they want behind its closed end walks out of the open end and
+// round, instead of pressing into the wall that is in the straight line; a way is found in good time.
+static void TestPaths(void)
+{
+    const float cx = 200, cz = -150;
+    int first = G.boxCount;
+    AddBoxOn(cx - 5, cz, 0.6f, 3, 10, COL_WALL, true);
+    AddBoxOn(cx + 5, cz, 0.6f, 3, 10, COL_WALL, true);
+    AddBoxOn(cx, cz + 5, 10.6f, 3, 0.6f, COL_WALL, true);
+    Vitals v = { 0 };
+    v.at = (Vector3){ cx, TerrainHeight(cx, cz), cz };
+    Vector3 goal = { cx, TerrainHeight(cx, cz + 15), cz + 15 };
+    bool there = false;
+    float t = 0;
+    for (; t < 40 && !there; t += 0.05f) {
+        PathNewFrame();
+        there = StepTowardForTest(&v, goal, 3.0f, 0.05f);
+    }
+    Check(there, "out of a U of walls and round to the far side of its closed end in %.0f s (now %.1f m away)", t, XZDist(v.at, goal));
+
+    PathNewFrame();
+    Vector3 out[PATH_MAX];
+    double t0 = GetTime();
+    int n = FindPath((Vector3){ cx, 0, cz }, (Vector3){ cx + 300, 0, cz + 300 }, out, PATH_MAX);
+    double ms = (GetTime() - t0) * 1000.0;
+    Check(n > 0 && ms < 40.0, "the longest search takes %.1f ms and still points the way (%d corners)", ms, n);
+    G.boxCount = first;
+}
+
 // The alehouse by the potters' quarter: townsfolk sit talking at its tables; weapons go away at the door
 // and come back on the way out.
 static void TestAlehouse(void)
@@ -2170,6 +2227,8 @@ static void RunTests(void)
     TestPartridges();
     TestFaster();
     TestAlehouse();
+    TestPaths();
+    TestDawn();
     TestTorch();
     TestDeathLosses();
     TestCanals();

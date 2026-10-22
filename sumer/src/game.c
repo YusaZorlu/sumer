@@ -364,7 +364,7 @@ static void UpdateDawn(void)
 {
     if (G.hour >= 6.0f && G.hour < 12.0f && G.dawnDay != G.day) {
         G.dawnDay = G.day;
-        RespawnPeople();
+        DawnPeople();
         NewDay();
     }
 }

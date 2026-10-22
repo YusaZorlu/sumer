@@ -491,7 +491,10 @@ Nobody attacks you unless you attack first. What happens next depends on where y
   tells the city's guards.
 
 If no one else sees, only the victim reacts. At night people see less far, unless you stand in
-torchlight. At dawn everyone is back and grudges are forgotten.
+torchlight. At dawn everyone is back at their posts and grudges are forgotten, except a fight still going
+on: a guard (or anyone) still after you keeps at it while you are on your feet and within 80 m of them,
+twice a guard's longest bowshot, and you stay wanted. The fallen come back at dawn as before. Guards'
+bows (city, village and caravan) carry 40 m by day, a little farther than other archers' 34 m.
 
 Nobody chases you far from home. The city's guards keep to the city's lands and to about 40 m from
 their posts, caravan guards stay within about 14 m of their caravan, village folk around their
@@ -584,6 +587,10 @@ fishing spots and date palms after 1 day, felled trees after 16 hours and copper
 
 Tin comes only from the caravans. The smith turns bronze into an axe, a pick, arrowheads (+10 damage)
 or bronze armor. Workers do these jobs from 6:00 to 18:30 and go home at night.
+
+People who come after you, or go back to their posts, find their way: round houses and walls, up and
+down the ziggurat's stairs, over bridges, and across a canal with a jump, instead of pressing into
+whatever stands in the straight line.
 
 ## Wolves and animals
 

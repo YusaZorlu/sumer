@@ -46,6 +46,7 @@
 #define MAX_LADDERS     8
 #define MAX_FIGHTERS    160
 #define MAX_VILLAGERS   96
+#define PATH_MAX        16          // corners kept of a way found round something (path.c)
 #define MAX_WORKERS     16
 #define MAX_CARAVANS    2
 #define CARAVAN_GUARDS  2
@@ -189,6 +190,12 @@ typedef struct {
     // Going round something big: the side it keeps to (+1 or -1), how long since it got any nearer.
     signed char detour;
     float detourT, bestLeft;
+    // A way found round what blocks the straight line (path.c): its corners, the next one, when to look
+    // again, the goal it was found for; whether the straight line was clear when last looked along.
+    Vector3 path[PATH_MAX], pathGoal;
+    unsigned char pathN, pathAt;
+    float pathT, lineT;
+    bool lineClear;
 } Vitals;
 
 enum { MARK_NONE, MARK_WARN, MARK_PARRIED, MARK_HIT };
@@ -619,6 +626,10 @@ bool InWater(float x, float z);
 float WadeSpeed(float x, float z);
 bool PointInSolid(Vector3 p);
 bool SolidAt(float x, float z, float radius);
+void PathNewFrame(void);
+bool PathClear(Vector3 a, Vector3 b);
+int FindPath(Vector3 from, Vector3 to, Vector3 *out, int max);
+Vector3 PathWay(Vitals *v, Vector3 goal, float dt);
 const int *BoxesNear(float x0, float z0, float x1, float z1, int *n);
 void UpdateSky(void);
 void DrawSky(void);
@@ -747,6 +758,7 @@ void HitPlayer(int s, float dmg, Vector3 from, bool melee);
 int PlayerOnSegment(Vector3 a, Vector3 b, int skip);
 int PlayersInArc(Vector3 chest, Vector3 fwd, float range, float minDot, int skip, int *out, int max);
 void ForgetFights(int slot);
+void DawnPeople(void);
 void RespawnPeople(void);
 void BuildRaiders(void);
 void UpdateRaiders(float dt);

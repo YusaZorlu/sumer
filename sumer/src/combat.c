@@ -30,6 +30,7 @@ static const RoleDef ROLES[ROLE_COUNT] = {
 #define PVP_SCALE    0.5f
 #define BOW_REST     1.6f
 #define BOW_RANGE    34.0f
+#define GUARD_BOW    40.0f   // a guard's bow (city, village or caravan) carries a little farther
 #define PROVOKED     60.0f
 #define VILLAGE_RAGE 120.0f
 
@@ -259,9 +260,10 @@ static bool JumpWater(Vitals *v, float angle)
     return false;
 }
 
-// Heads for the goal, trying side steps around walls and people, jumping canals and finding a way
-// round wider water; true once within 'stop'. Round something big (the ziggurat, a block of houses) it
-// keeps to one side, as if feeling along the wall, and tries the other side when that gets it nowhere.
+// Heads for the goal, trying side steps around people, jumping canals; true once within 'stop'. When
+// the straight line is blocked it follows a way found round what is in between (PathWay, path.c); with
+// no way found it keeps to one side of what blocks it, as if feeling along the wall, and finds a way
+// round wide water by a bridge or a corner.
 static bool StepToward(Vitals *v, int owner, Vector3 goal, float speed, float dt, float stop)
 {
     static const float tries[9] = { 0.0f, 0.7f, -0.7f, 1.4f, -1.4f, 2.1f, -2.1f, 2.8f, -2.8f };
@@ -275,7 +277,8 @@ static bool StepToward(Vitals *v, int owner, Vector3 goal, float speed, float dt
     }
     float dx = goal.x - v->at.x, dz = goal.z - v->at.z, d = sqrtf(dx * dx + dz * dz), left = d;
     if (d <= stop + 0.05f) return true;
-    Vector3 way = AroundWater(v->at, goal);
+    Vector3 way = PathWay(v, goal, dt);
+    if (way.x == goal.x && way.z == goal.z) way = AroundWater(v->at, goal);
     if (way.x != goal.x || way.z != goal.z) {
         dx = way.x - v->at.x;
         dz = way.z - v->at.z;
@@ -311,6 +314,13 @@ static bool StepToward(Vitals *v, int owner, Vector3 goal, float speed, float dt
     // Every way blocked: within a step or two of the goal is close enough.
     return left < stop + 1.5f;
 }
+
+#ifdef SUMER_TEST
+bool StepTowardForTest(Vitals *v, Vector3 goal, float speed, float dt)
+{
+    return StepToward(v, -1, goal, speed, dt, 0.5f);
+}
+#endif
 
 // How far a fighter sees player s: less in the dark, unless torches light the player up.
 static float SightOf(Role r, int s)
@@ -490,6 +500,7 @@ static bool ClearShot(Vector3 a, Vector3 b)
 // How far an archer shoots at player s: its bow's reach, less in the dark.
 static float BowRange(const Fighter *f, int s)
 {
+    if (f->role == ROLE_GUARD) return fminf(GUARD_BOW, SightOf(f->role, s) * 1.3f);
     return fminf(BOW_RANGE, SightOf(f->role, s) * 1.15f);
 }
 
@@ -544,6 +555,7 @@ static void UpdateBlows(float dt);
 
 void UpdateCombat(float dt)
 {
+    PathNewFrame();
     CollectFighters();
     UpdateBlows(dt);
     for (int a = 0; a < MAX_PLAYERS; a++)
@@ -1075,6 +1087,52 @@ void GiveLoot(int i)
     }
     if (log[0]) Say("Found %s.", log);
     else Say("Nothing you can carry.");
+}
+
+// Whether dawn leaves this one be: alive and after a player who is still on their feet and within twice
+// a guard's longest bowshot. Everyone else is back at their post at dawn, the fallen with them.
+static bool StillFighting(const Vitals *v)
+{
+    if (v->dead || !v->override || v->hostile <= 0 || v->target < 0 || v->target >= MAX_PLAYERS) return false;
+    return PlayerAwake(v->target) && XZDist(v->at, G.peers[v->target].pos) <= 2.0f * GUARD_BOW;
+}
+
+// Dawn: as RespawnPeople, but a fight still going on goes on (and its player stays wanted).
+void DawnPeople(void)
+{
+    bool fought[MAX_PLAYERS] = { false };
+    for (int i = 0; i < G.villagerCount; i++) {
+        Vitals *v = &G.villagers[i].vit;
+        if (StillFighting(v)) fought[v->target] = true;
+        else *v = (Vitals){ .used = false };
+    }
+    for (int i = 0; i < G.workerCount; i++) {
+        Vitals *v = &G.workers[i].vit;
+        if (StillFighting(v)) fought[v->target] = true;
+        else *v = (Vitals){ .used = false };
+    }
+    for (int i = 0; i < TR_COUNT; i++) {
+        Vitals *v = &G.traders[i].vit;
+        if (StillFighting(v)) fought[v->target] = true;
+        else *v = (Vitals){ .used = false };
+    }
+    for (int c = 0; c < MAX_CARAVANS; c++) {
+        Caravan *cv = &G.caravans[c];
+        bool lost = false, busy = false;
+        for (int k = 0; k <= CARAVAN_GUARDS; k++) {
+            lost = lost || cv->vit[k].dead;
+            if (StillFighting(&cv->vit[k])) fought[cv->vit[k].target] = busy = true;
+        }
+        if (busy) continue;   // the caravan waits for its fight to end
+        if (lost) {
+            cv->state = CV_AWAY;
+            cv->timer = 40.0f;
+        }
+        for (int k = 0; k <= CARAVAN_GUARDS; k++) cv->vit[k] = (Vitals){ .used = false };
+    }
+    for (int s = 0; s < MAX_PLAYERS; s++)
+        if (!fought[s]) G.peers[s].wanted = 0;
+    G.templeAccess = false;
 }
 
 void RespawnPeople(void)

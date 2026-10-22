@@ -137,6 +137,13 @@ in `src/game.h`) holds the whole world.
   `COL_PALM_LEAF`, the tree literals in `world.c`), 252 tilled earth (`COL_SOIL`), 251 straw (`TAG_CROP()`) gets it,
   triplanar in world space (`det3()`), and is drawn opaque. Keep plain `COL_PALM_TRUNK` (255) for beams and
   posts, and do not `Mix()` a tagged color with an untagged one (the alpha lands on a random tag).
+- **Finding a way** (`src/path.c`): fighters (guards, wardens, raiders, barbarians, bandits, caravan guards, villagers
+  in a fight) go straight while `PathClear` says the line is walkable (looked along every 0.5 s); when it is not,
+  `PathWay` follows corners from `FindPath`, A* on a 1 m grid that follows the ground's height (stairs, terraces,
+  bridges; a step up of `STEP_HEIGHT`, down of 1.3 m), crosses canals narrow enough to jump (wet cells cost a
+  little more; `JumpWater` does the jump) and not the river, harbor or ponds. At most 2 searches a frame
+  (`PathNewFrame` in `UpdateCombat`), 4000 cells each (about 2 ms); a goal beyond that gets the way to the
+  nearest place found, looked for again in 3 s. `TestPaths` has a U of walls the old steering never left.
 - **Speed** (measured with `harness stats` and a `-pg` build of the harness): `BoxesNear()` in `world.c` is an
   8 m grid of the boxes; `GroundHeight`, `SolidAt`, the player's and NPCs' collisions, the camera and the aim ray
   ask it instead of scanning every box (update went from 0.87 to 0.06 ms a frame). New boxes join it before
