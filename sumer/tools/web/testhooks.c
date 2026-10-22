@@ -104,6 +104,7 @@ EMSCRIPTEN_KEEPALIVE void TestCommand(int cmd, float a, float b)
     case 13: HurtPlayer(a, BY_NONE); break;
     case 14: SetEquip((int)a); break;
     case 15: SetPanel((Panel)(int)a); break;
+    case 16: SfxSetLevel((int)a); break;
     default: break;
     }
 }

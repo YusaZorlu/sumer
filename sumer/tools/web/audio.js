@@ -87,8 +87,13 @@ function check(ok, what) { console.log((ok ? 'PASS: ' : 'FAIL: ') + what); if (!
   s = await info(page);
   check(s.musicLevel === (before + 2) % 4, `N again (${s.musicLevel}, "${s.msg}")`);
   while ((await info(page)).musicLevel !== 0) { await page.keyboard.press('KeyN'); await sleep(300); }
+  // The music off, the sounds of the place (the city round the player's house) are still heard.
   await sleep(1500); await rms(); await sleep(3000); m = await rms();
-  check(m.rms < 0.001, `with the music off the output goes quiet (rms ${m.rms.toFixed(4)})`);
+  check(m.rms > 0.001, `with the music off the city's murmur is still heard (rms ${m.rms.toFixed(4)})`);
+  await cmd(page, 16, 0);
+  await sleep(2500); await rms(); await sleep(3000); m = await rms();
+  check(m.rms < 0.001, `with the music and the sounds off the output goes quiet (rms ${m.rms.toFixed(4)})`);
+  await cmd(page, 16, 2);
   while ((await info(page)).musicLevel !== 2) { await page.keyboard.press('KeyN'); await sleep(300); }
 
   await browser.close();
