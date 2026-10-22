@@ -1046,6 +1046,37 @@ static void TestFaster(void)
     *p = (Peer){ 0 };
 }
 
+bool StepTowardForTest(Vitals *v, Vector3 goal, float speed, float dt);
+
+// Someone shut in a U of walls with the one they want behind its closed end walks out of the open end and
+// round, instead of pressing into the wall that is in the straight line; a way is found in good time.
+static void TestPaths(void)
+{
+    const float cx = 200, cz = -150;
+    int first = G.boxCount;
+    AddBoxOn(cx - 5, cz, 0.6f, 3, 10, COL_WALL, true);
+    AddBoxOn(cx + 5, cz, 0.6f, 3, 10, COL_WALL, true);
+    AddBoxOn(cx, cz + 5, 10.6f, 3, 0.6f, COL_WALL, true);
+    Vitals v = { 0 };
+    v.at = (Vector3){ cx, TerrainHeight(cx, cz), cz };
+    Vector3 goal = { cx, TerrainHeight(cx, cz + 15), cz + 15 };
+    bool there = false;
+    float t = 0;
+    for (; t < 40 && !there; t += 0.05f) {
+        PathNewFrame();
+        there = StepTowardForTest(&v, goal, 3.0f, 0.05f);
+    }
+    Check(there, "out of a U of walls and round to the far side of its closed end in %.0f s (now %.1f m away)", t, XZDist(v.at, goal));
+
+    PathNewFrame();
+    Vector3 out[PATH_MAX];
+    double t0 = GetTime();
+    int n = FindPath((Vector3){ cx, 0, cz }, (Vector3){ cx + 300, 0, cz + 300 }, out, PATH_MAX);
+    double ms = (GetTime() - t0) * 1000.0;
+    Check(n > 0 && ms < 40.0, "the longest search takes %.1f ms and still points the way (%d corners)", ms, n);
+    G.boxCount = first;
+}
+
 // The alehouse by the potters' quarter: townsfolk sit talking at its tables; weapons go away at the door
 // and come back on the way out.
 static void TestAlehouse(void)
@@ -2112,6 +2143,7 @@ static void RunTests(void)
     TestPartridges();
     TestFaster();
     TestAlehouse();
+    TestPaths();
     TestTorch();
     TestDeathLosses();
     TestCanals();

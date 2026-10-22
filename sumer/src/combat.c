@@ -258,9 +258,10 @@ static bool JumpWater(Vitals *v, float angle)
     return false;
 }
 
-// Heads for the goal, trying side steps around walls and people, jumping canals and finding a way
-// round wider water; true once within 'stop'. Round something big (the ziggurat, a block of houses) it
-// keeps to one side, as if feeling along the wall, and tries the other side when that gets it nowhere.
+// Heads for the goal, trying side steps around people, jumping canals; true once within 'stop'. When
+// the straight line is blocked it follows a way found round what is in between (PathWay, path.c); with
+// no way found it keeps to one side of what blocks it, as if feeling along the wall, and finds a way
+// round wide water by a bridge or a corner.
 static bool StepToward(Vitals *v, int owner, Vector3 goal, float speed, float dt, float stop)
 {
     static const float tries[9] = { 0.0f, 0.7f, -0.7f, 1.4f, -1.4f, 2.1f, -2.1f, 2.8f, -2.8f };
@@ -274,7 +275,8 @@ static bool StepToward(Vitals *v, int owner, Vector3 goal, float speed, float dt
     }
     float dx = goal.x - v->at.x, dz = goal.z - v->at.z, d = sqrtf(dx * dx + dz * dz), left = d;
     if (d <= stop + 0.05f) return true;
-    Vector3 way = AroundWater(v->at, goal);
+    Vector3 way = PathWay(v, goal, dt);
+    if (way.x == goal.x && way.z == goal.z) way = AroundWater(v->at, goal);
     if (way.x != goal.x || way.z != goal.z) {
         dx = way.x - v->at.x;
         dz = way.z - v->at.z;
@@ -310,6 +312,13 @@ static bool StepToward(Vitals *v, int owner, Vector3 goal, float speed, float dt
     // Every way blocked: within a step or two of the goal is close enough.
     return left < stop + 1.5f;
 }
+
+#ifdef SUMER_TEST
+bool StepTowardForTest(Vitals *v, Vector3 goal, float speed, float dt)
+{
+    return StepToward(v, -1, goal, speed, dt, 0.5f);
+}
+#endif
 
 // How far a fighter sees player s: less in the dark, unless torches light the player up.
 static float SightOf(Role r, int s)
@@ -543,6 +552,7 @@ static void UpdateBlows(float dt);
 
 void UpdateCombat(float dt)
 {
+    PathNewFrame();
     CollectFighters();
     UpdateBlows(dt);
     for (int a = 0; a < MAX_PLAYERS; a++)

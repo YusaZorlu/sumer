@@ -559,6 +559,10 @@ fishing spots and date palms after 1 day, felled trees after 16 hours and copper
 Tin comes only from the caravans. The smith turns bronze into an axe, a pick, arrowheads (+10 damage)
 or bronze armor. Workers do these jobs from 6:00 to 18:30 and go home at night.
 
+People who come after you, or go back to their posts, find their way: round houses and walls, up and
+down the ziggurat's stairs, over bridges, and across a canal with a jump, instead of pressing into
+whatever stands in the straight line.
+
 ## Wolves and animals
 
 Wolves hunt you only when you are alone outside the walls: no worker, villager, traveller or caravan
