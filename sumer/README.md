@@ -87,6 +87,9 @@ Playing together:
   hens and the eggs are shared.
 - The world never stops: the Esc menu only takes your hands off the keys, and time can't be
   fast-forwarded (T).
+- T opens a chat line: type, and Enter sends it to everyone (Esc puts it away, keeping what you typed).
+  The last lines stay at the bottom left for 15 seconds, each name in its player's color, and all of
+  them show again while you type. The host passes every line on: up to 100 characters, two a second.
 - The night passes when every player lies in bed (E at your bed; E, Space or a step gets you up).
   Someone brought down comes to at home at once (somewhere in the city in a PvP game), with 30% health,
   and the message says who did it (a player by name).
@@ -153,6 +156,7 @@ touch controls yet: play with a keyboard (a USB-C or Bluetooth one works; WASD t
 | Tab | Baskets (inventory), equipment and armor; with dev tools on, its "Dev console" button opens the dev console |
 | ` or F2 | Dev console, when dev tools are on (see below) |
 | T (hold) | Fast-forward time (playing alone) |
+| T | Chat, in a shared game or a battle royale (the dead watching too): type a line, Enter sends it to everyone, Esc puts it away |
 | F5 | Save |
 | F11 or Alt+Enter | Borderless fullscreen on/off |
 | M | Map zoom (whole world, x2.5, x6 around you); the map shows the main roads, both villages and the camps |

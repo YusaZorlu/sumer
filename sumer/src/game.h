@@ -262,7 +262,7 @@ typedef enum {
     STN_BED, STN_STORAGE, STN_QUERN, STN_TROUGH, STN_OVEN, STN_KILN, STN_SMELTER, STN_BENCH, STN_ALTAR, STN_STASH, STN_STASH2,
     STN_STASH3, STN_STASH4, STN_WELL, STN_DITCH, STN_FERRY_E, STN_FERRY_W, STN_COUNT
 } StationId;
-typedef enum { PANEL_NONE, PANEL_BAG, PANEL_STORAGE, PANEL_TRADE, PANEL_PAUSE, PANEL_HELP, PANEL_COOP, PANEL_LOOK, PANEL_CONSOLE, PANEL_SETTINGS } Panel;
+typedef enum { PANEL_NONE, PANEL_BAG, PANEL_STORAGE, PANEL_TRADE, PANEL_PAUSE, PANEL_HELP, PANEL_COOP, PANEL_LOOK, PANEL_CONSOLE, PANEL_SETTINGS, PANEL_CHAT } Panel;
 typedef enum { TGT_NONE, TGT_CARCASS, TGT_RES, TGT_STATION, TGT_PLOT, TGT_COOP, TGT_TRADER, TGT_BODY, TGT_OFFER, TGT_LADDER, TGT_WATER, TGT_STATUE } TargetKind;
 enum { SPRING, SUMMER, FALL, WINTER };
 typedef struct { TargetKind kind; int index; } Target;
@@ -854,6 +854,8 @@ Font GameFont(void);
 
 void SetPanel(Panel p);
 void DrawUI(void);
+void ChatAdd(int slot, const char *text);
+void ChatClear(void);
 
 void GameInit(void);
 void GameUpdate(void);
@@ -924,6 +926,9 @@ const Arrow *NetArrows(void);
 void DrawNetArrows(void);
 void LocalSayV(const char *fmt, va_list ap);
 void NetSayV(int slot, const char *fmt, va_list ap);
+#define CHAT_MAX 100   // bytes in a line of chat
+int ChatTidy(const char *in, char *out, int size);
+void NetChat(const char *text);
 void NetHurt(int slot, float dmg, int by, const Vector3 *src);
 void NetStunned(int slot, float secs);
 void NetHitMark(int slot, bool arrow);

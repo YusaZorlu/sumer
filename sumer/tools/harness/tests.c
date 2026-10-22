@@ -1048,6 +1048,26 @@ static void TestFaster(void)
 
 // Dawn sends everyone back to their posts, but not a guard still after a player who is on their feet and
 // within twice a guard's bowshot (and that player stays wanted); a fallen guard does come back.
+// A line of chat is tidied before it is passed on: no control characters or spaces at the ends, and cut on
+// a whole letter when it is too long.
+static void TestChat(void)
+{
+    char out[CHAT_MAX + 1], in[200];
+    ChatTidy("  hello there \t ", out, sizeof(out));
+    Check(strcmp(out, "hello there") == 0, "chat trimmed ('%s')", out);
+    ChatTidy("a\x01" "b\nc\x7f", out, sizeof(out));
+    Check(strcmp(out, "abc") == 0, "chat without control characters ('%s')", out);
+    Check(ChatTidy("   ", out, sizeof(out)) == 0, "a blank line of chat is nothing");
+    strcpy(in, "a");
+    for (int k = 0; k < 60; k++) strcat(in, "\xc3\xa7");   // ç
+    int n = ChatTidy(in, out, sizeof(out));
+    Check(n == 99 && (unsigned char)out[n - 1] == 0xa7, "long chat cut on a whole letter (%d bytes)", n);
+    strcpy(in, "ab");
+    for (int k = 0; k < 40; k++) strcat(in, "\xe2\x82\xac");   // €
+    n = ChatTidy(in, out, sizeof(out));
+    Check(n == 98 && (unsigned char)out[n - 1] == 0xac, "long chat cut on a whole three-byte letter (%d bytes)", n);
+}
+
 static void TestDawn(void)
 {
     G.self = G.actor = 0;
@@ -2229,6 +2249,7 @@ static void RunTests(void)
     TestAlehouse();
     TestPaths();
     TestDawn();
+    TestChat();
     TestTorch();
     TestDeathLosses();
     TestCanals();

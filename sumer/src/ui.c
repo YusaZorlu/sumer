@@ -649,7 +649,7 @@ static void DrawHelpPanel(void)
         { "Right mouse, Q", "parry with the melee weapon" }, { "V", "strike" },
         { "E", "use, talk, pick up, climb, search" }, { "F", "alternate action" },
         { "R", "refill the quiver" }, { "B", "torch on/off (from evening)" }, { "Z", "arrow camera on/off" }, { "Tab", "baskets and equipment" },
-        { "M", "map zoom" }, { "N", "music: off, low, medium, high" }, { "G", "graphics: auto, high, low, classic" }, { "T (hold)", "fast-forward time" }, { "F5", "save" },
+        { "M", "map zoom" }, { "N", "music: off, low, medium, high" }, { "G", "graphics: auto, high, low, classic" }, { "T (hold)", "fast-forward time (alone)" }, { "T", "chat (in a shared game)" }, { "F5", "save" },
         { "F11", "fullscreen" }, { "Esc", "pause, save slots, game settings, your look" }, { "H", "this window" },
         { "` or F2", "dev console (when dev tools are on)" },
     };
@@ -1013,6 +1013,113 @@ static void DrawMessage(int sw)
     for (int i = 0; i < count; i++) CenterText(lines[i], (float)sw / 2, 241.0f + 28.0f * (float)i, 22, Fade(RAYWHITE, a));
 }
 
+// Chat in a shared game: the last lines said, at the bottom left for a while after they come, and all of
+// them while a line is being typed (T opens it, Enter sends it, Esc puts it away).
+#define CHAT_LINES 8
+#define CHAT_SHOW  15.0
+static struct { char name[NAME_LEN]; Color color; char text[CHAT_MAX + 1]; double at; } chat[CHAT_LINES];
+static int chatCount;
+static char chatLine[CHAT_MAX + 1];
+
+void ChatAdd(int slot, const char *text)
+{
+    memmove(&chat[1], &chat[0], sizeof(chat[0]) * (CHAT_LINES - 1));
+    snprintf(chat[0].name, sizeof(chat[0].name), "%s", G.peers[slot].name);
+    chat[0].color = PlayerColor(slot);
+    snprintf(chat[0].text, sizeof(chat[0].text), "%s", text);
+    chat[0].at = GetTime();
+    if (chatCount < CHAT_LINES) chatCount++;
+}
+
+void ChatClear(void)
+{
+    chatCount = 0;
+    chatLine[0] = '\0';
+}
+
+#if defined(SUMER_TEST)
+const char *ChatLast(void)
+{
+    return chatCount ? TextFormat("%s: %s", chat[0].name, chat[0].text) : "";
+}
+#endif
+
+// How much of s goes on a row w wide: up to the last space that fits, or the last letter if none does.
+static int ChatFits(const char *s, float w)
+{
+    Font f = GameFont();
+    float x = 0, scale = FontSize(16) / (float)f.baseSize, gap = (float)((int)FontSize(16) / 10);
+    int at = 0, space = 0;
+    while (s[at]) {
+        int len, cp = GetCodepointNext(s + at, &len), g = GetGlyphIndex(f, cp);
+        x += (f.glyphs[g].advanceX ? (float)f.glyphs[g].advanceX : f.recs[g].width) * scale + gap;
+        if (x > w && at > 0) return space > 0 ? space : at;
+        if (cp == ' ') space = at;
+        at += len;
+    }
+    return at;
+}
+
+static void DrawChat(int sh)
+{
+    bool typing = G.panel == PANEL_CHAT;
+    float size = FontSize(16), gap = (float)((int)size / 10), w = fminf(460.0f, UiWidth() * 0.45f), y = (float)sh - 54;
+    if (typing) {
+        int c, n = (int)strlen(chatLine), len;
+        while ((c = GetCharPressed()) > 0) {
+            const char *u = CodepointToUTF8(c, &len);
+            if (c >= 32 && c != 127 && n + len <= CHAT_MAX) {
+                memcpy(chatLine + n, u, (size_t)len);
+                chatLine[n += len] = '\0';
+            }
+        }
+        if ((KeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && n > 0) {
+            while (n > 1 && ((unsigned char)chatLine[n - 1] & 0xC0) == 0x80) n--;
+            chatLine[--n] = '\0';
+        }
+        if (KeyPressed(KEY_ENTER) || KeyPressed(KEY_KP_ENTER)) {
+            if (chatLine[0]) NetChat(chatLine);
+            chatLine[0] = '\0';
+            SetPanel(PANEL_NONE);
+        }
+        // The end of a line too long for the box.
+        float lw = (float)Measure(L("Say:"), 16) + 8;
+        const char *tail = chatLine;
+        while (*tail && MeasureTextEx(GameFont(), tail, size, gap).x > w - lw - 24) {
+            GetCodepointNext(tail, &len);
+            tail += len;
+        }
+        DrawRectangleRec((Rectangle){ 8, y, w + 8, 26 }, Fade(BLACK, 0.6f));
+        DrawRectangleLinesEx((Rectangle){ 8, y, w + 8, 26 }, 1, C_EDGE);
+        Text("Say:", 14, y + 5, 16, C_GOLD);
+        DrawTextEx(GameFont(), TextFormat("%s%s", tail, fmodf((float)GetTime(), 1.0f) < 0.5f ? "_" : ""), (Vector2){ 14 + lw, y + 5 }, size, gap,
+                   RAYWHITE);
+        y -= 4;
+    }
+    // Newest at the bottom, each on as many rows as it needs, the name in the player's colour.
+    for (int i = 0; i < chatCount && y > 260; i++) {
+        double age = GetTime() - chat[i].at;
+        if (!typing && age > CHAT_SHOW) break;
+        float a = typing ? 1.0f : Clamp((float)(CHAT_SHOW - age), 0.0f, 1.0f);
+        char head[NAME_LEN + 2];
+        const char *row[4];
+        snprintf(head, sizeof(head), "%s:", chat[i].name);
+        float hw = 8 + MeasureTextEx(GameFont(), head, size, gap).x;
+        int len[4], rows = 0;
+        for (const char *s = chat[i].text; *s && rows < 4; rows++) {
+            len[rows] = ChatFits(s, rows ? w : w - hw);
+            row[rows] = s;
+            s += len[rows];
+            while (*s == ' ') s++;
+        }
+        y -= 20.0f * (float)rows + 2;
+        DrawRectangle(8, (int)y - 2, (int)w + 8, 20 * rows + 2, Fade(BLACK, 0.4f * a));
+        DrawTextEx(GameFont(), head, (Vector2){ 14, y }, size, gap, Fade(ColorBrightness(chat[i].color, 0.4f), a));
+        for (int k = 0; k < rows; k++)
+            DrawTextEx(GameFont(), TextFormat("%.*s", len[k], row[k]), (Vector2){ k ? 14 : 14 + hw, y + 20.0f * (float)k }, size, gap, Fade(RAYWHITE, a));
+    }
+}
+
 static void DrawPrompts(void)
 {
     float cx = UiWidth() / 2, y = UiHeight() - 128;
@@ -1074,7 +1181,8 @@ void DrawUI(void)
     DrawRoyaleHUD((float)sw, (float)sh);
     if (G.msgT > 0) DrawMessage(sw);
 
-    Text("H  controls", 12, (float)sh - 22, 14, Fade(RAYWHITE, 0.6f));
+    DrawChat(sh);
+    Text(Online() ? "H  controls    T  chat" : "H  controls", 12, (float)sh - 22, 14, Fade(RAYWHITE, 0.6f));
 
     switch (G.panel) {
     case PANEL_BAG:     DrawBagPanel(); break;
