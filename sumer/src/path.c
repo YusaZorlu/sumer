@@ -12,7 +12,7 @@
 #define MAX_OPEN   4000      // cells taken off the open list in one search, at most
 #define MAX_SEEN   16384     // cells looked at in one search
 #define HASH_N     32768     // a power of two, twice MAX_SEEN
-#define PLANS      3         // searches a frame, for everyone together
+#define PLANS      2         // searches a frame, for everyone together (each at most ~2 ms)
 #define DROP       1.3f      // the deepest step down taken
 
 typedef struct { int ix, iz, lvl, parent; float y, g, h; bool open, shut, blocked, wet; } Node;

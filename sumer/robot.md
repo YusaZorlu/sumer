@@ -141,7 +141,7 @@ in `src/game.h`) holds the whole world.
   in a fight) go straight while `PathClear` says the line is walkable (looked along every 0.5 s); when it is not,
   `PathWay` follows corners from `FindPath`, A* on a 1 m grid that follows the ground's height (stairs, terraces,
   bridges; a step up of `STEP_HEIGHT`, down of 1.3 m), crosses canals narrow enough to jump (wet cells cost a
-  little more; `JumpWater` does the jump) and not the river, harbor or ponds. At most 3 searches a frame
+  little more; `JumpWater` does the jump) and not the river, harbor or ponds. At most 2 searches a frame
   (`PathNewFrame` in `UpdateCombat`), 4000 cells each (about 2 ms); a goal beyond that gets the way to the
   nearest place found, looked for again in 3 s. `TestPaths` has a U of walls the old steering never left.
 - **Speed** (measured with `harness stats` and a `-pg` build of the harness): `BoxesNear()` in `world.c` is an
