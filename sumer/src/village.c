@@ -887,6 +887,46 @@ static void Part(float x, float y, float z, float w, float h, float l, Color c)
     DrawShadedBox((Vector3){ x, y, z }, (Vector3){ w, h, l }, c);
 }
 
+// What a villager at work holds, hands set on it: among the herders a distaff of wool and a spinning
+// spindle hanging from the thread, among the fishers a net being mended, among the hunters a flint
+// knife and a strip of hide.
+static void WorkInHands(Vector3 pos, float face, bool crouch, int village, float t)
+{
+    const Color wool = { 226, 218, 196, 255 }, hide = { 150, 112, 76, 255 }, net = { 176, 160, 120, 255 };
+    float y = crouch ? 0.72f : 1.08f;
+    rlPushMatrix();
+    rlTranslatef(pos.x, pos.y, pos.z);
+    rlRotatef(face * RAD2DEG, 0, 1, 0);
+    if (village == VIL_HERDERS) {
+        GripHere(HAND_OTHER, -0.12f, y, 0.3f);
+        Part(-0.12f, y + 0.2f, 0.3f, 0.025f, 0.45f, 0.025f, COL_WOOD);
+        DrawShadedBlob((Vector3){ -0.12f, y + 0.42f, 0.3f }, (Vector3){ 0.08f, 0.11f, 0.08f }, wool);
+        float tw = 0.05f * sinf(t * 3.0f), sy = y - 0.28f;
+        GripHere(HAND_WEAPON, 0.1f, y + 0.05f, 0.32f);
+        Part(0.0f, y + 0.2f, 0.31f, 0.2f, 0.004f, 0.004f, wool);   // the thread drawn out from the wool
+        Part(0.1f + tw, sy + 0.16f, 0.32f, 0.004f, 0.22f, 0.004f, wool);
+        rlPushMatrix();
+        rlTranslatef(0.1f + tw, sy, 0.32f);
+        rlRotatef(t * 400.0f, 0, 1, 0);
+        Part(0, 0, 0, 0.012f, 0.22f, 0.012f, COL_WOOD);
+        Part(0, -0.06f, 0, 0.07f, 0.02f, 0.07f, COL_CLAY);   // the whorl
+        rlPopMatrix();
+    } else if (village == VIL_FISHERS) {
+        GripHere(HAND_OTHER, -0.2f, y, 0.32f);
+        GripHere(HAND_WEAPON, 0.2f, y, 0.32f);
+        for (int k = 0; k < 4; k++) {
+            Part(0, y - 0.1f * (float)k, 0.34f, 0.42f, 0.008f, 0.008f, net);
+            Part(-0.2f + 0.133f * (float)k, y - 0.15f, 0.34f, 0.008f, 0.32f, 0.008f, net);
+        }
+    } else {
+        GripHere(HAND_OTHER, -0.14f, y, 0.3f);
+        GripHere(HAND_WEAPON, 0.12f, y + 0.03f * sinf(t * 2.5f), 0.32f);
+        Part(-0.04f, y - 0.02f, 0.3f, 0.26f, 0.01f, 0.14f, hide);
+        Part(0.12f, y + 0.07f + 0.03f * sinf(t * 2.5f), 0.32f, 0.02f, 0.1f, 0.03f, (Color){ 60, 58, 56, 255 });
+    }
+    rlPopMatrix();
+}
+
 // A walking staff, a bundle on the back and a wide straw hat.
 static void DrawTravelGear(Vector3 pos, float face, Color robe)
 {
@@ -983,9 +1023,10 @@ void DrawVillage(void)
         bool torch = TorchesLit() && (v->kind == NPC_TRAVELLER || v->kind == NPC_GUARD) && !v->crouch;
         if (torch) GripAt(HAND_OTHER, -0.36f, 1.36f, 0.28f);
         if (v->kind == NPC_CIVILIAN || v->kind == NPC_VILLAGER || v->kind == NPC_TRAVELLER || v->kind == NPC_CLERIC) {
-            // A villager standing still at the hunters' butt keeps drawing a bow.
-            bool archer = v->kind == NPC_VILLAGER && v->speed <= 0 && !v->vit.override;
+            // The villager at the hunters' butt keeps drawing a bow; the others at work have their work in hand.
+            bool atWork = v->kind == NPC_VILLAGER && v->speed <= 0 && !v->vit.override, archer = atWork && v->bow > 0;
             float pull = archer ? fmaxf(0.0f, sinf((float)GetTime() * 0.9f + (float)i)) : 0.0f;
+            if (atWork && !archer) WorkInHands(pos, face, v->crouch, VillageAt(pos), (float)GetTime() + (float)i);
             if (v->kind == NPC_TRAVELLER) {
                 DrawTravelGear(pos, face, v->robe);
                 GripAt(HAND_WEAPON, 0.36f, 1.12f, 0.24f);

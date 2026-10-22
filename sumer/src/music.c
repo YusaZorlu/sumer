@@ -995,7 +995,6 @@ void MusicClose(void)
 // only when the stream runs dry does a frame make it all at once, so a slow frame costs no gap in the sound.
 void MusicUpdate(float dt, bool inGame)
 {
-    SfxAmbience(dt, inGame);
     if (!ready) return;
     if (inGame) ChooseMood(dt);
     else mood = MOOD_DAY;
