@@ -428,7 +428,9 @@ seed, so it is never stored.
   rings like bronze on bronze and throws sparks; one you take thumps. Arrows crack as they strike.
 - Sounds are made by the game itself, like the music (no sound files). "Sounds" in the Esc menu and on
   the title screen sets their volume (off, low, medium, high) apart from the music's; it is kept in
-  `sumer.sfx`.
+  `sumer.sfx`. Your footsteps sound of the ground underfoot: grass, bare earth and roads, the city's
+  brick streets and floors, or a splash in water. Inside the walls you hear the city's crowd (fading over
+  the 30 m past the walls, quieter at night); near a village its few voices, the wind and a hen.
 
 ## People, crime and raiders
 
@@ -608,7 +610,7 @@ Animals you kill stay gone until the next spring, when their herds are full agai
 | `src/web.c` | What differs in a browser: saves in IndexedDB, the captured mouse, taps and clicks, the canvas's pixels, phone detection |
 | `src/shell.html` | The page around the browser game |
 | `src/music.c` | The synthesizer, the three tunes, picking the mood, the volume, feeding the audio stream |
-| `src/sfx.c` | Sound effects made at start (swishes, thuds, a clang, a thump, an arrow's crack), their volume |
+| `src/sfx.c` | Sound effects made at start (swishes, thuds, a clang, a thump, an arrow's crack, footsteps), the city's and villages' loops, their volume |
 | `src/lang.c` | Language setting, text lookup, the pixel font extended with the Turkish letters |
 | `src/turkish.c` | Turkish text for every English string in the game |
 | `tools/` | Test harness and its tests, browser test suites, the music renderer, the translation checker (see `robot.md`) |

@@ -189,7 +189,11 @@ in `src/game.h`) holds the whole world.
   through `EV_PARRIED`/`EV_STUNNED`. `G.meleeing` tells `HitMark` a blow from an arrow (arrows crack, `EV_HIT` kind).
 - **Sound effects** (`src/sfx.c`): made at the first `SfxPlay` from formulas (no files), three voices each (raylib sound
   aliases), pitch varied a little. `SfxPlayAt` fades with distance from the camera. `tools/out/harness sfx <dir>` writes
-  them as .wav files; keep most of the energy above 150 Hz or phone and laptop speakers lose it.
+  them as .wav files; keep most of the energy above 150 Hz or phone and laptop speakers lose it. Footsteps:
+  `Footsteps()` in `player.c` (one per half stride, the sound picked from the ground). Places: `SfxAmbience()`
+  (called from `MusicUpdate`, so the title screen fades them out) streams two 8 s loops made at 22 kHz,
+  wrapped as .wav in memory for `LoadMusicStreamFromMemory`; the loop's end is cross-faded into its start
+  (`TestSounds` checks the seam). They draw their random numbers from the noise, never `RandF`.
 - **Where a blow came from**: every damage source passes its position (`HurtSlotFrom(slot, dmg, by, &pos)`, `NetHurt`
   carries it to a guest); `HurtPlayerFrom` turns it into the red edge lights (`G.hitLight[4]`: front, back, left, right
   relative to the camera) and the body's flinch (`G.flinchT`, camera jolt in `FollowCamera`). Other players' flinch is

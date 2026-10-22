@@ -1004,13 +1004,15 @@ float FlashAt(Vector3 p);
 void UpdateHitFeel(float dt);
 void SetDrawFlash(float k);
 void DrawSwingTrails(void);
-enum { SFX_SWING, SFX_SWING_HEAVY, SFX_HIT, SFX_HIT_HEAVY, SFX_CLANG, SFX_HURT, SFX_ARROW, SFX_COUNT };
+enum { SFX_SWING, SFX_SWING_HEAVY, SFX_HIT, SFX_HIT_HEAVY, SFX_CLANG, SFX_HURT, SFX_ARROW,
+       SFX_STEP_GRASS, SFX_STEP_EARTH, SFX_STEP_HARD, SFX_STEP_WATER, SFX_COUNT };
 void SfxPlay(int id, float volume);
 void SfxPlayAt(int id, Vector3 at, float volume, float reach);
 int SfxLevel(void);
 void SfxSetLevel(int level);
 void SfxLoadSetting(void);
 const char *SfxLevelName(void);
+void SfxAmbience(float dt, bool inGame);
 void SfxExport(const char *dir);
 
 // The shader renderer and its setting (gfx.c). While GfxOn() the draw code hands out plain colors

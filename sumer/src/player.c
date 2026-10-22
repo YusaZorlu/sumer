@@ -229,6 +229,22 @@ static void UpdateClimb(Player *p, float dt)
     }
 }
 
+// A footfall each time a foot comes down (twice a stride), sounding of the ground underfoot: water,
+// brick (the city's streets, floors, roofs, quays), bare earth and roads, or grass.
+static void Footsteps(const Player *p)
+{
+    static int last;
+    int step = (int)(p->stride / PI);
+    if (step == last) return;
+    last = step;
+    if (!p->moving || !p->grounded) return;
+    float x = p->pos.x, z = p->pos.z;
+    int id = p->pos.y < WATER_LEVEL + 0.2f && InWater(x, z) ? SFX_STEP_WATER
+           : p->pos.y > TerrainHeight(x, z) + 0.25f || InsideWalls(x, z, 0.0f) ? SFX_STEP_HARD
+           : RoadDistance(x, z) < 1.8f || Fertility(x, z) < 0.35f ? SFX_STEP_EARTH : SFX_STEP_GRASS;
+    SfxPlay(id, p->crouching ? 0.2f : p->running ? 0.65f : 0.4f);
+}
+
 void UpdatePlayer(float dt, bool input)
 {
     Player *p = &G.player;
@@ -308,6 +324,7 @@ void UpdatePlayer(float dt, bool input)
     } else {
         p->stride = 0;
     }
+    Footsteps(p);
 
     float target = p->facing;
     if (p->aiming || G.firstPerson || G.parryT > 0) target = p->yaw + PI;

@@ -997,6 +997,31 @@ static void TestWilds(void)
     Check(G.boxCount < MAX_BOXES - 1500, "boxes %d of %d", G.boxCount, MAX_BOXES);
 }
 
+// The loops of places run on with no click where they start again, and every footstep has a sound.
+static void TestSounds(void)
+{
+    SfxExport(GetDirectoryPath(GetApplicationDirectory()));
+    const char *dir = GetDirectoryPath(GetApplicationDirectory());
+    for (int k = 0; k < 2; k++) {
+        Wave w = LoadWave(TextFormat("%s/%s.wav", dir, k ? "village" : "city"));
+        const short *s = w.data;
+        int n = (int)w.frameCount;
+        double typical = 0;
+        for (int i = 1; i < n; i++) typical += abs(s[i] - s[i - 1]);
+        typical /= n > 1 ? n - 1 : 1;
+        Check(n > 0 && (float)n / (float)w.sampleRate > 7.5f && abs(s[0] - s[n - 1]) < 3.0 * typical + 50,
+              "%s loop: %.1f s, seam %d against a usual step of %.0f", k ? "village" : "city", n > 0 ? (float)n / (float)w.sampleRate : 0.0f,
+              n > 0 ? abs(s[0] - s[n - 1]) : -1, typical);
+        UnloadWave(w);
+    }
+    for (int id = SFX_STEP_GRASS; id <= SFX_STEP_WATER; id++) {
+        static const char *names[] = { "step-grass", "step-earth", "step-hard", "step-water" };
+        Wave w = LoadWave(TextFormat("%s/%s.wav", dir, names[id - SFX_STEP_GRASS]));
+        Check(w.frameCount > 1000, "%s: %u samples", names[id - SFX_STEP_GRASS], w.frameCount);
+        UnloadWave(w);
+    }
+}
+
 static void TestTorch(void)
 {
     G.self = G.actor = 0;
@@ -2012,6 +2037,7 @@ static void RunTests(void)
     TestConsole();
     TestTempleLife();
     TestWilds();
+    TestSounds();
     TestTorch();
     TestDeathLosses();
     TestCanals();
