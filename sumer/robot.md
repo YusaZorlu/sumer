@@ -141,7 +141,7 @@ in `src/game.h`) holds the whole world.
   roads, fields and walls by `InKeepOut`. It draws from the world's random numbers before the herbs, so moving it
   moves everything placed after it (tests that pick "the first wolf east of the river" must not lean on luck).
 - **Player torch** (`UpdateTorch()` in `player.c`): `G.torchOn` is the wish (B), `G.torchHeld` what the hand holds,
-  1 s (`TORCH_TIME`) to change, reset by `SetEquip()`; down while the bow is drawn. `TorchBurning()` sets `PF_TORCH`
+  1 s (`TORCH_TIME`) to change, reset by `SetEquip()`; dropped at once when the bow is drawn (the draw never waits). `TorchBurning()` sets `PF_TORCH`
   in the peer flags, which gives the light (`UpdateLights`) and the wider notice for wolves and prey (`wildlife.c`).
   Bodies: `STYLE_WOMAN` (256) in the 16-bit style. First person: `ViewModel()` in `player.c`.
 - **Dev console** (`src/console.c`, panel `PANEL_CONSOLE` drawn in `ui.c`): only when `G.devTools` (the "Dev tools" rule

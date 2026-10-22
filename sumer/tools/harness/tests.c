@@ -1033,7 +1033,18 @@ static void TestTorch(void)
     Look w = PlayerLook(1, PackStyle(HAIR_BUN, BEARD_LONG, DRESS_ROBE, JEWEL_GOLD) | STYLE_WOMAN, 0);
     Look m = PlayerLook(1, PackStyle(HAIR_BUN, BEARD_LONG, DRESS_ROBE, JEWEL_GOLD), 0);
     Check(w.woman && w.beard == BEARD_NONE && !m.woman && m.beard == BEARD_LONG, "body: a woman's body (no beard) and a man's from the same choices");
+    // The bow is drawn at once: the torch leaves the hand that moment and comes back a second after.
+    G.night = 1.0f;
     SetEquip(EQ_BOW);
+    G.torchHeld = true;
+    G.player.aiming = true;
+    UpdatePlayer(0.02f, false);
+    bool dropped = !G.torchHeld;
+    UpdatePlayer(0.5f, false);
+    early = G.torchHeld;
+    UpdatePlayer(0.6f, false);
+    Check(dropped && !early && G.torchHeld, "torch: dropped the moment the bow is drawn, back a second after (%d %d %d)", dropped, early, G.torchHeld);
+    G.night = 0;
     G.torchHeld = false;
 }
 

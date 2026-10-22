@@ -59,8 +59,8 @@ bool TorchBurning(void)
 }
 
 // A torch is held in the other hand with bare hands, the sword or the mace; drawing the bow needs both hands,
-// so it is put away first. Every change takes a second: lighting it, putting it away, taking it up again after
-// a shot or a change of weapon.
+// so it is dropped from the hand the moment the bow is drawn, and the draw starts at once. The other changes
+// take a second: lighting it, putting it away, taking it up again after a shot or a change of weapon.
 static void UpdateTorch(float dt, bool input)
 {
     const Player *p = &G.player;
@@ -69,7 +69,9 @@ static void UpdateTorch(float dt, bool input)
         Say(G.torchOn ? "You take up your torch (B). It burns after dark." : "You put your torch away (B).");
     }
     bool aimWanted = G.equip == EQ_BOW && input && G.cursorLocked && IsMouseButtonDown(MOUSE_BUTTON_LEFT);
-    bool goal = G.torchOn && G.climb == 0 && !G.sleeping && !(G.equip == EQ_BOW && (p->aiming || aimWanted));
+    bool bow = G.equip == EQ_BOW && (p->aiming || aimWanted);
+    bool goal = G.torchOn && G.climb == 0 && !G.sleeping && !bow;
+    if (bow) G.torchHeld = false;
     if (goal == G.torchHeld) {
         G.torchT = 0;
         return;
@@ -111,8 +113,6 @@ static void HandleBow(Player *p, float dt, bool input)
         held = false;
     }
 
-    // Both hands for the bow: the torch goes away first.
-    if (held && G.torchHeld) return;
     if (held) {
         if (!p->aiming && G.quiver == 0 && !G.combat) {
             Say("Quiver empty. Press R to refill from your baskets, or restock at home.");
@@ -710,8 +710,12 @@ void DrawPlayer(void)
     const Player *p = &G.player;
     Look look = PlayerLook(G.self, ChosenStyle(), UseArmor());
 
-    if (G.camDist < 1.3f && G.panel != PANEL_LOOK) {
-        if (G.firstPerson && G.climb == 0 && !G.waitBed && !G.sleeping) {
+    // Riding behind an arrow, the eye has left the head: the hands in view would ride along with it, so
+    // they are left out, and once the camera is clear of the head the body is drawn where it shot from.
+    Vector3 head = { p->pos.x, p->pos.y + 1.5f, p->pos.z };
+    bool away = G.camBlend > 0.01f;
+    if (G.camDist < 1.3f && G.panel != PANEL_LOOK && !(away && Vector3Distance(G.cam.position, head) > 1.2f)) {
+        if (!away && G.firstPerson && G.climb == 0 && !G.waitBed && !G.sleeping) {
             LightFor(p->pos);
             ViewModel(p, look);
             G.drawTorch = G.drawFog = 0;

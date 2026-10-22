@@ -123,7 +123,14 @@ static void Shot(const char *out, float x, float z, float yaw, float pitch, floa
     // SHOT_FP=1: through the player's eyes; SHOT_EQUIP=<0-3>: what is in hand; SHOT_AIM=<0-1>: the bow drawn that far.
     if (getenv("SHOT_FP")) G.firstPerson = atoi(getenv("SHOT_FP")) != 0;
     if (getenv("SHOT_EQUIP")) G.equip = atoi(getenv("SHOT_EQUIP"));
+    // SHOT_ARROW=1: an arrow is loosed straight ahead on the first frame and the camera rides behind it.
     for (int f = 0; f < frames; f++) {
+        if (f == 1 && getenv("SHOT_ARROW")) {
+            Vector3 from = { p->pos.x, p->pos.y + 1.5f, p->pos.z };
+            G.arrowCam = true;
+            G.followArrow = ShootArrow(from, Vector3Add(from, (Vector3){ -sinf(p->yaw) * 60, 2, -cosf(p->yaw) * 60 }), 1.0f);
+            G.followT = 0;
+        }
         if (getenv("SHOT_AIM")) {
             p->aiming = true;
             p->draw = (float)atof(getenv("SHOT_AIM"));

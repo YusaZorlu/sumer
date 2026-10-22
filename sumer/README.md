@@ -414,9 +414,8 @@ seed, so it is never stored.
 - Only what is in your hand is drawn and used: 1 bow, 2 melee weapon, 3 war mace, 4 hands free.
 - **Your torch** (B, or the button in Tab): with bare hands, the sword or the mace it rides in your other
   hand and burns after dark, lighting the ground round you. Turn it off if you like. Drawing the bow needs
-  both hands, so the torch goes down while you draw and comes back after the shot. Taking it up or putting
-  it down takes a second, and so does changing weapons: the torch is back in your hand a second after the
-  shot, the change or the switch. A burning torch gives you away to animals at night: wolves notice you
+  both hands: the bow draws the moment you press, the torch drops from your hand at once, and it is back a
+  second after the shot. Lighting it or putting it away with B takes a second, and so does changing weapons. A burning torch gives you away to animals at night: wolves notice you
   from about half as far again, and gazelles, onagers and geese up to twice as far as in the dark without
   one. Other players see your torch and its light.
 - A swing lands when the weapon comes down on its target, 0.3 seconds after you press: you raise it,
