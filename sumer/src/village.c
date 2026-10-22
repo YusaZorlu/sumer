@@ -64,6 +64,7 @@ static const Offer OVEN[] = {
     { IT_DOUGH,   1, IT_NONE, 0, OUT_ITEM, IT_BREAD, 2, 0, 0 },
     { IT_FISH,    2, IT_NONE, 0, OUT_ITEM, IT_GRILLED, 2, 0, 0 },
     { IT_GOOSE,   1, IT_NONE, 0, OUT_ITEM, IT_ROAST, 2, 0, 0 },
+    { IT_PARTRIDGE, 2, IT_NONE, 0, OUT_ITEM, IT_ROAST, 1, 0, 0 },
     { IT_GAZELLE, 1, IT_NONE, 0, OUT_ITEM, IT_ROAST, 3, 0, 0 },
     { IT_ONAGER,  1, IT_NONE, 0, OUT_ITEM, IT_ROAST, 4, 0, 0 },
     { IT_BOAR,    1, IT_NONE, 0, OUT_ITEM, IT_ROAST, 5, 0, 0 },

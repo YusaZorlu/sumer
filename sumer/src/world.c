@@ -91,6 +91,12 @@ void AddTree(float x, float z, float s, bool poplar)
         AddShape(x, y + 1.7f * s, z, 3.4f * s, 2.0f * s, 3.2f * s, COL_TREE, false, SHAPE_BLOB);
         AddShape(x + 0.4f * s, y + 2.9f * s, z - 0.3f * s, 2.4f * s, 1.7f * s, 2.3f * s, (Color){ 84, 118, 64, 253 }, false, SHAPE_BLOB);
         AddShape(x - 0.7f * s, y + 2.4f * s, z + 0.6f * s, 1.8f * s, 1.3f * s, 1.7f * s, (Color){ 78, 112, 60, 253 }, false, SHAPE_BLOB);
+        // Two smaller clumps break the dome, each tree its own way.
+        for (int k = 0; k < 2; k++) {
+            float a = 6.283f * Hash2((int)(x * 7.0f) + k, (int)(z * 7.0f)), d = (0.9f + 0.4f * (float)k) * s;
+            AddShape(x + cosf(a) * d, y + (3.1f - 0.6f * (float)k) * s, z + sinf(a) * d, 1.4f * s, 1.1f * s, 1.3f * s,
+                     (Color){ 88, 124, 66, 253 }, false, SHAPE_BLOB);
+        }
     }
 }
 
@@ -766,6 +772,11 @@ static void DrawTreeRes(int i, const Resource *r)
         DrawShadedBlob((Vector3){ x, y + 3.0f * s, z }, (Vector3){ 1.7f * s, 1.05f * s, 1.6f * s }, COL_TREE);
         DrawShadedBlob((Vector3){ x + 0.4f * s, y + 3.9f * s, z - 0.3f * s }, (Vector3){ 1.2f * s, 0.9f * s, 1.15f * s }, (Color){ 84, 118, 64, 253 });
         DrawShadedBlob((Vector3){ x - 0.7f * s, y + 3.5f * s, z + 0.6f * s }, (Vector3){ 0.9f * s, 0.7f * s, 0.85f * s }, (Color){ 78, 112, 60, 253 });
+        for (int k = 0; k < 2; k++) {
+            float a = 6.283f * Hash2(i, 31 + k), d = (0.9f + 0.4f * (float)k) * s;
+            DrawShadedBlob((Vector3){ x + cosf(a) * d, y + (4.1f - 0.6f * (float)k) * s, z + sinf(a) * d }, (Vector3){ 0.7f * s, 0.55f * s, 0.65f * s },
+                           (Color){ 88, 124, 66, 253 });
+        }
     }
 }
 

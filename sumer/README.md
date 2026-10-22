@@ -308,6 +308,7 @@ fields outside. Gates: south (main road), east, west, north, plus the harbor wat
   worshippers kneel before the god. The priest's shrine is on top
 - The big fields outside the walls have earthen banks round them, a feeder ditch with a shaduf (the
   water-lifting sweep) and sheaves at the corner; garden plots are tilled in ridges under the rows
+- Trees have lumpy, clumped crowns, lit leaf-cluster by leaf-cluster, with bark and leaf grain
 - Out on the land: feathery tamarisk by the water, low camelthorn on the dry steppe, fallen limbs and
   stumps of dead wood, flat stone slabs and scatters of stones on the rises. None of it is in your way
 - Torches line the streets, gates and temple, lit from five in the evening and brighter as the dusk turns to night; guards and caravans carry torches
@@ -563,6 +564,11 @@ Boars are tough (135 health). Hurt one and, like a wolf pack, its whole sounder 
 charge, gore, wheel round and charge again for about 40 seconds (longer if you keep hitting them). A
 boar gives up only when it is nearly dead, when you get far away (about 80 m), or when you reach the
 city.
+
+Partridges keep to four of the woods (two east of the river, two across it) in coveys of three. They
+run about under the trees and burst up on whirring wings when you come close, so stalk them crouching or
+shoot them as they rise. One is a light load (they stack four to a basket slot): two roast to a meal in
+your oven, and the hunters give four arrows for one.
 
 Snakes lie hidden in tufts of long grass outside the walls; there are only a handful in the whole
 world. Come within about 3 m (less when crouching, more when running) and one rears up with a hiss as a

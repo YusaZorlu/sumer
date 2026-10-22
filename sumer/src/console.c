@@ -128,7 +128,7 @@ static int ItemNamed(const char *name)
     return IT_NONE;
 }
 
-static const char *const BEASTS[AN_TYPES] = { "gazelle", "onager", "boar", "goose", "wolf", "snake" };
+static const char *const BEASTS[AN_TYPES] = { "gazelle", "onager", "boar", "goose", "wolf", "snake", "partridge" };
 
 // Up to n of a kind of beast brought to stand calm 14 m ahead of you.
 static void Spawn(const char *what, int n)

@@ -49,6 +49,8 @@ static const AnimalDef DEFS[AN_TYPES] = {
                      1.8f, 7.0f, 22.0f, 1.0f, 1.0f, 78, IT_WOLF, false, false },
     [AN_SNAKE]   = { "Snake", { 0.14f, 0.1f, 1.2f }, 0.0f, { 112, 118, 64, 255 }, { 62, 68, 40, 255 },
                      0.7f, 3.2f, 3.0f, 1.0f, 1.0f, 16, IT_NONE, false, false },
+    [AN_PARTRIDGE] = { "Partridge", { 0.2f, 0.19f, 0.3f }, 0.08f, { 150, 128, 100, 255 }, { 96, 84, 70, 255 },
+                     0.7f, 6.5f, 14.0f, 1.8f, 0.45f, 6, IT_PARTRIDGE, false, true },
 };
 
 // City side: herds near and far, five packs of four (one denning by the far-north ford).
@@ -79,6 +81,11 @@ static const Herd HERDS[] = {
     { AN_WOLF,    4, { 160, -480, 340, 380 } },
     { AN_WOLF,    4, { 160, 120, 340, 380 } },
     { AN_WOLF,    5, { -534, -150, 300, 400 } },
+    // Coveys of partridges in four of the woods (kept last: saves count animals by their place here).
+    { AN_PARTRIDGE, 3, { 272, 152, 56, 56 } },
+    { AN_PARTRIDGE, 3, { 445, -75, 60, 60 } },
+    { AN_PARTRIDGE, 3, { -280, -330, 60, 60 } },
+    { AN_PARTRIDGE, 3, { -454, 266, 68, 68 } },
 };
 #define HERD_COUNT ((int)(sizeof(HERDS) / sizeof(HERDS[0])))
 
@@ -1227,6 +1234,28 @@ static void DrawAnimal(const Animal *a)
             float s = (k == 0 ? 0.13f : 0.11f - 0.006f * (float)k);
             Blob(x, y, z, s * 1.6f, s * 1.3f, s * 2.0f, k == 0 ? d->dark : (k & 1) ? d->coat : Mix(d->coat, d->dark, 0.45f));
             if (k == 0 && raised && sinf(t * 22.0f) > 0.2f) Part(x, y - 0.02f, z + 0.16f, 0.02f, 0.01f, 0.14f, (Color){ 200, 40, 40, 255 });
+        }
+        break;
+    }
+    case AN_PARTRIDGE: {
+        // A round grey-brown bird, chestnut bars on its flanks, a small head close to the body; it bursts up
+        // on whirring wings when flushed.
+        const Color rust = { 160, 84, 50, 255 }, beak = { 110, 100, 80, 255 };
+        Part(-0.04f, lh / 2, 0, 0.02f, lh, 0.02f, rust);
+        Part(0.04f, lh / 2, 0, 0.02f, lh, 0.02f, rust);
+        Blob(0, lh + bh / 2, 0, bw, bh, bl, d->coat);
+        for (int s = -1; s <= 1; s += 2) Part(s * bw * 0.46f, lh + bh * 0.45f, -0.02f, 0.02f, 0.07f, 0.14f, rust);
+        Blob(0, top + 0.02f, bl / 2 - 0.02f, 0.12f, 0.12f, 0.13f, d->dark);
+        Part(0, top + 0.02f, bl / 2 + 0.06f, 0.025f, 0.02f, 0.05f, beak);
+        if (a->state == ST_FLEE) {
+            float flap = sinf(t * 30.0f) * 40.0f;
+            for (int s = -1; s <= 1; s += 2) {
+                rlPushMatrix();
+                rlTranslatef(s * bw / 2, top - 0.04f, 0);
+                rlRotatef(s * flap, 0, 0, 1);
+                Part(s * 0.13f, 0, 0, 0.26f, 0.02f, 0.16f, d->dark);
+                rlPopMatrix();
+            }
         }
         break;
     }

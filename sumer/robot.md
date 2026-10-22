@@ -137,6 +137,10 @@ in `src/game.h`) holds the whole world.
   `COL_PALM_LEAF`, the tree literals in `world.c`), 252 tilled earth (`COL_SOIL`), 251 straw (`TAG_CROP()`) gets it,
   triplanar in world space (`det3()`), and is drawn opaque. Keep plain `COL_PALM_TRUNK` (255) for beams and
   posts, and do not `Mix()` a tagged color with an untagged one (the alpha lands on a random tag).
+- **Leaf crowns**: a blob in leaf color (alpha 253) is lumpy (`Lump()` in `render.c`, the same waves at every level of
+  detail) and gets no normal, so the shader lights it facet by facet. Trees add two hashed clumps (no `RandF`).
+- **Partridges** (`AN_PARTRIDGE`, item `IT_PARTRIDGE`): herds appended at the end of `HERDS` because saves keep the
+  killed-animals mask by index; they are fliers (`flies`), rising 3 m while they flee.
 - **The open land** (`BuildWilds()` in `world.c`): tamarisk, camelthorn, fallen wood and stones, none solid, kept off
   roads, fields and walls by `InKeepOut`. It draws from the world's random numbers before the herbs, so moving it
   moves everything placed after it (tests that pick "the first wolf east of the river" must not lean on luck).

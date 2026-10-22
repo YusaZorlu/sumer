@@ -233,6 +233,7 @@ const Phrase TR_PHRASES[] = {
     { "Onager", "Yaban eşeği" },
     { "Boar", "Yaban domuzu" },
     { "Goose", "Kaz" },
+    { "Partridge", "Keklik" },
     { "Wolf pelt", "Kurt postu" },
     { "Clay", "Kil" },
     { "Clay pots", "Kil çömlek" },

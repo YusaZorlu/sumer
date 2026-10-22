@@ -35,7 +35,7 @@
 
 #define MAX_BOXES       24000
 #define MAX_RES         512
-#define MAX_ANIMALS     96
+#define MAX_ANIMALS     112
 #define MAX_ARROWS      40
 #define MAX_PLOTS       15
 #define MAX_HENS        5
@@ -116,7 +116,7 @@ typedef enum {
     IT_NONE, IT_DATES, IT_REEDS, IT_SEEDS, IT_WHEAT, IT_FLOUR, IT_MILK, IT_DOUGH, IT_BREAD,
     IT_EGG, IT_ROAST, IT_ARROWS, IT_GAZELLE, IT_ONAGER, IT_BOAR, IT_GOOSE, IT_WOLF,
     IT_CLAY, IT_POT, IT_WOOD, IT_COPPER, IT_TIN, IT_BRONZE, IT_FISH, IT_GRILLED, IT_COWHIDE, IT_SHEEPSKIN,
-    IT_BUCKET, IT_WATER, IT_WASTE, IT_HEN, IT_HERB, IT_SHEEP, IT_COUNT
+    IT_BUCKET, IT_WATER, IT_WASTE, IT_HEN, IT_HERB, IT_SHEEP, IT_PARTRIDGE, IT_COUNT
 } ItemId;
 
 typedef struct { const char *name; int stack; int food; Color color; } ItemDef;
@@ -136,7 +136,7 @@ typedef struct { Vector3 pos, size; Color color; bool solid, water, glow; float 
 typedef enum { RES_PALM, RES_REEDS, RES_TREE, RES_CLAY, RES_ORE, RES_FISH, RES_HERB, RES_KINDS } ResKind;
 typedef struct { Vector3 pos; ResKind kind; float regrow, spin; bool farm; } Resource;
 
-typedef enum { AN_GAZELLE, AN_ONAGER, AN_BOAR, AN_GOOSE, AN_WOLF, AN_SNAKE, AN_TYPES } AnimalType;
+typedef enum { AN_GAZELLE, AN_ONAGER, AN_BOAR, AN_GOOSE, AN_WOLF, AN_SNAKE, AN_PARTRIDGE, AN_TYPES } AnimalType;
 // ST_HUNT: a wolf pack hunting, a wounded boar charging, a snake striking.
 typedef enum { ST_CALM, ST_ALERT, ST_FLEE, ST_DEAD, ST_HUNT } AnimalState;
 

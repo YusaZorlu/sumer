@@ -1022,6 +1022,31 @@ static void TestSounds(void)
     }
 }
 
+// Coveys of partridges live in the woods; walk up to one and it bursts up and away, and it is game.
+static void TestPartridges(void)
+{
+    int n = 0;
+    Animal *bird = NULL;
+    for (int i = 0; i < G.animalCount; i++)
+        if (G.animals[i].active && G.animals[i].type == AN_PARTRIDGE) {
+            n++;
+            if (!bird) bird = &G.animals[i];
+        }
+    Check(n == 12 && CarcassItem(AN_PARTRIDGE) == IT_PARTRIDGE, "%d partridges in the woods, game to carry home", n);
+    if (!bird) return;
+    Calm(bird);
+    PlaceAt(bird->pos.x + 5, bird->pos.z, 0);
+    G.player.moving = G.player.running = true;
+    float top = 0;
+    for (int k = 0; k < 60; k++) {
+        Wild(0.05f);
+        top = fmaxf(top, bird->pos.y - TerrainHeight(bird->pos.x, bird->pos.z));
+    }
+    Check(top > 1.0f, "a partridge flushed from 5 m flies up (%.1f m) (state %d)", top, bird->state);
+    G.player.moving = G.player.running = false;
+    Calm(bird);
+}
+
 static void TestTorch(void)
 {
     G.self = G.actor = 0;
@@ -2038,6 +2063,7 @@ static void RunTests(void)
     TestTempleLife();
     TestWilds();
     TestSounds();
+    TestPartridges();
     TestTorch();
     TestDeathLosses();
     TestCanals();

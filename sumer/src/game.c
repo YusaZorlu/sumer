@@ -231,7 +231,7 @@ static void Collapse(void)
     snprintf(how, sizeof(how), "%s", BroughtDown(G.hurtBy));
     TrackGoods();
     for (int i = 1; i < IT_COUNT; i++) {
-        bool carcass = i >= IT_GAZELLE && i <= IT_GOOSE;
+        bool carcass = (i >= IT_GAZELLE && i <= IT_GOOSE) || i == IT_PARTRIDGE;
         int gone = BagCount(i) - (carcass ? 0 : G.safe[i]);
         if (gone <= 0) continue;
         BagRemove(i, gone);

@@ -122,7 +122,7 @@ const char *SH_WORLD_FS =
     "  } else if(vmat!=4 && vcol.a>0.982 && vcol.a<0.998){\n" // trees and fields: bark, leaves, tilled earth, straw
     "    int tag=int(255.0-vcol.a*255.0+0.5); float s=tag==1?0.9:tag==2?0.9:tag==3?0.3:1.3;\n"
     "    base*=max(1.0+det3(wpos,n,s,tag-1)*(tag==2?0.7:tag==1?0.6:0.5)*mix(0.4,1.0,near),0.2);\n"
-    "    if(tag==2){ base*=0.78+0.42*fbm(wpos*2.2); rough=0.6; } else rough=tag==4?0.7:0.92;\n"
+    "    if(tag==2){ base*=0.78+0.42*fbm(wpos*2.2); rough=0.95; } else rough=tag==4?0.7:0.92;\n"
     "  } else if(vmat==5 && lum>0.42 && sat<0.32 && vcol.r>=vcol.g && vcol.g>=vcol.b*0.9){\n" // mud brick and plaster
     "    if(abs(fn.y)<0.35){\n"
     "      float u=abs(fn.x)>abs(fn.z)?wpos.z:wpos.x; vec2 uv=vec2(u,wpos.y)*0.55;\n"

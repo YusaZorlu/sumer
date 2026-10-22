@@ -12,6 +12,7 @@ static const Offer HUNTER[] = {
     { IT_WOLF,    2, IT_NONE,  0, OUT_ITEM,   IT_ARROWS, 20, 0, 0 },
     { IT_HERB,    4, IT_NONE,  0, OUT_ITEM,   IT_ARROWS, 10, 0, 0 },
     { IT_GOOSE,   1, IT_REEDS, 4, OUT_ITEM,   IT_ARROWS, 12, 0, 0 },
+    { IT_PARTRIDGE, 1, IT_NONE, 0, OUT_ITEM,  IT_ARROWS, 4, 0, 0 },
     { IT_WOLF,    2, IT_REEDS, 6, OUT_QUIVER, 0, 1, 0, 0 },
     { IT_ONAGER,  1, IT_WOLF,  2, OUT_BOW,    2, 1, 0, 0 },
 };
