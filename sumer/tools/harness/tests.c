@@ -1046,6 +1046,32 @@ static void TestFaster(void)
     *p = (Peer){ 0 };
 }
 
+// Dawn sends everyone back to their posts, but not a guard still after a player who is on their feet and
+// within twice a guard's bowshot (and that player stays wanted); a fallen guard does come back.
+static void TestDawn(void)
+{
+    G.self = G.actor = 0;
+    RespawnPeople();
+    PlaceAt(3, 4, 0);
+    int g[3], n = 0;
+    for (int i = 0; i < G.villagerCount && n < 3; i++)
+        if (G.villagers[i].kind == NPC_GUARD) g[n++] = i;
+    if (n < 3) {
+        Check(false, "three guards");
+        return;
+    }
+    Vitals *fight = &G.villagers[g[0]].vit, *fallen = &G.villagers[g[1]].vit, *far = &G.villagers[g[2]].vit;
+    *fight = (Vitals){ .override = true, .hostile = 60, .target = 0, .at = { 20, 0, 4 } };
+    *fallen = (Vitals){ .dead = true, .target = 0 };
+    *far = (Vitals){ .override = true, .hostile = 60, .target = 0, .at = { 3 + 120, 0, 4 } };
+    G.peers[0].wanted = 100;
+    DawnPeople();
+    Check(fight->override && fight->hostile > 0 && fight->at.x == 20 && !fallen->dead && !far->override && G.peers[0].wanted > 0,
+          "at dawn the guard still fighting fights on (%d), the fallen one is back (%d), the one 120 m off goes home (%d); still wanted (%.0f)",
+          fight->override, !fallen->dead, !far->override, G.peers[0].wanted);
+    RespawnPeople();
+}
+
 bool StepTowardForTest(Vitals *v, Vector3 goal, float speed, float dt);
 
 // Someone shut in a U of walls with the one they want behind its closed end walks out of the open end and
@@ -2144,6 +2170,7 @@ static void RunTests(void)
     TestFaster();
     TestAlehouse();
     TestPaths();
+    TestDawn();
     TestTorch();
     TestDeathLosses();
     TestCanals();

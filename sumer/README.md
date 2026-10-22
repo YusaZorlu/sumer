@@ -465,7 +465,10 @@ Nobody attacks you unless you attack first. What happens next depends on where y
   tells the city's guards.
 
 If no one else sees, only the victim reacts. At night people see less far, unless you stand in
-torchlight. At dawn everyone is back and grudges are forgotten.
+torchlight. At dawn everyone is back at their posts and grudges are forgotten, except a fight still going
+on: a guard (or anyone) still after you keeps at it while you are on your feet and within 80 m of them,
+twice a guard's longest bowshot, and you stay wanted. The fallen come back at dawn as before. Guards'
+bows (city, village and caravan) carry 40 m by day, a little farther than other archers' 34 m.
 
 Nobody chases you far from home. The city's guards keep to the city's lands and to about 40 m from
 their posts, caravan guards stay within about 14 m of their caravan, village folk around their

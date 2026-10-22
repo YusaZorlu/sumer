@@ -755,6 +755,7 @@ void HitPlayer(int s, float dmg, Vector3 from, bool melee);
 int PlayerOnSegment(Vector3 a, Vector3 b, int skip);
 int PlayersInArc(Vector3 chest, Vector3 fwd, float range, float minDot, int skip, int *out, int max);
 void ForgetFights(int slot);
+void DawnPeople(void);
 void RespawnPeople(void);
 void BuildRaiders(void);
 void UpdateRaiders(float dt);
