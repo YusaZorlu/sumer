@@ -1046,6 +1046,29 @@ static void TestFaster(void)
     *p = (Peer){ 0 };
 }
 
+// The alehouse by the potters' quarter: townsfolk sit talking at its tables; weapons go away at the door
+// and come back on the way out.
+static void TestAlehouse(void)
+{
+    int talkers = 0;
+    for (int i = 0; i < G.villagerCount; i++) talkers += G.villagers[i].talks && InAlehouse(VillagerPos(&G.villagers[i]));
+    Check(talkers == 8, "%d townsfolk sit talking in the alehouse", talkers);
+    G.self = G.actor = 0;
+    PlaceAt(-60, 26, 0);
+    UpdatePlayer(0.02f, false);
+    SetEquip(EQ_MELEE);
+    PlaceAt(-69, 17.5f, 0);
+    UpdatePlayer(0.02f, false);
+    bool off = G.equip == EQ_NONE;
+    SetEquip(EQ_BOW);
+    bool refused = G.equip == EQ_NONE;
+    PlaceAt(-60, 26, 0);
+    UpdatePlayer(0.02f, false);
+    Check(InAlehouse((Vector3){ -69, 0, 17.5f }) && off && refused && G.equip == EQ_MELEE,
+          "in the alehouse weapons are put away and cannot be taken up; outside the sword is back (%d %d %d)", off, refused, G.equip);
+    SetEquip(EQ_BOW);
+}
+
 // Coveys of partridges live in the woods; walk up to one and it bursts up and away, and it is game.
 static void TestPartridges(void)
 {
@@ -2088,6 +2111,7 @@ static void RunTests(void)
     TestWilds();
     TestPartridges();
     TestFaster();
+    TestAlehouse();
     TestTorch();
     TestDeathLosses();
     TestCanals();

@@ -86,6 +86,10 @@ static void UpdateTorch(float dt, bool input)
 void SetEquip(int eq)
 {
     if (G.equip == eq) return;
+    if (eq != EQ_NONE && InAlehouse(G.player.pos)) {
+        Say("No weapons in the alehouse.");
+        return;
+    }
     if (eq == EQ_MACE && !UseMace()) {
         Say("You have no war mace. The smith in the craft quarter makes one.");
         return;
@@ -232,11 +236,30 @@ static void UpdateClimb(Player *p, float dt)
     }
 }
 
+// Weapons are put away inside the alehouse and taken up again on the way out.
+static void AlehouseRule(void)
+{
+    static int before = -1;
+    bool in = InAlehouse(G.player.pos);
+    if (in && before < 0) {
+        before = G.equip;
+        if (G.equip != EQ_NONE) {
+            SetEquip(EQ_NONE);
+            Say("You put your weapons away in the alehouse.");
+        }
+    } else if (!in && before >= 0) {
+        int was = before;
+        before = -1;
+        if (was != EQ_NONE && G.equip == EQ_NONE) SetEquip(was);
+    }
+}
+
 void UpdatePlayer(float dt, bool input)
 {
     Player *p = &G.player;
 
     UpdateLook(p, dt, input);
+    AlehouseRule();
     UpdateTorch(dt, input);
     if (G.climb) {
         UpdateClimb(p, dt);

@@ -311,6 +311,11 @@ fields outside. Gates: south (main road), east, west, north, plus the harbor wat
 - Trees have lumpy, clumped crowns, lit leaf-cluster by leaf-cluster, with bark and leaf grain
 - Out on the land: feathery tamarisk by the water, low camelthorn on the dry steppe, fallen limbs and
   stumps of dead wood, flat stone slabs and scatters of stones on the rises. None of it is in your way
+- The alehouse, beside the potters' quarter in the west of the city with its door on the street (a reed
+  awning and two jars mark it): two long tables where townsfolk sit and talk, a counter of big jars at the
+  back, lamps on the walls. The oldest such place we know of stood in the potters' district of Lagash,
+  about 2700 BC. Weapons are put away as you step in (you cannot take them up inside) and come back to
+  hand as you step out
 - Torches line the streets, gates and temple, lit from five in the evening and brighter as the dusk turns to night; guards and caravans carry torches
 - At night distant things fade into the dark; torchlit places stay visible
 - Townsfolk walk all over the city: along the streets from crossing to crossing, keeping to the right,

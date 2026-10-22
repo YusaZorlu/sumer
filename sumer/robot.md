@@ -145,6 +145,9 @@ in `src/game.h`) holds the whole world.
   loop that draws figures. Guests carry other players on at their last speed (`PeerMoved`, `vel`) and
   animals along their heading (`Ease` in `mp.c`), so they glide between the host's ten pictures a second.
   `TestFaster` checks all three.
+- **Alehouse** (`BuildAlehouse`, `AlehouseFolk`, `InAlehouse` in `village.c`; the rule in `AlehouseRule` and
+  `SetEquip` in `player.c`): built before the city's houses so they keep clear of it. Its folk are appended
+  last (`Villager.talks`: they turn and gesture while drawn). No drink is sold there yet, by the owner's wish.
 - **Leaf crowns**: a blob in leaf color (alpha 253) is lumpy (`Lump()` in `render.c`, the same waves at every level of
   detail) and gets no normal, so the shader lights it facet by facet. Trees add two hashed clumps (no `RandF`).
 - **Partridges** (`AN_PARTRIDGE`, item `IT_PARTRIDGE`): herds appended at the end of `HERDS` because saves keep the
