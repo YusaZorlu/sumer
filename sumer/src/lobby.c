@@ -94,6 +94,16 @@ static void Enter(void)
     G.wasCaptured = false;
 }
 
+static void PlayAlone(void);
+
+#ifdef SUMER_TEST
+// For tests: back at the title, start again the way the page's address says (?auto=solo plays alone).
+void LobbyAgain(void)
+{
+    autoDone = false;
+}
+#endif
+
 static void PlayAlone(void)
 {
     SaveName();

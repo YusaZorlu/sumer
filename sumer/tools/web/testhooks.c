@@ -4,6 +4,20 @@
 #include <string.h>
 #include <emscripten/emscripten.h>
 
+void LobbyAgain(void);
+void MusicGains(float *out);
+
+// The music's gains, for the music tests: the made tunes (day, fight, night), then the places' tracks
+// (city, village, open land, ziggurat; negative while that stream is paused).
+EMSCRIPTEN_KEEPALIVE const char *TestMusic(void)
+{
+    static char buf[200];
+    float g[7];
+    MusicGains(g);
+    snprintf(buf, sizeof(buf), "[%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f]", g[0], g[1], g[2], g[3], g[4], g[5], g[6]);
+    return buf;
+}
+
 static int Esc(char *dst, int size, const char *src)
 {
     int n = 0;
@@ -105,6 +119,8 @@ EMSCRIPTEN_KEEPALIVE void TestCommand(int cmd, float a, float b)
     case 14: SetEquip((int)a); break;
     case 15: SetPanel((Panel)(int)a); break;
     case 16: SfxSetLevel((int)a); break;
+    case 17: G.quit = true; break;
+    case 18: LobbyAgain(); break;
     default: break;
     }
 }

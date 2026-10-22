@@ -89,6 +89,23 @@ function check(ok, what) { console.log((ok ? 'PASS: ' : 'FAIL: ') + what); if (!
   await sleep(6000); m = await rms();
   check(m.rms > 0.01, `the fight tune is louder than silence (rms ${m.rms.toFixed(4)})`);
 
+  // Leaving for the title in the middle of a fight and coming back: the fight is over, only the place's
+  // track plays (the tunes used to pile up).
+  await cmd(page, 17);
+  await waitFor(page, 'the title', x => x.lobby === 1, 30000).catch(() => null);
+  await sleep(1500);
+  await cmd(page, 18);
+  await waitFor(page, 'the game again', x => x.lobby === 0, 60000).catch(() => null);
+  const gains = async () => JSON.parse(await page.evaluate(() => Module.ccall('TestMusic', 'string', [], [])));
+  let g = null;
+  for (let t0 = Date.now(); Date.now() - t0 < 40000; await sleep(1000)) {
+    g = await gains();
+    if (g[0] === 0 && g[1] === 0 && g[2] === 0) break;
+  }
+  s = await info(page);
+  check(s.mood !== 1 && s.place === 0 && g && g[0] === 0 && g[1] === 0 && g[2] === 0 && g[3] > 0 && Math.max(g[4], g[5], g[6]) < 0.05,
+        `back in the game after leaving a fight: no fight, only the city's track (mood ${s.mood}, place ${s.place}, gains ${JSON.stringify(g)})`);
+
   // N cycles the volume: medium -> high -> off -> low -> medium
   const before = (await info(page)).musicLevel;
   await page.keyboard.press('KeyN');
