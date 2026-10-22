@@ -985,7 +985,7 @@ void DrawVillage(void)
     for (int i = 0; i < MAX_COWS; i++) DrawCow(&G.cows[i], i);
     for (int i = 0; i < MAX_SHEEP; i++) DrawSheep(&G.sheep[i], i);
     for (int i = 0; i < MAX_FLOCK; i++) {
-        if (XZDist(G.flock[i].pos, G.cam.position) > 200.0f) continue;
+        if (XZDist(G.flock[i].pos, G.cam.position) > 200.0f || !InView(G.flock[i].pos, 1.5f)) continue;
         LightFor(G.flock[i].pos);
         DrawSheep(&G.flock[i], i);
     }
@@ -995,7 +995,7 @@ void DrawVillage(void)
         if (tr->roaming) continue;
         Look look = PersonLook(LOOK_MERCHANT, 300u + (unsigned)i, tr->robe);
         Vector3 tp = TraderPos(tr);
-        if (XZDist(tp, G.cam.position) > 220.0f) continue;
+        if (XZDist(tp, G.cam.position) > 220.0f || !InView(tp, 2.0f)) continue;
         LightFor(tp);
         if (tr->vit.dead) DrawPersonBody(tp, tr->vit.face, look);
         else DrawHuman(tp, tr->vit.override ? tr->vit.face : tr->facing, tr->vit.override ? (float)GetTime() * 8.0f : 0.0f, look, false, false, 0);
@@ -1006,7 +1006,7 @@ void DrawVillage(void)
         // The legs swing with the time walked, so a new stretch of street does not jolt them.
         float stride = v->moving ? (float)GetTime() * v->speed * 3.0f + (float)i : 0.0f;
         float face = v->vit.override ? v->vit.face : v->face;
-        if (XZDist(pos, G.cam.position) > 200.0f) continue;
+        if (XZDist(pos, G.cam.position) > 200.0f || !InView(pos, 2.0f)) continue;
         if (v->vit.override && v->vit.hostile > 0) stride = (float)GetTime() * 8.0f;
         // An archer stands still while it draws.
         float pull = v->vit.drawing ? Clamp(1.0f - v->vit.windup / BOW_DRAW_TIME, 0.0f, 1.0f) : 0.0f;

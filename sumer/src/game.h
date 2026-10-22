@@ -307,7 +307,7 @@ enum { PF_CROUCH = 1, PF_RUN = 2, PF_MOVE = 4, PF_GROUND = 8, PF_AIM = 16, PF_SL
 typedef struct {
     bool active, alone;
     char name[NAME_LEN];
-    Vector3 pos, shown;
+    Vector3 pos, shown, vel;   // vel: how fast they were last seen moving, to carry them on between updates
     float facing, shownFacing, stride, draw, health, swingT, wanted, aggro, heard;
     int flags, equip, weapon, bow, armor, net;
     unsigned short style;   // how they chose to look (PackStyle, and STYLE_WOMAN)
@@ -479,6 +479,7 @@ float RandF(float lo, float hi);
 float Hash2(int a, int b);
 float XZDist(Vector3 a, Vector3 b);
 Color Mix(Color a, Color b, float t);
+bool InView(Vector3 p, float size);
 Color Lit(Color c, float shade);
 void DrawShadedBox(Vector3 c, Vector3 s, Color col);
 void DrawGlowBox(Vector3 c, Vector3 s, Color col);
@@ -614,6 +615,7 @@ bool InWater(float x, float z);
 float WadeSpeed(float x, float z);
 bool PointInSolid(Vector3 p);
 bool SolidAt(float x, float z, float radius);
+const int *BoxesNear(float x0, float z0, float x1, float z1, int *n);
 void UpdateSky(void);
 void DrawSky(void);
 void DrawTerrain(void);
@@ -891,6 +893,7 @@ void SayTo(int s, const char *fmt, ...) PRINTF_LIKE(2, 3);
 void Announce(const char *fmt, ...) PRINTF_LIKE(1, 2);
 void SayNear(Vector3 at, float r, const char *fmt, ...) PRINTF_LIKE(3, 4);
 void UpdatePeers(float dt);
+void PeerMoved(Peer *p, Vector3 pos);
 void DrawPeers(void);
 void DrawInBed(int s, Vector3 at, float facing, Look look);
 int PlayerCount(void);

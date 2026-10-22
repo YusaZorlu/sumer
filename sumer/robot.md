@@ -137,6 +137,14 @@ in `src/game.h`) holds the whole world.
   `COL_PALM_LEAF`, the tree literals in `world.c`), 252 tilled earth (`COL_SOIL`), 251 straw (`TAG_CROP()`) gets it,
   triplanar in world space (`det3()`), and is drawn opaque. Keep plain `COL_PALM_TRUNK` (255) for beams and
   posts, and do not `Mix()` a tagged color with an untagged one (the alpha lands on a random tag).
+- **Speed** (measured with `harness stats` and a `-pg` build of the harness): `BoxesNear()` in `world.c` is an
+  8 m grid of the boxes; `GroundHeight`, `SolidAt`, the player's and NPCs' collisions, the camera and the aim ray
+  ask it instead of scanning every box (update went from 0.87 to 0.06 ms a frame). New boxes join it before
+  the next question and `BuildWorld` starts it over; boxes must never move sideways. `InView(p, size)` in
+  `render.c` skips people and animals behind the camera (with a margin for their shadows); call it in any new
+  loop that draws figures. Guests carry other players on at their last speed (`PeerMoved`, `vel`) and
+  animals along their heading (`Ease` in `mp.c`), so they glide between the host's ten pictures a second.
+  `TestFaster` checks all three.
 - **Leaf crowns**: a blob in leaf color (alpha 253) is lumpy (`Lump()` in `render.c`, the same waves at every level of
   detail) and gets no normal, so the shader lights it facet by facet. Trees add two hashed clumps (no `RandF`).
 - **Partridges** (`AN_PARTRIDGE`, item `IT_PARTRIDGE`): herds appended at the end of `HERDS` because saves keep the

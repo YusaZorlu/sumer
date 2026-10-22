@@ -1097,8 +1097,11 @@ Vector3 AimPoint(void)
 
     float t = RayTerrain(o, dir, best);
     if (t > tmin && t < best) best = t;
-    for (int i = 0; i < G.boxCount; i++) {
-        const Box *b = &G.boxes[i];
+    int n;
+    Vector3 end = Vector3Add(o, Vector3Scale(dir, best));
+    const int *near = BoxesNear(o.x, o.z, end.x, end.z, &n);
+    for (int k = 0; k < n; k++) {
+        const Box *b = &G.boxes[near[k]];
         if (!b->solid || b->water) continue;
         BoundingBox bb = { Vector3Subtract(b->pos, Vector3Scale(b->size, 0.5f)),
                            Vector3Add(b->pos, Vector3Scale(b->size, 0.5f)) };
@@ -1304,7 +1307,7 @@ void DrawWildlife(void)
     for (int i = 0; i < G.animalCount; i++) {
         const Animal *a = &G.animals[i];
         float d = XZDist(a->pos, G.cam.position);
-        if (!a->active || d > 260.0f || (a->type == AN_SNAKE && d > 110.0f)) continue;
+        if (!a->active || d > 260.0f || (a->type == AN_SNAKE && d > 110.0f) || !InView(a->pos, 2.5f)) continue;
         LightFor(a->pos);
         if (a->type == AN_SNAKE) DrawSnakeGrass(a, i);
         SetDrawFlash(FlashAt(a->pos));

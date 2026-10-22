@@ -997,6 +997,55 @@ static void TestWilds(void)
     Check(G.boxCount < MAX_BOXES - 1500, "boxes %d of %d", G.boxCount, MAX_BOXES);
 }
 
+// The faster ways give the same answers: the grid of boxes finds what a scan of every box finds, people
+// behind the camera are skipped and those before it kept, and another player seen ten times a second
+// walks on smoothly between updates instead of lagging behind.
+static void TestFaster(void)
+{
+    int wrong = 0;
+    for (int k = 0; k < 3000; k++) {
+        float x = RandF(-WORLD_LIMIT, WORLD_LIMIT), z = RandF(-WORLD_LIMIT, WORLD_LIMIT);
+        if (k < 1500) {   // half of them in the city, where the boxes are thick
+            x = RandF(-110, 110);
+            z = RandF(-100, 90);
+        }
+        float h = TerrainHeight(x, z), y = h + RandF(0, 12);
+        bool solid = false;
+        for (int i = 0; i < G.boxCount; i++) {
+            const Box *b = &G.boxes[i];
+            if (!b->solid || b->water) continue;
+            bool in = fabsf(x - b->pos.x) <= b->size.x / 2 && fabsf(z - b->pos.z) <= b->size.z / 2;
+            float top = b->pos.y + b->size.y / 2;
+            if (in && top > h && top <= y + STEP_HEIGHT) h = top;
+            if (fabsf(x - b->pos.x) <= b->size.x / 2 + 0.5f && fabsf(z - b->pos.z) <= b->size.z / 2 + 0.5f && top > TerrainHeight(x, z) + 0.6f) solid = true;
+        }
+        wrong += GroundHeight(x, z, y) != h || SolidAt(x, z, 0.5f) != solid;
+    }
+    Check(wrong == 0, "the grid of boxes answers as a scan of all %d boxes does (%d of 3000 differ)", G.boxCount, wrong);
+
+    Camera cam = G.cam;
+    G.cam.position = (Vector3){ 0, 2, 0 };
+    G.cam.target = (Vector3){ 0, 2, 10 };
+    G.cam.fovy = 70;
+    Check(InView((Vector3){ 0, 1, 40 }, 2) && InView((Vector3){ 25, 1, 40 }, 2) && InView((Vector3){ 0, 1, -5 }, 2) && !InView((Vector3){ 0, 1, -40 }, 2) &&
+          !InView((Vector3){ 60, 1, -10 }, 2), "drawn: ahead, ahead to the side, close behind; not drawn: far behind, far off to the side");
+    G.cam = cam;
+
+    Peer *p = &G.peers[3];
+    *p = (Peer){ .active = true };
+    float worst = 0, t = 0, next = 0;
+    for (int f = 0; f < 120; f++, t += 1.0f / 60.0f) {
+        if (t >= next) {
+            PeerMoved(p, (Vector3){ 4.0f * t, 0, 0 });
+            next += 0.1f;
+        }
+        UpdatePeers(1.0f / 60.0f);
+        if (t > 1.0f) worst = fmaxf(worst, fabsf(p->shown.x - 4.0f * t));
+    }
+    Check(worst < 0.3f, "another player walking at 4 m/s is shown within %.2f m of where they are", worst);
+    *p = (Peer){ 0 };
+}
+
 // Coveys of partridges live in the woods; walk up to one and it bursts up and away, and it is game.
 static void TestPartridges(void)
 {
@@ -2038,6 +2087,7 @@ static void RunTests(void)
     TestTempleLife();
     TestWilds();
     TestPartridges();
+    TestFaster();
     TestTorch();
     TestDeathLosses();
     TestCanals();

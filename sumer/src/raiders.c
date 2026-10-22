@@ -409,7 +409,7 @@ void DrawRaiders(void)
         const Raider *r = &G.raiders[i];
         Vector3 p = r->vit.override ? r->vit.at : r->pos;
         float f = r->vit.override ? r->vit.face : r->face;
-        if (XZDist(p, G.cam.position) > 220.0f) continue;
+        if (XZDist(p, G.cam.position) > 220.0f || !InView(p, 2.0f)) continue;
 
         // Barbarians from the west wear dark red, wolf pelts and horned helmets and swing a bronze axe; the
         // raiders from the east, leather, a stone-grey cap and a stone axe.

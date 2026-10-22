@@ -266,7 +266,7 @@ void DrawWorkers(void)
         const Worker *w = &G.workers[i];
         float bob = 0.05f * sinf(time * 1.3f + w->phase);
         if (w->job == JOB_BOAT) DrawBoat(w->spot, bob);
-        if (!w->visible || XZDist(w->pos, G.cam.position) > 220.0f) continue;
+        if (!w->visible || XZDist(w->pos, G.cam.position) > 220.0f || !InView(w->pos, 2.0f)) continue;
 
         Look look = WorkerLook(w->job, i);
         Vector3 pos = w->pos;

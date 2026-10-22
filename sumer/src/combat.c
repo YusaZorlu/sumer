@@ -164,8 +164,10 @@ static Vector3 FPos(const Fighter *f)
 
 static bool BlockedAt(float x, float z, float y)
 {
-    for (int i = 0; i < G.boxCount; i++) {
-        const Box *b = &G.boxes[i];
+    int n;
+    const int *near = BoxesNear(x - 0.3f, z - 0.3f, x + 0.3f, z + 0.3f, &n);
+    for (int k = 0; k < n; k++) {
+        const Box *b = &G.boxes[near[k]];
         if (!IsBlocking(b, y)) continue;
         if (fabsf(x - b->pos.x) <= b->size.x / 2 + 0.3f && fabsf(z - b->pos.z) <= b->size.z / 2 + 0.3f) return true;
     }

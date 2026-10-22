@@ -144,15 +144,18 @@ static void HandleBow(Player *p, float dt, bool input)
 static void MoveHorizontal(Player *p, Vector3 move, float speed, float dt)
 {
     Vector2 next = { p->pos.x + move.x * speed * dt, p->pos.z + move.z * speed * dt };
+    float reach = PLAYER_RADIUS + speed * dt + 1.0f;
+    int n;
+    const int *near = BoxesNear(p->pos.x - reach, p->pos.z - reach, p->pos.x + reach, p->pos.z + reach, &n);
 
     for (int pass = 0; pass < 2; pass++)
-        for (int i = 0; i < G.boxCount; i++)
-            if (!G.boxes[i].water && IsBlocking(&G.boxes[i], p->pos.y)) next = PushOut(next, PLAYER_RADIUS, &G.boxes[i]);
+        for (int k = 0; k < n; k++)
+            if (!G.boxes[near[k]].water && IsBlocking(&G.boxes[near[k]], p->pos.y)) next = PushOut(next, PLAYER_RADIUS, &G.boxes[near[k]]);
     Vector2 shoved = PushOutBodies(next, PLAYER_RADIUS, OWNER_PLAYER + G.self);
     if (shoved.x != next.x || shoved.y != next.y) {
         next = shoved;
-        for (int i = 0; i < G.boxCount; i++)
-            if (!G.boxes[i].water && IsBlocking(&G.boxes[i], p->pos.y)) next = PushOut(next, PLAYER_RADIUS, &G.boxes[i]);
+        for (int k = 0; k < n; k++)
+            if (!G.boxes[near[k]].water && IsBlocking(&G.boxes[near[k]], p->pos.y)) next = PushOut(next, PLAYER_RADIUS, &G.boxes[near[k]]);
     }
     p->pos.x = Clamp(next.x, -WORLD_LIMIT, WORLD_LIMIT);
     p->pos.z = Clamp(next.y, -WORLD_LIMIT, WORLD_LIMIT);
@@ -373,8 +376,11 @@ static void PlaceCamera(float dt)
     Ray ray = { target, dir };
     float dist = Lerp(p->dist, 3.0f, G.camShoulder);
 
-    for (int i = 0; i < G.boxCount; i++) {
-        const Box *b = &G.boxes[i];
+    int n;
+    Vector3 far = Vector3Add(target, Vector3Scale(dir, dist));
+    const int *near = BoxesNear(target.x - 1, target.z - 1, far.x + 1, far.z + 1, &n);
+    for (int k = 0; k < n; k++) {
+        const Box *b = &G.boxes[near[k]];
         if (b->water || (b->size.y < 1.0f && b->pos.y < target.y + 0.5f)) continue;   // thin things count only as roofs overhead
         float reach = dist + (b->size.x + b->size.z) * 0.5f;
         if (fabsf(b->pos.x - target.x) > reach || fabsf(b->pos.z - target.z) > reach) continue;
