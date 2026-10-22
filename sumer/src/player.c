@@ -52,10 +52,10 @@ const char *EquipName(int eq)
 
 #define TORCH_TIME 1.0f
 
-// Only after dark: by day the torch stays unlit at the belt.
+// From the evening on: by day the torch stays unlit at the belt.
 bool TorchBurning(void)
 {
-    return G.torchHeld && G.night >= 0.3f;
+    return G.torchHeld && TorchesLit();
 }
 
 // A torch is held in the other hand with bare hands, the sword or the mace; drawing the bow needs both hands,
@@ -66,7 +66,7 @@ static void UpdateTorch(float dt, bool input)
     const Player *p = &G.player;
     if (input && KeyPressed(KEY_B)) {
         G.torchOn = !G.torchOn;
-        Say(G.torchOn ? "You take up your torch (B). It burns after dark." : "You put your torch away (B).");
+        Say(G.torchOn ? "You take up your torch (B). It burns from the evening on." : "You put your torch away (B).");
     }
     bool aimWanted = G.equip == EQ_BOW && input && G.cursorLocked && IsMouseButtonDown(MOUSE_BUTTON_LEFT);
     bool bow = G.equip == EQ_BOW && (p->aiming || aimWanted);
@@ -655,24 +655,8 @@ static void ViewModel(const Player *p, Look look)
         rlPushMatrix();
         rlTranslatef(grip.x, grip.y, grip.z);
         rlRotatef(p->aiming ? -8.0f : -38.0f, 0, 0, 1);
-        WPart(0, 0, 0, 0.035f, 0.9f, 0.04f, COL_WOOD);
-        WPart(0, 0.47f, 0.03f, 0.03f, 0.12f, 0.035f, COL_WOOD);
-        WPart(0, -0.47f, 0.03f, 0.03f, 0.12f, 0.035f, COL_WOOD);
-        float back = -0.05f - 0.32f * pull;
-        // The string from the tips to where the fingers hold it.
-        for (int e = -1; e <= 1; e += 2) {
-            Vector3 a = { 0, 0.5f * (float)e, -0.04f }, b = { 0, 0, back };
-            Vector3 mid = Vector3Lerp(a, b, 0.5f), d = Vector3Subtract(b, a);
-            rlPushMatrix();
-            rlTranslatef(mid.x, mid.y, mid.z);
-            rlRotatef(-atan2f(d.z, d.y) * RAD2DEG, 1, 0, 0);
-            WPart(0, 0, 0, 0.006f, Vector3Length(d), 0.006f, COL_LINEN);
-            rlPopMatrix();
-        }
-        if (p->aiming) {
-            WPart(0.015f, 0, back + 0.35f, 0.012f, 0.012f, 0.75f, COL_WOOD);
-            WPart(0.015f, 0, back + 0.74f, 0.025f, 0.025f, 0.06f, COL_BRONZE);
-        }
+        float back = -0.07f - 0.36f * pull;
+        DrawBow((Vector3){ 0, 0, 0 }, (Vector3){ 0, 0, back }, pull);
         rlPopMatrix();
         if (!torch) ViewArm(grip.x - 0.01f, grip.y - 0.02f, grip.z - 0.02f, skin, sleeve);
         Vector3 nock = p->aiming ? (Vector3){ grip.x + 0.03f, grip.y, grip.z + back } : (Vector3){ grip.x + 0.06f, grip.y + 0.1f, grip.z - 0.08f };

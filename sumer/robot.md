@@ -25,7 +25,7 @@ rebuild or update them unless asked. The native test harness still builds agains
   asked**; otherwise push the feature branch and offer to bring `main` up to date. Do not open pull requests
   unless asked.
 - Verify in the real browser before saying "works": the project has been bitten by bugs that only showed
-  there (see "Traps"). Report what you could not test (Firefox, real speakers, real gamepads) plainly.
+  there (see "Traps"). Report what you could not test (Safari, real speakers, real gamepads) plainly.
 - You cannot listen to the music or see the game on a real GPU. Say so; use the numeric checks below and
   ask the player to judge sound.
 
@@ -143,6 +143,8 @@ in `src/game.h`) holds the whole world.
 - **Player torch** (`UpdateTorch()` in `player.c`): `G.torchOn` is the wish (B), `G.torchHeld` what the hand holds,
   1 s (`TORCH_TIME`) to change, reset by `SetEquip()`; dropped at once when the bow is drawn (the draw never waits). `TorchBurning()` sets `PF_TORCH`
   in the peer flags, which gives the light (`UpdateLights`) and the wider notice for wolves and prey (`wildlife.c`).
+  Every torch burns while `TorchesLit()` (`G.torchGlow`, from 17:00, brightening to full by 20:00 or with the dark);
+  the world shader's `night` uniform is that glow, as it only scales torchlight there.
   Bodies: `STYLE_WOMAN` (256) in the 16-bit style. First person: `ViewModel()` in `player.c`.
 - **Dev console** (`src/console.c`, panel `PANEL_CONSOLE` drawn in `ui.c`): only when `G.devTools` (the "Dev tools" rule
   on the title screen, sent to guests as rules bit 4). `ConsoleRun(text)` parses and runs a command and writes its
@@ -317,7 +319,7 @@ no sound files. Read the comment at the top of the file and the notation comment
 
 ## Ideas that were mentioned and not done
 
-- Firefox and Safari are untested (only Chromium here). Touch/gamepad input does not exist; the owner wants to decide
+- Firefox works (the owner tested it); Safari is untested. Touch/gamepad input does not exist; the owner wants to decide
   the phone controls after the graphics work is done (the UI already fits phones and takes taps on its buttons).
 - Graphics, later steps (the owner wants CC0-only art, a 25-50 MB download at most, and to weigh each effect's cost):
   buildings and props, then effects (wind on cloth and palms, light shafts, ambient occlusion, water reflections,

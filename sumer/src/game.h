@@ -392,7 +392,7 @@ typedef struct {
     int torchCount;
     Vector3 dynLights[MAX_DYN_LIGHTS];
     int dynCount;
-    float night, drawTorch;
+    float night, torchGlow, drawTorch;   // torchGlow: how bright torches burn, from the evening on
     float tileTorch[GROUND_TILES][GROUND_TILES];
     Particle particles[MAX_PARTICLES];
     bool confirmNew, requestNew;
@@ -497,6 +497,7 @@ void GripAt(int hand, float x, float y, float z);
 void HoldBow(Vector3 pos, float facing, bool crouch);
 void HoldBowFor(Vector3 pos, float facing, bool crouch, bool torch);
 void SlungBow(Vector3 pos, float facing);
+void DrawBow(Vector3 grip, Vector3 nock, float pull);
 Look PlayerLook(int slot, unsigned short style, int armor);
 Look PersonLook(int role, unsigned seed, Color robe);
 #define STYLE_WOMAN 256   // a woman's body (slighter, no beard), above the four two-bit choices
@@ -513,6 +514,7 @@ void AddTorch(float x, float y, float z, bool pole);
 void AddFireLight(float x, float y, float z);
 void BuildLights(void);
 void UpdateLights(void);
+bool TorchesLit(void);
 float TorchLightAt(Vector3 p);
 void LightFor(Vector3 p);
 float FogAt(Vector3 p);

@@ -123,7 +123,7 @@ touch controls yet: play with a keyboard (a USB-C or Bluetooth one works; WASD t
 | Z | Arrow camera on/off |
 | E / F | Use, talk, pick up, climb a ladder, search a body, fill or pour a bucket, open the coop / alternate action (plant a date) |
 | R | Refill quiver from carried arrow baskets |
-| B | Torch on/off (it burns only after dark; also a button in Tab, see Combat) |
+| B | Torch on/off (it burns from 17:00, brighter as dusk turns to night; also a button in Tab, see Combat) |
 | Tab | Baskets (inventory), equipment and armor; with dev tools on, its "Dev console" button opens the dev console |
 | ` or F2 | Dev console, when dev tools are on (see below) |
 | T (hold) | Fast-forward time (playing alone) |
@@ -310,7 +310,7 @@ fields outside. Gates: south (main road), east, west, north, plus the harbor wat
   water-lifting sweep) and sheaves at the corner; garden plots are tilled in ridges under the rows
 - Out on the land: feathery tamarisk by the water, low camelthorn on the dry steppe, fallen limbs and
   stumps of dead wood, flat stone slabs and scatters of stones on the rises. None of it is in your way
-- Torches line the streets, gates and temple at night; guards and caravans carry torches
+- Torches line the streets, gates and temple, lit from five in the evening and brighter as the dusk turns to night; guards and caravans carry torches
 - At night distant things fade into the dark; torchlit places stay visible
 - Townsfolk walk all over the city: along the streets from crossing to crossing, keeping to the right,
   stopping now and then, and turning back at the gates and the quay
@@ -413,7 +413,7 @@ seed, so it is never stored.
   (see Playing together).
 - Only what is in your hand is drawn and used: 1 bow, 2 melee weapon, 3 war mace, 4 hands free.
 - **Your torch** (B, or the button in Tab): with bare hands, the sword or the mace it rides in your other
-  hand and burns after dark, lighting the ground round you. Turn it off if you like. Drawing the bow needs
+  hand and burns from five in the evening, brighter as the dusk deepens, lighting the ground round you. Turn it off if you like. Drawing the bow needs
   both hands: the bow draws the moment you press, the torch drops from your hand at once, and it is back a
   second after the shot. Lighting it or putting it away with B takes a second, and so does changing weapons. A burning torch gives you away to animals at night: wolves notice you
   from about half as far again, and gazelles, onagers and geese up to twice as far as in the dark without

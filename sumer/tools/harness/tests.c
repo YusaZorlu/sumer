@@ -1002,7 +1002,7 @@ static void TestTorch(void)
     G.self = G.actor = 0;
     PlaceAt(3, 4, 0);
     SetEquip(EQ_NONE);
-    G.night = 1.0f;
+    G.night = G.torchGlow = 1.0f;
     G.torchOn = true;
     G.torchHeld = false;
     G.torchT = 0;
@@ -1026,15 +1026,32 @@ static void TestTorch(void)
     bool still = G.torchHeld;
     UpdatePlayer(0.6f, false);
     Check(still && !G.torchHeld, "torch: put away takes a second too");
-    G.night = 0;
+    G.night = G.torchGlow = 0;
     G.torchOn = true;
     G.torchHeld = true;
     Check(!TorchBurning(), "torch: by day it does not burn");
+    // Lit from five in the evening, brighter as the dusk deepens.
+    float hour = G.hour;
+    daylight = G.daylight;
+    G.daylight = 0.9f;
+    G.hour = 16.5f;
+    UpdateLights();
+    bool afternoon = TorchBurning();
+    G.hour = 17.2f;
+    UpdateLights();
+    float evening = G.torchGlow;
+    G.hour = 19.5f;
+    UpdateLights();
+    Check(!afternoon && TorchBurning() && evening >= 0.15f && G.torchGlow > evening + 0.3f,
+          "torch: lit from the evening (%.2f at 17:12), brighter at dusk (%.2f at 19:30)", evening, G.torchGlow);
+    G.hour = hour;
+    G.daylight = daylight;
+    UpdateLights();
     Look w = PlayerLook(1, PackStyle(HAIR_BUN, BEARD_LONG, DRESS_ROBE, JEWEL_GOLD) | STYLE_WOMAN, 0);
     Look m = PlayerLook(1, PackStyle(HAIR_BUN, BEARD_LONG, DRESS_ROBE, JEWEL_GOLD), 0);
     Check(w.woman && w.beard == BEARD_NONE && !m.woman && m.beard == BEARD_LONG, "body: a woman's body (no beard) and a man's from the same choices");
     // The bow is drawn at once: the torch leaves the hand that moment and comes back a second after.
-    G.night = 1.0f;
+    G.night = G.torchGlow = 1.0f;
     SetEquip(EQ_BOW);
     G.torchHeld = true;
     G.player.aiming = true;
@@ -1044,7 +1061,7 @@ static void TestTorch(void)
     early = G.torchHeld;
     UpdatePlayer(0.6f, false);
     Check(dropped && !early && G.torchHeld, "torch: dropped the moment the bow is drawn, back a second after (%d %d %d)", dropped, early, G.torchHeld);
-    G.night = 0;
+    G.night = G.torchGlow = 0;
     G.torchHeld = false;
 }
 

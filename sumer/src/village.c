@@ -979,7 +979,7 @@ void DrawVillage(void)
             continue;
         }
         // A warden's other hand holds the bow, so their torch stays on their belt.
-        bool torch = G.night >= 0.3f && (v->kind == NPC_TRAVELLER || v->kind == NPC_GUARD) && !v->crouch;
+        bool torch = TorchesLit() && (v->kind == NPC_TRAVELLER || v->kind == NPC_GUARD) && !v->crouch;
         if (torch) GripAt(HAND_OTHER, -0.36f, 1.36f, 0.28f);
         if (v->kind == NPC_CIVILIAN || v->kind == NPC_VILLAGER || v->kind == NPC_TRAVELLER || v->kind == NPC_CLERIC) {
             // A villager standing still at the hunters' butt keeps drawing a bow.
@@ -1020,7 +1020,7 @@ void DrawVillage(void)
                 Part(0.36f, 1.2f, 0.12f, 0.05f, 2.4f, 0.05f, COL_WOOD);
                 Part(0.36f, 2.5f, 0.12f, 0.08f, 0.26f, 0.08f, COL_BRONZE);
             }
-            if (G.night < 0.3f && !v->vit.drawing && !bowOut) {
+            if (!TorchesLit() && !v->vit.drawing && !bowOut) {
                 GripHere(HAND_OTHER, -0.31f, 1.2f, 0.14f);
                 Part(-0.38f, 1.2f, 0.12f, 0.08f, 0.62f, 0.5f, (Color){ 130, 90, 56, 255 });
             }

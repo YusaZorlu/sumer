@@ -720,9 +720,35 @@ static void Armor(const Look *l, const Build *b, float y)
 
 // ---- Bows ----
 
-static void BowPart(float x, float y, float z, float w, float h, float d, Color c)
+// A bow in the frame being drawn: the grip at 'g', the stave upright and bending back toward the string
+// (more as it is drawn, 'pull' 0-1), tapering to horn tips that curve forward, the grip bound in leather.
+// The string runs tip to tip through 'nock' once that is behind its resting line, an arrow on it.
+void DrawBow(Vector3 g, Vector3 nock, float pull)
 {
-    DrawShadedBox((Vector3){ x, y, z }, (Vector3){ w, h, d }, c);
+    const Color horn = { 58, 46, 36, 255 }, leather = { 96, 62, 40, 255 }, reed = { 176, 156, 104, 255 };
+    float bend = 0.13f + 0.17f * pull;
+    Vector3 p[9];
+    for (int k = 0; k <= 8; k++) {
+        float t = (float)k / 4.0f - 1.0f, a = fabsf(t);
+        p[k] = V3(g.x, g.y + 0.55f * t, g.z - bend * t * t + (a > 0.8f ? 0.35f * (a - 0.8f) : 0.0f));
+    }
+    for (int k = 0; k < 8; k++) {
+        float a0 = fabsf((float)k / 4.0f - 1.0f), a1 = fabsf((float)(k + 1) / 4.0f - 1.0f);
+        Tube(p[k], p[k + 1], Lerp(0.02f, 0.009f, a0), Lerp(0.02f, 0.009f, a1), 6, a0 > 0.8f && a1 > 0.8f ? horn : COL_WOOD);
+    }
+    Tube(V3(g.x, g.y - 0.07f, g.z), V3(g.x, g.y + 0.07f, g.z), 0.025f, 0.025f, 6, leather);
+    if (nock.z < p[0].z - 0.01f) {
+        Tube(p[0], nock, 0.005f, 0.005f, 4, COL_LINEN);
+        Tube(nock, p[8], 0.005f, 0.005f, 4, COL_LINEN);
+    } else {
+        Tube(p[0], p[8], 0.005f, 0.005f, 4, COL_LINEN);
+    }
+    if (pull > 0.02f) {
+        Vector3 d = Vector3Normalize(Vector3Subtract(V3(g.x + 0.02f, g.y, g.z), nock)), tip = Vector3Add(nock, Vector3Scale(d, 0.8f));
+        Tube(nock, tip, 0.006f, 0.006f, 4, reed);
+        Tube(tip, Vector3Add(tip, Vector3Scale(d, 0.06f)), 0.014f, 0.0f, 4, COL_BRONZE);
+        Tube(Vector3Add(nock, Vector3Scale(d, 0.02f)), Vector3Add(nock, Vector3Scale(d, 0.12f)), 0.016f, 0.008f, 3, P_DARK);
+    }
 }
 
 // A bow held ready to draw, in front of the body, tilted, the other hand on its grip and the hand that
@@ -745,10 +771,7 @@ void HoldBowFor(Vector3 pos, float facing, bool crouch, bool torch)
         GripHere(HAND_OTHER, 0, 0, 0);
         GripHere(HAND_WEAPON, 0, 0.1f, -0.09f);
     }
-    BowPart(0, 0, 0, 0.05f, 0.9f, 0.06f, COL_WOOD);
-    BowPart(0, 0.5f, 0.05f, 0.04f, 0.16f, 0.05f, COL_WOOD);
-    BowPart(0, -0.5f, 0.05f, 0.04f, 0.16f, 0.05f, COL_WOOD);
-    BowPart(0, 0, -0.07f, 0.015f, 1.05f, 0.015f, COL_LINEN);
+    DrawBow(V3(0, 0, 0), torch ? V3(0, 0, 0) : V3(0, 0.1f, -0.09f), 0);
     rlPopMatrix();
 }
 
@@ -765,10 +788,7 @@ void SlungBow(Vector3 pos, float facing)
     rlRotatef(facing * RAD2DEG, 0, 1, 0);
     rlTranslatef(0, 0, -0.24f);
     rlRotatef(28.0f, 0, 0, 1);
-    BowPart(0, 0, 0, 0.05f, 1.0f, 0.05f, COL_WOOD);
-    BowPart(0, 0.55f, 0.04f, 0.04f, 0.14f, 0.05f, COL_WOOD);
-    BowPart(0, -0.55f, 0.04f, 0.04f, 0.14f, 0.05f, COL_WOOD);
-    BowPart(0, 0, -0.06f, 0.012f, 1.15f, 0.012f, COL_LINEN);
+    DrawBow(V3(0, 0, 0), V3(0, 0, 0), 0);
     rlPopMatrix();
 }
 
@@ -816,6 +836,7 @@ static void Body(Vector3 at, float stride, Look look, bool crouch, bool bow, flo
 
     // The arms: swinging as they walk, drawing a bow, or reaching for what the hands hold.
     float shoulderX = look.woman ? 0.19f : 0.215f, upper = 0.29f, lower = 0.26f;
+    if (bow) DrawBow(V3(-0.2f, 1.48f + y, sit + 0.58f), V3(0.03f, 1.48f + y, sit + fmaxf(0.6f - 0.42f * draw, 0.16f)), draw);
     for (int s = 0; s < 2; s++) {
         float side = s == HAND_WEAPON ? 1.0f : -1.0f;
         Vector3 sh = { side * shoulderX, 1.455f + y, sit }, target, hint = { side * 0.6f, -0.4f, -1.0f };

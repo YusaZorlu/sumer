@@ -1026,7 +1026,7 @@ static void WorldUniforms(const SkyNow *s, Matrix lightVP, int quality)
     U1(l->fogDensity, s->fog);
     U1(l->time, (float)fmod(GetTime(), 3600.0));
     U1(l->worldHalf, WORLD_HALF);
-    U1(l->night, G.night);
+    U1(l->night, G.torchGlow);   // in the world shader it only scales the torches
     U1(l->wet, s->wet);
     U1(l->shadowTexel, 1.0f / (float)shadowSize);
     U1(l->shadowRange, shadowRange);

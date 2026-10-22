@@ -284,7 +284,7 @@ static void DrawBagPanel(void)
     if (G.devTools && Button((Rectangle){ r.x + r.width - 164, r.y + 14, 144, 30 }, "Dev console", true, 0)) SetPanel(PANEL_CONSOLE);
     if (Button((Rectangle){ r.x + r.width - 344, r.y + 14, 170, 30 }, G.torchOn ? "Torch: on (B)" : "Torch: off (B)", true, 0)) {
         G.torchOn = !G.torchOn;
-        Say(G.torchOn ? "You take up your torch (B). It burns after dark." : "You put your torch away (B).");
+        Say(G.torchOn ? "You take up your torch (B). It burns from the evening on." : "You put your torch away (B).");
     }
 }
 
@@ -635,7 +635,7 @@ static void DrawHelpPanel(void)
         { "Left mouse", "draw and release (bow), strike (melee)" },
         { "Right mouse, Q", "parry with the melee weapon" }, { "V", "strike" },
         { "E", "use, talk, pick up, climb, search" }, { "F", "alternate action" },
-        { "R", "refill the quiver" }, { "B", "torch on/off (after dark)" }, { "Z", "arrow camera on/off" }, { "Tab", "baskets and equipment" },
+        { "R", "refill the quiver" }, { "B", "torch on/off (from evening)" }, { "Z", "arrow camera on/off" }, { "Tab", "baskets and equipment" },
         { "M", "map zoom" }, { "N", "music: off, low, medium, high" }, { "G", "graphics: auto, high, low, classic" }, { "T (hold)", "fast-forward time" }, { "F5", "save" },
         { "F11", "fullscreen" }, { "Esc", "pause, save slots, game settings, your look" }, { "H", "this window" },
         { "` or F2", "dev console (when dev tools are on)" },
