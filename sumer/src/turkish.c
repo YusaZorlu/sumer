@@ -285,6 +285,8 @@ const Phrase TR_PHRASES[] = {
     { "Boar", "Yaban domuzu" },
     { "Goose", "Kaz" },
     { "Partridge", "Keklik" },
+    { "No weapons in the alehouse.", "Meyhanede silah olmaz." },
+    { "You put your weapons away in the alehouse.", "Meyhanede silahlarını kaldırıyorsun." },
     { "Wolf pelt", "Kurt postu" },
     { "Clay", "Kil" },
     { "Clay pots", "Kil çömlek" },

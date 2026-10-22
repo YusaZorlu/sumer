@@ -291,7 +291,8 @@ static void BuildHunters(void)
     AddNpc(NPC_VILLAGER, (Vector3){ cx - 4, Ground(cx - 4, cz + 5), cz + 5 }, (Vector3){ cx + 9, Ground(cx + 9, cz + 5), cz + 5 }, 0.6f, tan, 0);
     AddNpc(NPC_VILLAGER, (Vector3){ cx - 3, Ground(cx - 3, cz - 8), cz - 8 }, (Vector3){ cx - 3, Ground(cx - 3, cz + 10), cz + 10 }, 0.5f, green, 0);
     float ax = cx - 13, az = cz - 12;
-    AddNpc(NPC_VILLAGER, (Vector3){ ax, Ground(ax, az), az }, (Vector3){ ax, Ground(ax, az), az }, 0, green, -PI / 2);
+    int archer = AddNpc(NPC_VILLAGER, (Vector3){ ax, Ground(ax, az), az }, (Vector3){ ax, Ground(ax, az), az }, 0, green, -PI / 2);
+    if (archer >= 0) G.villagers[archer].bow = 1;   // the one at the butt shoots; the others work with their hands
     Warden(cx - 12, cz + 3, -PI / 2, (Color){ 104, 82, 56, 255 });
     AtWork(cx + 1.6f, cz + 1.4f, -2.3f, tan, true);
     AtWork(cx + 8.2f, cz - 1.6f, -1.0f, green, false);

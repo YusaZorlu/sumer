@@ -206,11 +206,22 @@ void UpdatePeers(float dt)
         p->lastSwing = p->swingT;
         if (p->hitT > 0) p->hitT -= dt;
         float k = fminf(1.0f, dt * 12.0f);
-        if (Vector3Distance(p->shown, p->pos) > 6.0f) p->shown = p->pos;
-        else p->shown = Vector3Lerp(p->shown, p->pos, k);
+        Vector3 ahead = Vector3Add(p->pos, Vector3Scale(p->vel, fminf(p->heard, 0.25f)));
+        if (Vector3Distance(p->shown, ahead) > 6.0f) p->shown = ahead;
+        else p->shown = Vector3Lerp(p->shown, ahead, k);
         float diff = atan2f(sinf(p->facing - p->shownFacing), cosf(p->facing - p->shownFacing));
         p->shownFacing += diff * k;
     }
+}
+
+// A new place for another player: how fast they came from the last one carries them on until the next
+// (between updates they keep walking instead of stopping and jumping).
+void PeerMoved(Peer *p, Vector3 pos)
+{
+    Vector3 v = Vector3Scale(Vector3Subtract(pos, p->pos), 1.0f / fmaxf(p->heard, 0.05f));
+    p->vel = p->active && Vector3Length(v) < 15.0f ? v : (Vector3){ 0, 0, 0 };
+    p->pos = pos;
+    p->heard = 0;
 }
 
 // A body leaning 'degrees' toward the horizontal direction 'dir', about its feet: draw the person between
@@ -257,7 +268,7 @@ void DrawPeers(void)
 {
     for (int s = 0; s < MAX_PLAYERS; s++) {
         const Peer *p = &G.peers[s];
-        if (!p->active || s == G.self || (p->flags & PF_OUT) || XZDist(p->shown, G.cam.position) > 240.0f) continue;
+        if (!p->active || s == G.self || (p->flags & PF_OUT) || XZDist(p->shown, G.cam.position) > 240.0f || !InView(p->shown, 2.0f)) continue;
         Look look = PlayerLook(s, p->style, p->armor);
         LightFor(p->shown);
         if (p->flags & PF_BED) {

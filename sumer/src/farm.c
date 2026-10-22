@@ -715,7 +715,7 @@ static void DrawCityCrops(void)
 
     for (int f = 0; f < CITY_FARM_COUNT; f++) {
         Vector3 c = CityFarmSpot(f);
-        if (XZDist(c, G.cam.position) > 140.0f) continue;
+        if (XZDist(c, G.cam.position) > 140.0f || !InView(c, 14.0f)) continue;
         LightFor(c);
         for (int j = 0; j < 6; j++)
             DrawWheat((Vector3){ c.x - 2 + 4.0f * (float)(j % 3), 0, c.z - 2 + 4.0f * (float)(j / 3) }, growth, false, stubble);

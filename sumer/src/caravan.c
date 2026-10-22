@@ -296,7 +296,7 @@ void DrawCaravans(void)
         Vector3 p;
 
         CaravanMember(i, 0, &p, &f);
-        if (XZDist(p, G.cam.position) > 220.0f) continue;
+        if (XZDist(p, G.cam.position) > 220.0f || !InView(p, 6.0f)) continue;
         LightFor(c->path[c->points - 1]);
         if (c->state == CV_TRADE) DrawStall(c);
 

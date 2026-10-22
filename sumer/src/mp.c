@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define NET_VERSION   11
+#define NET_VERSION   13
 #define SNAP_EVERY    0.1f
 #define STATE_EVERY   0.066f
 #define RECORD_EVERY  15.0f
@@ -390,8 +390,8 @@ static void ReadSnapshot(Reader *r)
             p->shown = pos;
             p->shownFacing = facing;
         }
+        PeerMoved(p, pos);
         p->active = true;
-        p->pos = pos;
         p->facing = facing;
         p->stride = stride;
         p->draw = draw;
@@ -405,7 +405,6 @@ static void ReadSnapshot(Reader *r)
         p->style = style;
         p->wanted = wanted;
         p->alone = alone;
-        p->heard = 0;
     }
 
     int animals = (int)R8(r);
@@ -570,6 +569,9 @@ static void Ease(float dt)
     for (int i = 0; i < G.animalCount; i++) {
         Animal *a = &G.animals[i];
         if (!a->active) continue;
+        // Carried on the way it was going at the speed it had, so it runs on smoothly between pictures.
+        a->netPos.x += sinf(a->netHeading) * a->speed * dt;
+        a->netPos.z += cosf(a->netHeading) * a->speed * dt;
         a->pos = Vector3Lerp(a->pos, a->netPos, k);
         float d = atan2f(sinf(a->netHeading - a->heading), cosf(a->netHeading - a->heading));
         a->heading += d * k;
@@ -1090,7 +1092,7 @@ static void HostState(int slot, Reader *r)
     int flags = (int)R16(r), equip = (int)R8(r), weapon = (int)R8(r), bow = (int)R8(r), armor = (int)R8(r);
     unsigned short style = (unsigned short)R16(r);
     if (r->bad || !isfinite(pos.x) || fabsf(pos.x) > WORLD_HALF + 5 || fabsf(pos.z) > WORLD_HALF + 5) return;
-    p->pos = pos;
+    PeerMoved(p, pos);
     p->facing = facing;
     p->stride = stride;
     p->draw = draw;
@@ -1102,7 +1104,6 @@ static void HostState(int slot, Reader *r)
     p->bow = bow;
     p->armor = armor;
     p->style = style;
-    p->heard = 0;
 }
 
 static void HostRecord(int slot, Reader *r)

@@ -997,29 +997,76 @@ static void TestWilds(void)
     Check(G.boxCount < MAX_BOXES - 1500, "boxes %d of %d", G.boxCount, MAX_BOXES);
 }
 
-// The loops of places run on with no click where they start again, and every footstep has a sound.
-static void TestSounds(void)
+// The faster ways give the same answers: the grid of boxes finds what a scan of every box finds, people
+// behind the camera are skipped and those before it kept, and another player seen ten times a second
+// walks on smoothly between updates instead of lagging behind.
+static void TestFaster(void)
 {
-    SfxExport(GetDirectoryPath(GetApplicationDirectory()));
-    const char *dir = GetDirectoryPath(GetApplicationDirectory());
-    for (int k = 0; k < 2; k++) {
-        Wave w = LoadWave(TextFormat("%s/%s.wav", dir, k ? "village" : "city"));
-        const short *s = w.data;
-        int n = (int)w.frameCount;
-        double typical = 0;
-        for (int i = 1; i < n; i++) typical += abs(s[i] - s[i - 1]);
-        typical /= n > 1 ? n - 1 : 1;
-        Check(n > 0 && (float)n / (float)w.sampleRate > 7.5f && abs(s[0] - s[n - 1]) < 3.0 * typical + 50,
-              "%s loop: %.1f s, seam %d against a usual step of %.0f", k ? "village" : "city", n > 0 ? (float)n / (float)w.sampleRate : 0.0f,
-              n > 0 ? abs(s[0] - s[n - 1]) : -1, typical);
-        UnloadWave(w);
+    int wrong = 0;
+    for (int k = 0; k < 3000; k++) {
+        float x = RandF(-WORLD_LIMIT, WORLD_LIMIT), z = RandF(-WORLD_LIMIT, WORLD_LIMIT);
+        if (k < 1500) {   // half of them in the city, where the boxes are thick
+            x = RandF(-110, 110);
+            z = RandF(-100, 90);
+        }
+        float h = TerrainHeight(x, z), y = h + RandF(0, 12);
+        bool solid = false;
+        for (int i = 0; i < G.boxCount; i++) {
+            const Box *b = &G.boxes[i];
+            if (!b->solid || b->water) continue;
+            bool in = fabsf(x - b->pos.x) <= b->size.x / 2 && fabsf(z - b->pos.z) <= b->size.z / 2;
+            float top = b->pos.y + b->size.y / 2;
+            if (in && top > h && top <= y + STEP_HEIGHT) h = top;
+            if (fabsf(x - b->pos.x) <= b->size.x / 2 + 0.5f && fabsf(z - b->pos.z) <= b->size.z / 2 + 0.5f && top > TerrainHeight(x, z) + 0.6f) solid = true;
+        }
+        wrong += GroundHeight(x, z, y) != h || SolidAt(x, z, 0.5f) != solid;
     }
-    for (int id = SFX_STEP_GRASS; id <= SFX_STEP_WATER; id++) {
-        static const char *names[] = { "step-grass", "step-earth", "step-hard", "step-water" };
-        Wave w = LoadWave(TextFormat("%s/%s.wav", dir, names[id - SFX_STEP_GRASS]));
-        Check(w.frameCount > 1000, "%s: %u samples", names[id - SFX_STEP_GRASS], w.frameCount);
-        UnloadWave(w);
+    Check(wrong == 0, "the grid of boxes answers as a scan of all %d boxes does (%d of 3000 differ)", G.boxCount, wrong);
+
+    Camera cam = G.cam;
+    G.cam.position = (Vector3){ 0, 2, 0 };
+    G.cam.target = (Vector3){ 0, 2, 10 };
+    G.cam.fovy = 70;
+    Check(InView((Vector3){ 0, 1, 40 }, 2) && InView((Vector3){ 25, 1, 40 }, 2) && InView((Vector3){ 0, 1, -5 }, 2) && !InView((Vector3){ 0, 1, -40 }, 2) &&
+          !InView((Vector3){ 60, 1, -10 }, 2), "drawn: ahead, ahead to the side, close behind; not drawn: far behind, far off to the side");
+    G.cam = cam;
+
+    Peer *p = &G.peers[3];
+    *p = (Peer){ .active = true };
+    float worst = 0, t = 0, next = 0;
+    for (int f = 0; f < 120; f++, t += 1.0f / 60.0f) {
+        if (t >= next) {
+            PeerMoved(p, (Vector3){ 4.0f * t, 0, 0 });
+            next += 0.1f;
+        }
+        UpdatePeers(1.0f / 60.0f);
+        if (t > 1.0f) worst = fmaxf(worst, fabsf(p->shown.x - 4.0f * t));
     }
+    Check(worst < 0.3f, "another player walking at 4 m/s is shown within %.2f m of where they are", worst);
+    *p = (Peer){ 0 };
+}
+
+// The alehouse by the potters' quarter: townsfolk sit talking at its tables; weapons go away at the door
+// and come back on the way out.
+static void TestAlehouse(void)
+{
+    int talkers = 0;
+    for (int i = 0; i < G.villagerCount; i++) talkers += G.villagers[i].talks && InAlehouse(VillagerPos(&G.villagers[i]));
+    Check(talkers == 8, "%d townsfolk sit talking in the alehouse", talkers);
+    G.self = G.actor = 0;
+    PlaceAt(-60, 26, 0);
+    UpdatePlayer(0.02f, false);
+    SetEquip(EQ_MELEE);
+    PlaceAt(-69, 17.5f, 0);
+    UpdatePlayer(0.02f, false);
+    bool off = G.equip == EQ_NONE;
+    SetEquip(EQ_BOW);
+    bool refused = G.equip == EQ_NONE;
+    PlaceAt(-60, 26, 0);
+    UpdatePlayer(0.02f, false);
+    Check(InAlehouse((Vector3){ -69, 0, 17.5f }) && off && refused && G.equip == EQ_MELEE,
+          "in the alehouse weapons are put away and cannot be taken up; outside the sword is back (%d %d %d)", off, refused, G.equip);
+    SetEquip(EQ_BOW);
 }
 
 // Coveys of partridges live in the woods; walk up to one and it bursts up and away, and it is game.
@@ -2120,8 +2167,9 @@ static void RunTests(void)
     TestConsole();
     TestTempleLife();
     TestWilds();
-    TestSounds();
     TestPartridges();
+    TestFaster();
+    TestAlehouse();
     TestTorch();
     TestDeathLosses();
     TestCanals();

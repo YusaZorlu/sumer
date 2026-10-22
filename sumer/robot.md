@@ -137,6 +137,22 @@ in `src/game.h`) holds the whole world.
   `COL_PALM_LEAF`, the tree literals in `world.c`), 252 tilled earth (`COL_SOIL`), 251 straw (`TAG_CROP()`) gets it,
   triplanar in world space (`det3()`), and is drawn opaque. Keep plain `COL_PALM_TRUNK` (255) for beams and
   posts, and do not `Mix()` a tagged color with an untagged one (the alpha lands on a random tag).
+- **Speed** (measured with `harness stats` and a `-pg` build of the harness): `BoxesNear()` in `world.c` is an
+  8 m grid of the boxes; `GroundHeight`, `SolidAt`, the player's and NPCs' collisions, the camera and the aim ray
+  ask it instead of scanning every box (update went from 0.87 to 0.06 ms a frame). New boxes join it before
+  the next question and `BuildWorld` starts it over; boxes must never move sideways. `InView(p, size)` in
+  `render.c` skips people and animals behind the camera (with a margin for their shadows); call it in any new
+  loop that draws figures. Guests carry other players on at their last speed (`PeerMoved`, `vel`) and
+  animals along their heading (`Ease` in `mp.c`), so they glide between the host's ten pictures a second.
+  `TestFaster` checks all three.
+- **Music of places** (`UpdatePlaces` in `music.c`, files in `assets/music/` from `tools/assets/make_music.sh`): one
+  raylib music stream per place (city, village, open land, ziggurat), each with a 1 s buffer so slow frames do
+  not starve it; while one plays, the synthesizer's tracks are silent and not computed at all (`idle`). The
+  fight mood brings the synthesizer back. Only CC0 music; list it in the README's credits. `audio.js` checks
+  each place (`MusicPlace()` in the test info).
+- **Alehouse** (`BuildAlehouse`, `AlehouseFolk`, `InAlehouse` in `village.c`; the rule in `AlehouseRule` and
+  `SetEquip` in `player.c`): built before the city's houses so they keep clear of it. Its folk are appended
+  last (`Villager.talks`: they turn and gesture while drawn). No drink is sold there yet, by the owner's wish.
 - **Leaf crowns**: a blob in leaf color (alpha 253) is lumpy (`Lump()` in `render.c`, the same waves at every level of
   detail) and gets no normal, so the shader lights it facet by facet. Trees add two hashed clumps (no `RandF`).
 - **Partridges** (`AN_PARTRIDGE`, item `IT_PARTRIDGE`): herds appended at the end of `HERDS` because saves keep the
@@ -193,11 +209,7 @@ in `src/game.h`) holds the whole world.
   through `EV_PARRIED`/`EV_STUNNED`. `G.meleeing` tells `HitMark` a blow from an arrow (arrows crack, `EV_HIT` kind).
 - **Sound effects** (`src/sfx.c`): made at the first `SfxPlay` from formulas (no files), three voices each (raylib sound
   aliases), pitch varied a little. `SfxPlayAt` fades with distance from the camera. `tools/out/harness sfx <dir>` writes
-  them as .wav files; keep most of the energy above 150 Hz or phone and laptop speakers lose it. Footsteps:
-  `Footsteps()` in `player.c` (one per half stride, the sound picked from the ground). Places: `SfxAmbience()`
-  (called from `MusicUpdate`, so the title screen fades them out) streams two 8 s loops made at 22 kHz,
-  wrapped as .wav in memory for `LoadMusicStreamFromMemory`; the loop's end is cross-faded into its start
-  (`TestSounds` checks the seam). They draw their random numbers from the noise, never `RandF`.
+  them as .wav files; keep most of the energy above 150 Hz or phone and laptop speakers lose it.
 - **Where a blow came from**: every damage source passes its position (`HurtSlotFrom(slot, dmg, by, &pos)`, `NetHurt`
   carries it to a guest); `HurtPlayerFrom` turns it into the red edge lights (`G.hitLight[4]`: front, back, left, right
   relative to the camera) and the body's flinch (`G.flinchT`, camera jolt in `FollowCamera`). Other players' flinch is

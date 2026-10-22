@@ -45,7 +45,7 @@
 #define MAX_RAIDERS     24   // 18 in the four camps, then the two roaming bands of three
 #define MAX_LADDERS     8
 #define MAX_FIGHTERS    160
-#define MAX_VILLAGERS   80
+#define MAX_VILLAGERS   96
 #define MAX_WORKERS     16
 #define MAX_CARAVANS    2
 #define CARAVAN_GUARDS  2
@@ -204,7 +204,7 @@ typedef struct {
     Color robe;
     NpcKind kind;
     float face, side;
-    bool moving, templePost;
+    bool moving, templePost, talks;   // talks: sits with others, turning to them and talking with the hands
     Vitals vit;
     int road;
     float netT, netSide;
@@ -310,7 +310,7 @@ enum { PF_CROUCH = 1, PF_RUN = 2, PF_MOVE = 4, PF_GROUND = 8, PF_AIM = 16, PF_SL
 typedef struct {
     bool active, alone;
     char name[NAME_LEN];
-    Vector3 pos, shown;
+    Vector3 pos, shown, vel;   // vel: how fast they were last seen moving, to carry them on between updates
     float facing, shownFacing, stride, draw, health, swingT, wanted, aggro, heard;
     int flags, equip, weapon, bow, armor, net;
     unsigned short style;   // how they chose to look (PackStyle, and STYLE_WOMAN)
@@ -482,6 +482,7 @@ float RandF(float lo, float hi);
 float Hash2(int a, int b);
 float XZDist(Vector3 a, Vector3 b);
 Color Mix(Color a, Color b, float t);
+bool InView(Vector3 p, float size);
 Color Lit(Color c, float shade);
 void DrawShadedBox(Vector3 c, Vector3 s, Color col);
 void DrawGlowBox(Vector3 c, Vector3 s, Color col);
@@ -583,6 +584,7 @@ void BuildVillages(void);
 Vector3 VillageCenter(int v);
 const char *VillageName(int v);
 int VillageAt(Vector3 p);
+bool InAlehouse(Vector3 p);
 Rectangle FoldArea(void);
 
 bool InsideWalls(float x, float z, float margin);
@@ -617,6 +619,7 @@ bool InWater(float x, float z);
 float WadeSpeed(float x, float z);
 bool PointInSolid(Vector3 p);
 bool SolidAt(float x, float z, float radius);
+const int *BoxesNear(float x0, float z0, float x1, float z1, int *n);
 void UpdateSky(void);
 void DrawSky(void);
 void DrawTerrain(void);
@@ -894,6 +897,7 @@ void SayTo(int s, const char *fmt, ...) PRINTF_LIKE(2, 3);
 void Announce(const char *fmt, ...) PRINTF_LIKE(1, 2);
 void SayNear(Vector3 at, float r, const char *fmt, ...) PRINTF_LIKE(3, 4);
 void UpdatePeers(float dt);
+void PeerMoved(Peer *p, Vector3 pos);
 void DrawPeers(void);
 void DrawInBed(int s, Vector3 at, float facing, Look look);
 int PlayerCount(void);
@@ -992,6 +996,7 @@ int MusicLevel(void);              // 0 off, 1 low, 2 medium, 3 high
 void MusicSetLevel(int level);
 const char *MusicLevelName(void);
 const char *MusicTitle(int mood);
+int MusicPlace(void);
 int MusicMood(void);               // 0 morning, 1 the fight, 2 the night
 void MusicRender(int mood, float *out, int frames);
 float MusicPartBeats(int mood, int part);
@@ -1007,15 +1012,13 @@ float FlashAt(Vector3 p);
 void UpdateHitFeel(float dt);
 void SetDrawFlash(float k);
 void DrawSwingTrails(void);
-enum { SFX_SWING, SFX_SWING_HEAVY, SFX_HIT, SFX_HIT_HEAVY, SFX_CLANG, SFX_HURT, SFX_ARROW,
-       SFX_STEP_GRASS, SFX_STEP_EARTH, SFX_STEP_HARD, SFX_STEP_WATER, SFX_COUNT };
+enum { SFX_SWING, SFX_SWING_HEAVY, SFX_HIT, SFX_HIT_HEAVY, SFX_CLANG, SFX_HURT, SFX_ARROW, SFX_COUNT };
 void SfxPlay(int id, float volume);
 void SfxPlayAt(int id, Vector3 at, float volume, float reach);
 int SfxLevel(void);
 void SfxSetLevel(int level);
 void SfxLoadSetting(void);
 const char *SfxLevelName(void);
-void SfxAmbience(float dt, bool inGame);
 void SfxExport(const char *dir);
 
 // The shader renderer and its setting (gfx.c). While GfxOn() the draw code hands out plain colors

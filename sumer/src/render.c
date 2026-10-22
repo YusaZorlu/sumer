@@ -21,6 +21,19 @@ float XZDist(Vector3 a, Vector3 b)
     return Vector2Distance((Vector2){ a.x, a.z }, (Vector2){ b.x, b.z });
 }
 
+// Whether something at p, about 'size' across, can be in the picture or throw a shadow into it: anything
+// within a few metres of the eye, else anything inside the view widened by a margin. People and animals
+// behind the camera are not drawn at all, which is most of the cost of a frame.
+bool InView(Vector3 p, float size)
+{
+    Vector3 d = Vector3Subtract(p, G.cam.position), f = Vector3Subtract(G.cam.target, G.cam.position);
+    float dist = Vector3Length(d), fl = Vector3Length(f);
+    if (dist < 10.0f + size || fl < 1e-4f) return true;
+    float aspect = (float)GetScreenWidth() / fmaxf(1.0f, (float)GetScreenHeight());
+    float half = atanf(tanf(G.cam.fovy * 0.5f * DEG2RAD) * sqrtf(1.0f + aspect * aspect));
+    return Vector3DotProduct(d, f) / (dist * fl) > cosf(fminf(half + 0.26f + atanf(size / dist), PI));
+}
+
 Color Mix(Color a, Color b, float t)
 {
     return (Color){ (unsigned char)Lerp(a.r, b.r, t), (unsigned char)Lerp(a.g, b.g, t),

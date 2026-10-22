@@ -1,4 +1,5 @@
 #include "game.h"
+#include <string.h>
 #include "rlgl.h"
 #include <math.h>
 
@@ -128,6 +129,78 @@ int AddResource(float x, float z, ResKind kind)
     return G.resCount++;
 }
 
+// ---- Boxes by place ----
+// An 8 m grid over the world, each cell listing the boxes whose footprint lies in it, so a question about
+// one spot (what is underfoot, what is in the way, what the camera or an aimed arrow meets) reads the
+// few boxes there, not all twenty thousand. New boxes join it before the next question; a new world
+// starts it over. Boxes never move sideways once made, so their cells stay true.
+#define CELL_M  8.0f
+#define CELLS_N 140   // covers 2 * WORLD_HALF; cells past it clamp to the edge
+#define LINKS   (MAX_BOXES * 8)
+static int cellHead[CELLS_N * CELLS_N], linkBox[LINKS], linkNext[LINKS], linkCount, indexed, near[MAX_BOXES];
+static unsigned stamp[MAX_BOXES], stampNow;
+static bool tooMany;
+
+static int CellOf(float v)
+{
+    int c = (int)floorf((v + WORLD_HALF) / CELL_M);
+    return c < 0 ? 0 : c >= CELLS_N ? CELLS_N - 1 : c;
+}
+
+static void ForgetGrid(void)
+{
+    memset(cellHead, 0, sizeof(cellHead));
+    linkCount = 1;
+    indexed = 0;
+    tooMany = false;
+}
+
+static void CatchUpGrid(void)
+{
+    if (linkCount == 0 || G.boxCount < indexed) ForgetGrid();
+    for (; indexed < G.boxCount; indexed++) {
+        const Box *b = &G.boxes[indexed];
+        int x0 = CellOf(b->pos.x - b->size.x / 2), x1 = CellOf(b->pos.x + b->size.x / 2);
+        int z0 = CellOf(b->pos.z - b->size.z / 2), z1 = CellOf(b->pos.z + b->size.z / 2);
+        for (int cz = z0; cz <= z1; cz++)
+            for (int cx = x0; cx <= x1; cx++) {
+                if (linkCount >= LINKS) {
+                    tooMany = true;
+                    continue;
+                }
+                int c = cz * CELLS_N + cx;
+                linkBox[linkCount] = indexed;
+                linkNext[linkCount] = cellHead[c];
+                cellHead[c] = linkCount++;
+            }
+    }
+}
+
+// The boxes whose footprint may reach the rectangle x0..x1, z0..z1, each once (all of them, should the grid
+// ever fill up). The list is shared: read it before asking again.
+const int *BoxesNear(float x0, float z0, float x1, float z1, int *n)
+{
+    CatchUpGrid();
+    *n = 0;
+    if (tooMany) {
+        for (int i = 0; i < G.boxCount; i++) near[(*n)++] = i;
+        return near;
+    }
+    if (++stampNow == 0) {
+        memset(stamp, 0, sizeof(stamp));
+        stampNow = 1;
+    }
+    for (int cz = CellOf(fminf(z0, z1)); cz <= CellOf(fmaxf(z0, z1)); cz++)
+        for (int cx = CellOf(fminf(x0, x1)); cx <= CellOf(fmaxf(x0, x1)); cx++)
+            for (int l = cellHead[cz * CELLS_N + cx]; l; l = linkNext[l]) {
+                int i = linkBox[l];
+                if (stamp[i] == stampNow) continue;
+                stamp[i] = stampNow;
+                near[(*n)++] = i;
+            }
+    return near;
+}
+
 static bool Contains(const Box *b, float x, float z, float margin)
 {
     return fabsf(x - b->pos.x) <= b->size.x / 2 + margin && fabsf(z - b->pos.z) <= b->size.z / 2 + margin;
@@ -167,9 +240,11 @@ Vector2 PushOut(Vector2 p, float radius, const Box *b)
 float GroundHeight(float x, float z, float y)
 {
     float h = TerrainHeight(x, z);
+    int n;
+    const int *near = BoxesNear(x, z, x, z, &n);
 
-    for (int i = 0; i < G.boxCount; i++) {
-        const Box *b = &G.boxes[i];
+    for (int k = 0; k < n; k++) {
+        const Box *b = &G.boxes[near[k]];
         if (!b->solid || b->water) continue;
         float top = b->pos.y + b->size.y / 2;
         if (top > h && top <= y + STEP_HEIGHT && Contains(b, x, z, 0)) h = top;
@@ -180,9 +255,11 @@ float GroundHeight(float x, float z, float y)
 float CeilingHeight(float x, float z, float y)
 {
     float c = 1e9f;
+    int n;
+    const int *near = BoxesNear(x, z, x, z, &n);
 
-    for (int i = 0; i < G.boxCount; i++) {
-        const Box *b = &G.boxes[i];
+    for (int k = 0; k < n; k++) {
+        const Box *b = &G.boxes[near[k]];
         if (!b->solid || b->water) continue;
         float bottom = b->pos.y - b->size.y / 2;
         if (bottom > y + 0.5f && bottom < c && Contains(b, x, z, 0)) c = bottom;
@@ -212,8 +289,10 @@ float WadeSpeed(float x, float z)
 
 bool PointInSolid(Vector3 p)
 {
-    for (int i = 0; i < G.boxCount; i++) {
-        const Box *b = &G.boxes[i];
+    int n;
+    const int *near = BoxesNear(p.x, p.z, p.x, p.z, &n);
+    for (int k = 0; k < n; k++) {
+        const Box *b = &G.boxes[near[k]];
         if (b->solid && !b->water && Contains(b, p.x, p.z, 0) && fabsf(p.y - b->pos.y) <= b->size.y / 2) return true;
     }
     return false;
@@ -222,9 +301,11 @@ bool PointInSolid(Vector3 p)
 bool SolidAt(float x, float z, float radius)
 {
     float ground = TerrainHeight(x, z);
+    int n;
+    const int *near = BoxesNear(x - radius, z - radius, x + radius, z + radius, &n);
 
-    for (int i = 0; i < G.boxCount; i++) {
-        const Box *b = &G.boxes[i];
+    for (int k = 0; k < n; k++) {
+        const Box *b = &G.boxes[near[k]];
         if (b->solid && !b->water && b->pos.y + b->size.y / 2 > ground + 0.6f && Contains(b, x, z, radius)) return true;
     }
     return false;
@@ -506,6 +587,7 @@ static void SettleOnGround(void)
 
 void BuildWorld(void)
 {
+    ForgetGrid();
     keepCount = 0;
     waterCount = 0;
     pondCount = 0;
