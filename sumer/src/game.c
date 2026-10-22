@@ -471,7 +471,10 @@ static void HandleMenus(bool paused)
     } else if (G.devTools && (KeyPressed(KEY_GRAVE) || KeyPressed(KEY_F2))) {
         if (G.panel == PANEL_NONE || G.panel == PANEL_BAG) SetPanel(PANEL_CONSOLE);
         else if (G.panel == PANEL_CONSOLE) SetPanel(PANEL_NONE);
-    } else if (KeyPressed(KEY_TAB) || (KeyPressed(KEY_I) && G.panel != PANEL_CONSOLE)) {
+    } else if (KeyPressed(KEY_T) && Online() && G.panel == PANEL_NONE && !G.sleeping) {
+        SetPanel(PANEL_CHAT);
+        while (GetCharPressed() > 0) {}   // the T that opened it is not typed
+    } else if (KeyPressed(KEY_TAB) || (KeyPressed(KEY_I) && G.panel != PANEL_CONSOLE && G.panel != PANEL_CHAT)) {
         if (G.panel == PANEL_NONE) SetPanel(PANEL_BAG);
         else if (G.panel != PANEL_PAUSE && G.panel != PANEL_HELP && G.panel != PANEL_SETTINGS) SetPanel(PANEL_NONE);
     }

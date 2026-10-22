@@ -20,8 +20,8 @@
 #define MSG_MAX       60000
 #define MAX_ARGS      REQ_ARGS
 
-enum { M_HELLO = 1, M_WELCOME, M_ROSTER, M_SNAP, M_STATE, M_REQ, M_REPLY, M_EVENT, M_RECORD, M_KICK };
-enum { EV_HURT = 1, EV_SAY, EV_HIT, EV_IMPACT, EV_SKIP, EV_PARRIED, EV_STUNNED, EV_LANDED };
+enum { M_HELLO = 1, M_WELCOME, M_ROSTER, M_SNAP, M_STATE, M_REQ, M_REPLY, M_EVENT, M_RECORD, M_KICK, M_CHAT };
+enum { EV_HURT = 1, EV_SAY, EV_HIT, EV_IMPACT, EV_SKIP, EV_PARRIED, EV_STUNNED, EV_LANDED, EV_CHAT };
 
 typedef struct { int id, kind, args[MAX_ARGS], nargs; float age; } Pending;
 typedef struct { Vector3 pos; Color color; int count; float speed; bool ring; } Effect;
@@ -752,6 +752,50 @@ void LocalSayV(const char *fmt, va_list ap)
     Show(fmt, args, n);
 }
 
+// A line of chat fit to pass on: no control characters, no spaces at the ends, and if too long cut short
+// on a whole letter. Its length; 0 when nothing is left to say.
+int ChatTidy(const char *in, char *out, int size)
+{
+    int n = 0;
+    for (const unsigned char *c = (const unsigned char *)in; *c && n < size - 1; c++)
+        if (*c >= 32 && *c != 127 && (*c != ' ' || n > 0)) out[n++] = (char)*c;
+    int lead = n;
+    while (lead > 0 && ((unsigned char)out[lead - 1] & 0xC0) == 0x80) lead--;
+    if (lead > 0 && (unsigned char)out[lead - 1] >= 0xC0) {
+        unsigned b = (unsigned char)out[lead - 1];
+        if (n - (lead - 1) < (b >= 0xF0 ? 4 : b >= 0xE0 ? 3 : 2)) n = lead - 1;
+    }
+    while (n > 0 && out[n - 1] == ' ') n--;
+    out[n] = '\0';
+    return n;
+}
+
+// The host passes a line on to everyone and shows it itself, tidied, and at most two a second from anyone.
+static void HostChat(int slot, const char *raw)
+{
+    static double last[MAX_PLAYERS];
+    char text[CHAT_MAX + 1];
+    if (!ChatTidy(raw, text, (int)sizeof(text)) || GetTime() - last[slot] < 0.5) return;
+    last[slot] = GetTime();
+    Writer w = Begin(M_EVENT);
+    W8(&w, EV_CHAT);
+    W8(&w, (unsigned)slot);
+    WStr(&w, text);
+    SendAll(&w);
+    ChatAdd(slot, text);
+}
+
+void NetChat(const char *text)
+{
+    if (G.role == NET_HOST) {
+        HostChat(G.self, text);
+    } else if (G.role == NET_CLIENT) {
+        Writer w = Begin(M_CHAT);
+        WStr(&w, text);
+        SendHost(&w);
+    }
+}
+
 static void ShowSay(Reader *r)
 {
     char fmt[256];
@@ -1140,6 +1184,7 @@ static void ResetSession(void)
     effectCount = 0;
     snapT = stateT = recordT = saveT = lostT = 0;
     snapCount = 0;
+    ChatClear();
 }
 
 bool NetBegin(bool host, const char *name, const char *room)
@@ -1362,6 +1407,12 @@ static void HostFrame(float dt)
         case M_STATE:  HostState(slot, &r); break;
         case M_REQ:    HostRequest(slot, &r); break;
         case M_RECORD: HostRecord(slot, &r); break;
+        case M_CHAT: {
+            char text[256];
+            RStr(&r, text, (int)sizeof(text));
+            if (!r.bad) HostChat(slot, text);
+            break;
+        }
         default: break;
         }
     }
@@ -1415,6 +1466,13 @@ static void ClientEvent(Reader *r)
         break;
     }
     case EV_SAY: ShowSay(r); break;
+    case EV_CHAT: {
+        int slot = (int)R8(r);
+        char text[CHAT_MAX + 1];
+        RStr(r, text, (int)sizeof(text));
+        if (!r->bad && slot < MAX_PLAYERS) ChatAdd(slot, text);
+        break;
+    }
     case EV_HIT:
         G.hitMarkT = 0.3f;
         if (R8(r) == 1) SfxPlay(SFX_ARROW, 0.8f);

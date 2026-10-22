@@ -107,6 +107,10 @@ in `src/game.h`) holds the whole world.
   caravans, peers). `G.actor` is who is acting; `Say()` goes to the actor (a guest's message is sent to them), `SayTo`
   and `Announce` address others. Peers are in `G.peers[]` (slot 0 is the host); each machine's own slot is `G.self`.
   Guests ease positions toward `netPos`/`netAt`.
+- **Chat** (T, online only; T fast-forwards only offline): `PANEL_CHAT` keeps the game keys off while the line is typed in
+  `DrawChat` (`ui.c`, which also keeps the last 8 lines). A guest sends `M_CHAT` to the host; `HostChat` (`mp.c`) tidies it
+  (`ChatTidy`: control characters out, 100 bytes, cut on a whole UTF-8 letter), allows two a second per slot, and sends
+  `EV_CHAT` (slot + text) to everyone. The browser test types real keys (mp.js); `TestInfo` has the last line as `chat`.
 - **People fight through `Fighter` structs** rebuilt every frame in `src/combat.c` from villagers, workers, traders,
   caravans and raiders (`FK_*` kinds). Leashes (`InReach`): city guards stay in the city lands and within 40 m of their
   post, caravan guards within 14 m, villagers 45 m. Village anger lasts 120 s, being wanted 120 s (city lands only).
