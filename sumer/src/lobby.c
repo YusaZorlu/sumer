@@ -8,7 +8,7 @@
 #define NAME_FILE "sumer.name"
 
 static enum { LOBBY_MENU, LOBBY_CONNECT } stage;
-static bool open, loaded, autoDone, confirmNew, pvp = true, combat;
+static bool open, loaded, autoDone, confirmNew, pvp = true, combat, dev;
 static char name[NAME_LEN], room[32], note[200];
 static float connectT;
 
@@ -63,6 +63,7 @@ void OpenLobby(const char *why)
         if (given[0]) snprintf(name, sizeof(name), "%s", given);
         if (strcmp(PageParam("pvp"), "0") == 0) pvp = false;
         if (strcmp(PageParam("combat"), "1") == 0) combat = true;
+        if (strcmp(PageParam("dev"), "1") == 0) dev = true;
     }
     open = true;
     stage = LOBBY_MENU;
@@ -102,6 +103,7 @@ static void PlayAlone(void)
         Say("Welcome back. Day %d. Slot %d was loaded.", G.day, SaveSlot() + 1);
         G.msgT = 6.0f;
     }
+    G.devTools = dev;
     Enter();
 }
 
@@ -110,7 +112,7 @@ static void Connect(bool host)
     SaveName();
     note[0] = '\0';
     connectT = 0;
-    NetRules(pvp, combat);
+    NetRules(pvp, combat, dev);
     if (NetBegin(host, PlayerName(), room)) stage = LOBBY_CONNECT;
     else snprintf(note, sizeof(note), "%s", NetFailure());
 }
@@ -223,7 +225,10 @@ void LobbyFrame(void)
         y += 62;
         if (Choice((Rectangle){ x, y, 250, 46 }, "Join the battle royale", menu && named)) Connect(false);
         Label("Joins the game hosted in this room.", x + 270, y + 14, 15, dim);
-        y += 132;
+        y += 62;
+        if (Choice((Rectangle){ x + 200, y, 190, 28 }, dev ? "Dev tools: on" : "Dev tools: off", menu)) dev = !dev;
+        Label("The dev console, when you host.", x + 400, y + 6, 13, dim);
+        y += 70;
     } else {
         if (Choice((Rectangle){ x, y, 250, 46 }, "Host a game", menu && named)) Connect(true);
         int day;
@@ -245,6 +250,10 @@ void LobbyFrame(void)
         Label("Rules when you host:", x, y + 6, 15, dim);
         if (Choice((Rectangle){ x + 200, y, 190, 28 }, pvp ? "PvP: on" : "PvP: off", menu)) pvp = !pvp;
         if (Choice((Rectangle){ x + 400, y, 240, 28 }, pvp && combat ? "Combat mode: on" : "Combat mode: off", menu && pvp)) combat = !combat;
+        y += 34;
+        // Dev tools go for playing alone too: the dev console (Tab, then its button, or `).
+        if (Choice((Rectangle){ x + 200, y, 190, 28 }, dev ? "Dev tools: on" : "Dev tools: off", menu)) dev = !dev;
+        Label("The dev console, alone or hosting.", x + 400, y + 6, 13, dim);
         y += 40;
         if (Choice((Rectangle){ x, y, 250, 46 }, "Join a game", menu && named)) Connect(false);
         Label("Joins the game hosted in this room.", x + 270, y + 14, 15, dim);

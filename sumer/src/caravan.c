@@ -306,9 +306,9 @@ void DrawCaravans(void)
             DrawPersonBody(p, f, merchant);
         } else {
             float stride = c->vit[0].override ? time * 8.0f : moving ? c->s * 2.5f : 0.0f;
-            if (G.night >= 0.3f) GripAt(HAND_OTHER, -0.36f, 1.36f, 0.28f);
+            if (TorchesLit()) GripAt(HAND_OTHER, -0.36f, 1.36f, 0.28f);
             DrawHuman(p, f, stride, merchant, false, false, 0);
-            if (G.night >= 0.3f) DrawHandTorch(p, f);
+            if (TorchesLit()) DrawHandTorch(p, f);
         }
 
         for (int k = 1; k <= 2; k++) {
@@ -329,9 +329,9 @@ void DrawCaravans(void)
             }
             float stride = v->override ? time * 8.0f : moving ? c->s * 2.5f + 1.0f + (float)k : 0.0f;
             DrawSpear(g, f, v->swing, v->windup);
-            if (G.night >= 0.3f) GripAt(HAND_OTHER, -0.36f, 1.36f, 0.28f);
+            if (TorchesLit()) GripAt(HAND_OTHER, -0.36f, 1.36f, 0.28f);
             DrawHuman(g, f, stride, guard, false, false, 0);
-            if (G.night >= 0.3f) DrawHandTorch(g, f);
+            if (TorchesLit()) DrawHandTorch(g, f);
         }
     }
     G.drawTorch = G.drawFog = 0;

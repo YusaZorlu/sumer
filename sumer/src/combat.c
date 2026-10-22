@@ -8,7 +8,8 @@ typedef struct {
     bool fights;
 } RoleDef;
 
-// Barbarians across the river are twice as strong as the raiders on the city side.
+// Barbarians across the river are twice as strong as the raiders on the city side; the roaming bandits
+// come between.
 static const RoleDef ROLES[ROLE_COUNT] = {
     [ROLE_CIVILIAN]  = { 120, 0.00f,  5, 1.35f, 1.5f, 3.8f, 24, true },
     [ROLE_WORKER]    = { 130, 0.00f,  8, 1.35f, 1.6f, 4.0f, 24, true },
@@ -17,6 +18,7 @@ static const RoleDef ROLES[ROLE_COUNT] = {
     [ROLE_GUARD]     = { 320, 0.35f, 13, 1.05f, 2.3f, 5.4f, 32, true },
     [ROLE_RAIDER]    = { 260, 0.20f, 19, 1.1f,  1.9f, 5.4f, 24, true },
     [ROLE_BARBARIAN] = { 520, 0.20f, 38, 1.1f,  2.0f, 5.4f, 26, true },
+    [ROLE_BANDIT]    = { 390, 0.25f, 28, 1.0f,  2.1f, 5.6f, 28, true },
 };
 
 #define WINDUP       NPC_WINDUP
@@ -73,7 +75,7 @@ static void Add(Vitals *v, Role role, Vector3 home, float face, int owner, int l
 
 static bool IsRaider(Role r)
 {
-    return r == ROLE_RAIDER || r == ROLE_BARBARIAN;
+    return r == ROLE_RAIDER || r == ROLE_BARBARIAN || r == ROLE_BANDIT;
 }
 
 // Rebuilt every frame after the scripted routines have moved everyone; a guest rebuilds it from
@@ -115,10 +117,11 @@ void CollectFighters(void)
     // A battle royale has no raiders or barbarians.
     for (int i = 0; i < (Royale() ? 0 : MAX_RAIDERS); i++) {
         Raider *r = &G.raiders[i];
-        bool west = r->camp >= EAST_CAMPS;
-        Add(&r->vit, west ? ROLE_BARBARIAN : ROLE_RAIDER, r->pos, r->face, OWNER_RAIDER + i, west ? LOOT_BARBARIAN : LOOT_RAIDER, i,
-            RaiderBowman(i) ? "Barbarian bowman" : west ? "Barbarian" : "Raider", FK_RAIDER);
-        if (fighterCount > 0 && fighters[fighterCount - 1].v == &r->vit) fighters[fighterCount - 1].bow = RaiderBowman(i) ? 3 : 0;
+        bool bandit = RaiderBandit(i), west = !bandit && r->camp >= EAST_CAMPS, bow = RaiderBowman(i);
+        Add(&r->vit, bandit ? ROLE_BANDIT : west ? ROLE_BARBARIAN : ROLE_RAIDER, r->pos, r->face, OWNER_RAIDER + i,
+            bandit || west ? LOOT_BARBARIAN : LOOT_RAIDER, i,
+            bandit ? (bow ? "Bandit archer" : "Bandit") : bow ? "Barbarian bowman" : west ? "Barbarian" : "Raider", FK_RAIDER);
+        if (fighterCount > 0 && fighters[fighterCount - 1].v == &r->vit) fighters[fighterCount - 1].bow = bow ? (bandit ? 2 : 3) : 0;
     }
 }
 
@@ -150,7 +153,7 @@ static int Cause(const Fighter *f)
     case FK_CITY_GUARD: return BY_GUARD;
     case FK_CARAVAN: return BY_CARAVAN;
     case FK_VILLAGER: return BY_VILLAGERS;
-    case FK_RAIDER: return f->role == ROLE_BARBARIAN ? BY_BARBARIAN : BY_RAIDER;
+    case FK_RAIDER: return f->role == ROLE_BARBARIAN ? BY_BARBARIAN : f->role == ROLE_BANDIT ? BY_BANDIT : BY_RAIDER;
     default: return BY_TOWNSFOLK;
     }
 }
@@ -255,10 +258,11 @@ static bool JumpWater(Vitals *v, float angle)
 }
 
 // Heads for the goal, trying side steps around walls and people, jumping canals and finding a way
-// round wider water; true once within 'stop'.
+// round wider water; true once within 'stop'. Round something big (the ziggurat, a block of houses) it
+// keeps to one side, as if feeling along the wall, and tries the other side when that gets it nowhere.
 static bool StepToward(Vitals *v, int owner, Vector3 goal, float speed, float dt, float stop)
 {
-    static const float tries[5] = { 0.0f, 0.7f, -0.7f, 1.4f, -1.4f };
+    static const float tries[9] = { 0.0f, 0.7f, -0.7f, 1.4f, -1.4f, 2.1f, -2.1f, 2.8f, -2.8f };
     if (v->jumpDur > 0) {
         v->jumpT += dt;
         float k = fminf(1.0f, v->jumpT / v->jumpDur);
@@ -276,9 +280,20 @@ static bool StepToward(Vitals *v, int owner, Vector3 goal, float speed, float dt
         d = fmaxf(sqrtf(dx * dx + dz * dz), stop + 0.1f);
     }
 
+    if (v->detour == 0) v->detour = (owner & 1) ? 1 : -1;
+    if (left < v->bestLeft - 0.5f || v->bestLeft <= 0 || left > v->bestLeft + 4.0f) {   // nearer, or a new goal
+        v->bestLeft = left;
+        v->detourT = 0;
+    } else if ((v->detourT += dt) > 3.0f) {
+        v->detour = (signed char)-v->detour;   // no nearer for a while: try round the other way
+        v->detourT = 0;
+        v->bestLeft = left;
+    }
     float base = atan2f(dx, dz), step = fminf(speed * dt, d - stop);
-    for (int k = 0; k < 5; k++) {
-        float a = base + tries[k], nx = v->at.x + sinf(a) * step, nz = v->at.z + cosf(a) * step;
+    // Turning away from the goal only pays when it is still some way off; near it, side steps do.
+    for (int k = 0; k < (left > 3.0f ? 9 : 5); k++) {
+        float a = base + tries[k] * (float)v->detour;   // the side it keeps to first, then the other
+        float nx = v->at.x + sinf(a) * step, nz = v->at.z + cosf(a) * step;
         Vector3 next = { nx, v->at.y, nz };
         if (BlockedAt(nx, nz, v->at.y)) {
             if (k == 0 && JumpWater(v, a)) return false;

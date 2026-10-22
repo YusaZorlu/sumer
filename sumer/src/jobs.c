@@ -107,10 +107,13 @@ static void BuildWaterfront(void)
 
     AddBox(-130.5f, 0, FERRY_Z, 6.0f, 0.3f, 2.4f, COL_WOOD, true);
     AddBox(-147.5f, 0, FERRY_Z, 6.0f, 0.3f, 2.4f, COL_WOOD, true);
-    for (int k = 0; k < 3; k++) {
-        AddBox(-132.8f + 2.2f * (float)k, -1.8f, FERRY_Z - 1.1f, 0.2f, 2.4f, 0.2f, COL_WOOD, false);
-        AddBox(-149.8f + 2.2f * (float)k, -1.8f, FERRY_Z - 1.1f, 0.2f, 2.4f, 0.2f, COL_WOOD, false);
-    }
+    // Posts under both edges of each deck, down into the river bed.
+    for (int k = 0; k < 3; k++)
+        for (int e = -1; e <= 1; e += 2)
+            for (int w = 0; w < 2; w++) {
+                float x = (w ? -149.8f : -132.8f) + 2.2f * (float)k, z = FERRY_Z + 1.1f * (float)e, bed = TerrainHeight(x, z) - 0.3f;
+                AddBox(x, bed, z, 0.2f, 0.3f - bed, 0.2f, COL_WOOD, false);
+            }
     G.stations[STN_FERRY_E] = (Vector3){ -127.0f, 0, FERRY_Z };
     G.stations[STN_FERRY_W] = (Vector3){ -151.0f, 0, FERRY_Z };
     KeepOut(-135, FERRY_Z - 5, -122, FERRY_Z + 5);

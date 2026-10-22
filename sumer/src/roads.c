@@ -183,7 +183,7 @@ void BuildRoads(void)
 
 void DrawRoads(void)
 {
-    const Color dirt = { 168, 148, 110, 255 };
+    const Color dirt = { 168, 148, 110, 254 };   // alpha 254: the shaders lay the roads' packed earth on it
     Vector3 eye = G.cam.position, fwd = Vector3Normalize(Vector3Subtract(G.cam.target, eye));
     bool all = DrawingAll();
 

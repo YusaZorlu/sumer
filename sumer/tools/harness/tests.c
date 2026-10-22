@@ -74,7 +74,7 @@ static void TestHerds(void)
     }
     Check(cityPacks == 5 && cityOk, "city-side wolf packs: %d packs of 4", cityPacks);
     Check(westPacks == 3 && westOk, "west-bank wolf packs: %d packs of 5 or 6", westPacks);
-    Check(AnimalMaxHp(AN_WOLF) == 60, "wolf health %d (was 35)", AnimalMaxHp(AN_WOLF));
+    Check(AnimalMaxHp(AN_WOLF) == 78, "wolf health %d (was 60)", AnimalMaxHp(AN_WOLF));
     Check(AnimalMaxHp(AN_BOAR) == 135, "boar health %d (3 x 45)", AnimalMaxHp(AN_BOAR));
     Check(snakes > 0 && snakes <= 6, "snakes: %d in the whole world", snakes);
     bool hidden = true;
@@ -339,7 +339,7 @@ static void TestGateGuards(void)
             }
             guarded += n >= 2;
         }
-        for (int i = 0; i < G.villagerCount; i++) high += G.villagers[i].kind == NPC_GUARD && G.villagers[i].a.y >= 5.0f;
+        for (int i = 0; i < G.villagerCount; i++) high += G.villagers[i].kind == NPC_GUARD && G.villagers[i].a.y >= 5.0f && !G.villagers[i].crouch;
         Check(guarded == 5, "%s: two guards stand at each of the city's 5 gates (%d gates guarded)", pass ? "PvP" : "alone", guarded);
         if (pass) Check(high == 0, "PvP: no guards left on the ziggurat's terrace (%d)", high);
     }
@@ -697,6 +697,422 @@ static void Stand(int villager, float x, float z)
     CollectFighters();
     v->override = true;
     v->at = (Vector3){ x, GroundHeight(x, z, 2.0f), z };
+}
+
+// A guard who has to go round the ziggurat to reach a wanted player behind it gets there.
+static void TestGuardRound(void)
+{
+    G.self = G.actor = 0;
+    G.health = 1e6f;
+    RespawnPeople();
+    // The guard who walks the precinct's west side, stopped half way along it; the player behind the ziggurat's
+    // north-east, within the guard's reach but out of a straight line.
+    int g = -1;
+    for (int i = 0; i < G.villagerCount && g < 0; i++)
+        if (G.villagers[i].kind == NPC_GUARD && G.villagers[i].a.x < -23.0f && G.villagers[i].a.x > -25.0f) g = i;
+    if (g < 0) {
+        Check(false, "no guard walks the precinct's west side");
+        return;
+    }
+    G.villagers[g].t = 0.5f;
+    G.villagers[g].speed = 0;
+    Stand(g, -24, -35);
+    Vitals *v = &G.villagers[g].vit;
+    PlaceAt(2, -62, 0);
+    G.peers[0].wanted = 200;
+    v->hostile = 200;
+    v->target = 0;
+    float closest = 1e9f;
+    for (float t = 0; t < 40; t += 0.05f) {
+        SyncSelf();
+        CollectBodies();
+        UpdateCombat(0.05f);
+        closest = fminf(closest, XZDist(v->at, G.player.pos));
+        if (getenv("TRACE") && fmodf(t, 2.0f) < 0.05f) printf("  t %.0f guard (%.1f,%.1f) override %d hostile %.0f target %d\n", t, v->at.x, v->at.z, v->override, v->hostile, v->target);
+    }
+    Check(closest < 4.0f, "a guard goes round the ziggurat to the wanted player behind it (closest %.1f m)", closest);
+    G.peers[0].wanted = 0;
+    G.health = HEALTH_MAX;
+    RespawnPeople();
+}
+
+// Wolves run round a tree between them and their prey, keep a body apart in the pack, and a badly hurt
+// wolf fights on while its pack is beside it and limps away only once it is alone.
+static void HuntFor(float secs, const Animal *w, float *closest)
+{
+    for (float t = 0; t < secs; t += 0.02f) {
+        G.peers[0].aggro = 90;
+        Wild(0.02f);
+        if (closest) *closest = fminf(*closest, XZDist(w->pos, G.player.pos));
+    }
+}
+
+static void TestWolfWays(void)
+{
+    G.self = G.actor = 0;
+    G.health = 1e6f;
+    Animal *w = First(AN_WOLF);
+    const Box *tree = NULL;
+    for (int i = 0; i < G.boxCount && !tree; i++) {
+        const Box *b = &G.boxes[i];
+        if (b->solid && !b->built && !b->water && b->size.x < 1.2f && b->size.y > 2.0f && b->pos.x > RIVER_X1 + 30 &&
+            !InsideWalls(b->pos.x, b->pos.z, -30.0f) && FreeSpot(b->pos.x - 5, b->pos.z, 0.6f) && FreeSpot(b->pos.x + 5, b->pos.z, 0.6f) &&
+            !SolidAt(b->pos.x - 2.5f, b->pos.z, 0.6f) && !SolidAt(b->pos.x + 2.5f, b->pos.z, 0.6f))
+            tree = b;
+    }
+    if (!w || !tree) {
+        Check(false, "a wolf and a lone tree on the plain");
+        return;
+    }
+    CalmBeasts(-1);
+    for (int i = 0; i < G.animalCount; i++)   // the rest of the world's beasts out of the way
+        if (&G.animals[i] != w) G.animals[i].pos.x += 3000;
+    PlaceAt(tree->pos.x + 5, tree->pos.z, 0);
+    w->pos = (Vector3){ tree->pos.x - 5, TerrainHeight(tree->pos.x - 5, tree->pos.z), tree->pos.z };
+    w->hp = AnimalMaxHp(AN_WOLF);
+    w->state = ST_HUNT;
+    w->target = 0;
+    w->timer = 0;
+    float closest = 1e9f;
+    HuntFor(4, w, &closest);
+    Check(closest < 1.6f, "a wolf runs round a tree between it and its prey (closest %.1f m)", closest);
+
+    // Its pack with it: four hunting from one side do not end up standing in one another.
+    Animal *pack[4] = { w };
+    int n = 1;
+    for (int i = 0; i < G.animalCount && n < 4; i++)
+        if (&G.animals[i] != w && G.animals[i].type == AN_WOLF && G.animals[i].pack == w->pack && G.animals[i].active) pack[n++] = &G.animals[i];
+    PlaceAt(tree->pos.x + 14, tree->pos.z, 0);
+    for (int k = 0; k < n; k++) {
+        Vector3 p = { tree->pos.x + 4, 0, tree->pos.z - 1.5f + (float)k };
+        p.y = TerrainHeight(p.x, p.z);
+        pack[k]->pos = p;
+        pack[k]->hp = AnimalMaxHp(AN_WOLF);
+        pack[k]->state = ST_HUNT;
+        pack[k]->target = 0;
+        pack[k]->timer = 0;
+    }
+    HuntFor(3, w, NULL);
+    float apart = 1e9f;
+    for (int i = 0; i < n; i++)
+        for (int j = i + 1; j < n; j++) apart = fminf(apart, XZDist(pack[i]->pos, pack[j]->pos));
+    Check(n == 4 && apart > 0.8f, "a pack of %d at its prey keeps a body apart (nearest two %.2f m)", n, apart);
+
+    w->hp = AnimalMaxHp(AN_WOLF) / 3;
+    HuntFor(1, w, NULL);
+    Check(w->state == ST_HUNT, "a badly hurt wolf fights on beside its pack (state %d)", w->state);
+    for (int k = 1; k < n; k++) pack[k]->pos.x += 3000;
+    HuntFor(0.1f, w, NULL);
+    Check(w->state == ST_FLEE, "alone, it limps away (state %d)", w->state);
+
+    for (int i = 0; i < G.animalCount; i++)
+        if (G.animals[i].pos.x > 2000) G.animals[i].pos.x -= 3000;
+    CalmBeasts(-1);
+    G.peers[0].aggro = 0;
+    G.health = HEALTH_MAX;
+}
+
+// Two bands of bandits, two swordsmen and an archer each, stronger than raiders, roam far from the city
+// and the villages, off the world's edge, and rest now and then, never on a road.
+static void TestBandits(void)
+{
+    G.self = G.actor = 0;
+    PlaceAt(3, 4, 0);
+    CollectFighters();
+    int bandits = 0, archers = 0;
+    float raiderHp = 0, banditHp = 0;
+    for (int i = 0; i < FighterCount(); i++) {
+        Vector3 p;
+        float hp, max;
+        const char *name;
+        bool hostile, dead;
+        FighterInfo(i, &p, &hp, &max, &name, &hostile, &dead);
+        if (strcmp(name, "Raider") == 0) raiderHp = max;
+        if (strncmp(name, "Bandit", 6) == 0) {
+            bandits++;
+            archers += strcmp(name, "Bandit archer") == 0;
+            banditHp = max;
+        }
+    }
+    Check(bandits == 6 && archers == 2, "two bands of three bandits, an archer in each (%d bandits, %d archers)", bandits, archers);
+    Check(banditHp > raiderHp && raiderHp > 0, "a bandit is tougher than a raider (%.0f against %.0f)", banditHp, raiderHp);
+
+    float nearCity = 1e9f, nearVillage = 1e9f, edge = 0, moved[BANDS] = { 0 }, restRoad = 1e9f, spread = 0;
+    int rests = 0;
+    Vector3 last[BANDS];
+    bool wasStill[BANDS] = { false };
+    for (int b = 0; b < BANDS; b++) last[b] = G.raiders[MAX_RAIDERS - BANDS * 3 + b * 3].pos;
+    if (getenv("TRACE")) printf("  bands start at (%.1f,%.1f) and (%.1f,%.1f)\n", last[0].x, last[0].z, last[1].x, last[1].z);
+    for (float t = 0; t < 900; t += 0.1f) {
+        CollectBodies();
+        UpdateRaiders(0.1f);
+        for (int b = 0; b < BANDS; b++) {
+            const Raider *lead = &G.raiders[MAX_RAIDERS - BANDS * 3 + b * 3];
+            Vector3 p = lead->pos;
+            nearCity = fminf(nearCity, hypotf(p.x, p.z - CITY_Z));
+            for (int v = 0; v < VILLAGES; v++) nearVillage = fminf(nearVillage, XZDist(p, VillageCenter(v)));
+            edge = fmaxf(edge, fmaxf(fabsf(p.x), fabsf(p.z)));
+            moved[b] += XZDist(p, last[b]);
+            last[b] = p;
+            if (!lead->moving && !wasStill[b]) {
+                rests++;
+                restRoad = fminf(restRoad, RoadDistance(p.x, p.z));
+            }
+            wasStill[b] = !lead->moving;
+            if (lead->moving)
+                for (int k = 1; k < 3; k++) {
+                    const Raider *m = &G.raiders[MAX_RAIDERS - BANDS * 3 + b * 3 + k];
+                    if (getenv("TRACE") && XZDist(p, m->pos) > 6 && fmodf(t, 0.5f) < 0.1f)
+                        printf("  t %.0f band %d lead (%.1f,%.1f) member %d (%.1f,%.1f) water %d solid %d\n", t, b, p.x, p.z, k, m->pos.x, m->pos.z,
+                               InWater(m->pos.x, m->pos.z), SolidAt(m->pos.x, m->pos.z, 0.6f));
+                    spread = fmaxf(spread, XZDist(p, m->pos));
+                }
+        }
+    }
+    Check(moved[0] > 150 && moved[1] > 150, "both bands roam (%.0f m and %.0f m in 15 minutes)", moved[0], moved[1]);
+    Check(nearCity > 200 && nearVillage > 100, "far from the city (%.0f m) and the villages (%.0f m)", nearCity, nearVillage);
+    Check(edge < WORLD_LIMIT - 50, "away from the edge of the world (%.0f m from the middle at most)", edge);
+    Check(rests > 0 && restRoad > 8, "they stop now and then (%d times), never on a road (%.0f m from one at least)", rests, restRoad);
+    Check(spread < 12, "the band keeps together on the move (%.1f m apart at most)", spread);
+
+    // Someone walking up to a band is set upon.
+    const Raider *lead = &G.raiders[MAX_RAIDERS - BANDS * 3];
+    PlaceAt(lead->pos.x + 8, lead->pos.z, 0);
+    G.health = HEALTH_MAX;
+    for (int k = 0; k < 40; k++) {
+        CollectBodies();
+        UpdateRaiders(0.05f);
+        UpdateCombat(0.05f);
+    }
+    Check(G.raiders[MAX_RAIDERS - BANDS * 3].vit.hostile > 0 && G.raiders[MAX_RAIDERS - BANDS * 3].vit.target == 0,
+          "the bandits go for a player who walks up to them");
+    ForgetFights(0);
+    RespawnPeople();
+    G.health = HEALTH_MAX;
+    PlaceAt(3, 4, 0);
+}
+
+// The dev console's commands do what they say.
+static void TestConsole(void)
+{
+    G.self = G.actor = 0;
+    G.devTools = false;
+    G.hour = 12;
+    ConsoleRun("hour 22");
+    Check(fabsf(G.hour - 12) < 0.01f && strstr(ConsoleLine(ConsoleLines() - 1), "off") != NULL,
+          "console: does nothing while dev tools are off (\"%s\")", ConsoleLine(ConsoleLines() - 1));
+    G.devTools = true;
+    ConsoleRun("tp 120 -40");
+    Check(XZDist(G.player.pos, (Vector3){ 120, 0, -40 }) < 0.1f, "console: tp 120 -40 moves you there (%.1f, %.1f)", G.player.pos.x, G.player.pos.z);
+    ConsoleRun("tp hunters");
+    Check(XZDist(G.player.pos, VillageCenter(VIL_HUNTERS)) < 12, "console: tp hunters takes you to the hunters' village");
+    ConsoleRun("tp band2");
+    float nearest = 1e9f;
+    for (int i = 0; i < MAX_RAIDERS; i++)
+        if (RaiderBandit(i)) nearest = fminf(nearest, XZDist(G.raiders[i].pos, G.player.pos));
+    Check(nearest < 40, "console: tp band2 puts you within sight of a bandit band (%.0f m)", nearest);
+    ConsoleRun("tp 120 -40");
+
+    G.health = 40;
+    ConsoleRun("heal");
+    Check(G.health == HEALTH_MAX && G.food == FOOD_MAX, "console: heal fills health and food");
+    ConsoleRun("god");
+    HurtPlayer(30, BY_WOLF);
+    Check(G.health == HEALTH_MAX, "console: god, and a bite does nothing (%.0f)", G.health);
+    ConsoleRun("god");
+    HurtPlayer(10, BY_WOLF);
+    Check(G.health < HEALTH_MAX, "console: god again, and it hurts again (%.0f)", G.health);
+    G.health = HEALTH_MAX;
+
+    int dates = BagCount(IT_DATES);
+    ConsoleRun("give dates 5");
+    Check(BagCount(IT_DATES) == dates + 5, "console: give dates 5 (%d -> %d)", dates, BagCount(IT_DATES));
+    ConsoleRun("hour 22");
+    Check(fabsf(G.hour - 22) < 0.01f, "console: hour 22 (%.2f)", G.hour);
+    ConsoleRun("hour 12");
+
+    G.player.yaw = 0;
+    ConsoleRun("spawn wolf 3");
+    int near = 0;
+    for (int i = 0; i < G.animalCount; i++)
+        near += G.animals[i].type == AN_WOLF && G.animals[i].active && G.animals[i].state != ST_DEAD && XZDist(G.animals[i].pos, G.player.pos) < 20;
+    Check(near >= 3, "console: spawn wolf 3 brings three wolves near you (%d)", near);
+    ConsoleRun("kill 25");
+    near = 0;
+    for (int i = 0; i < G.animalCount; i++)
+        near += G.animals[i].type == AN_WOLF && G.animals[i].active && G.animals[i].state != ST_DEAD && XZDist(G.animals[i].pos, G.player.pos) < 20;
+    Check(near == 0 && strstr(ConsoleLine(ConsoleLines() - 1), "beasts") != NULL, "console: kill 25 brings them down (\"%s\")",
+          ConsoleLine(ConsoleLines() - 1));
+    ConsoleRun("nonsense");
+    Check(strstr(ConsoleLine(ConsoleLines() - 1), "Unknown") != NULL, "console: an unknown command says so");
+    ConsoleRun("speed 1");
+    G.devSpeed = 0;
+    G.devTools = false;
+    RespawnPeople();
+    G.health = HEALTH_MAX;
+    PlaceAt(3, 4, 0);
+}
+
+// The ziggurat is lived in: people at work in its rooms, and the guards off duty stay in a PvP game.
+static void TestTempleLife(void)
+{
+    int inside = 0, resting = 0;
+    for (int i = 0; i < G.villagerCount; i++) {
+        const Villager *v = &G.villagers[i];
+        if (InTempleInterior(v->a)) inside++;
+        resting += v->kind == NPC_GUARD && v->crouch && v->a.y > 5.0f;
+    }
+    Check(inside >= 12 && resting == 2, "%d people inside the ziggurat, %d guards off duty in their room", inside, resting);
+    CollectFighters();
+    Check(G.villagerCount < MAX_VILLAGERS && FighterCount() < MAX_FIGHTERS, "room to spare: %d of %d people, %d of %d fighters", G.villagerCount,
+          MAX_VILLAGERS, FighterCount(), MAX_FIGHTERS);
+    static Villager saved[MAX_VILLAGERS];
+    int before = G.villagerCount;
+    memcpy(saved, G.villagers, sizeof(saved));
+    RemoveZigguratGuards();
+    int kept = 0;
+    for (int i = 0; i < G.villagerCount; i++) kept += G.villagers[i].kind == NPC_GUARD && G.villagers[i].crouch;
+    Check(before - G.villagerCount == 3 && kept == 2, "PvP takes the three guards on duty (%d gone) and leaves the two at supper", before - G.villagerCount);
+    memcpy(G.villagers, saved, sizeof(saved));
+    G.villagerCount = before;
+}
+
+// The torch: it takes a second to take up, goes down while weapons change, burns only after dark, others see
+// it and it lights the way; a woman's body has no beard.
+// Bark, leaves, tilled earth and straw are tagged for the shaders' grain; the open land has its
+// shrubs, dead wood and stones, none of them in the way, and the world still fits its boxes.
+static void TestWilds(void)
+{
+    int tag[5] = { 0 }, wood = 0, solidWild = 0;
+    for (int i = 0; i < G.boxCount; i++) {
+        const Box *b = &G.boxes[i];
+        if (b->water || b->glow || b->color.a < 251 || b->color.a > 254) continue;
+        tag[255 - b->color.a]++;
+        if (b->color.a == 254 && b->size.y < 0.7f && !InsideWalls(b->pos.x, b->pos.z, 0)) wood++;
+        if (b->solid && b->color.a == 253 && b->shape == SHAPE_CONE) solidWild++;
+    }
+    Check(tag[1] > 100 && tag[2] > 300 && tag[3] > 20 && tag[4] > 40, "tagged bark %d, leaves %d, earth %d, straw %d", tag[1], tag[2], tag[3], tag[4]);
+    Check(wood >= 60, "fallen wood out on the land: %d", wood);
+    Check(solidWild == 0, "shrubs do not block the way (%d do)", solidWild);
+    Check(G.boxCount < MAX_BOXES - 1500, "boxes %d of %d", G.boxCount, MAX_BOXES);
+}
+
+// The loops of places run on with no click where they start again, and every footstep has a sound.
+static void TestSounds(void)
+{
+    SfxExport(GetDirectoryPath(GetApplicationDirectory()));
+    const char *dir = GetDirectoryPath(GetApplicationDirectory());
+    for (int k = 0; k < 2; k++) {
+        Wave w = LoadWave(TextFormat("%s/%s.wav", dir, k ? "village" : "city"));
+        const short *s = w.data;
+        int n = (int)w.frameCount;
+        double typical = 0;
+        for (int i = 1; i < n; i++) typical += abs(s[i] - s[i - 1]);
+        typical /= n > 1 ? n - 1 : 1;
+        Check(n > 0 && (float)n / (float)w.sampleRate > 7.5f && abs(s[0] - s[n - 1]) < 3.0 * typical + 50,
+              "%s loop: %.1f s, seam %d against a usual step of %.0f", k ? "village" : "city", n > 0 ? (float)n / (float)w.sampleRate : 0.0f,
+              n > 0 ? abs(s[0] - s[n - 1]) : -1, typical);
+        UnloadWave(w);
+    }
+    for (int id = SFX_STEP_GRASS; id <= SFX_STEP_WATER; id++) {
+        static const char *names[] = { "step-grass", "step-earth", "step-hard", "step-water" };
+        Wave w = LoadWave(TextFormat("%s/%s.wav", dir, names[id - SFX_STEP_GRASS]));
+        Check(w.frameCount > 1000, "%s: %u samples", names[id - SFX_STEP_GRASS], w.frameCount);
+        UnloadWave(w);
+    }
+}
+
+// Coveys of partridges live in the woods; walk up to one and it bursts up and away, and it is game.
+static void TestPartridges(void)
+{
+    int n = 0;
+    Animal *bird = NULL;
+    for (int i = 0; i < G.animalCount; i++)
+        if (G.animals[i].active && G.animals[i].type == AN_PARTRIDGE) {
+            n++;
+            if (!bird) bird = &G.animals[i];
+        }
+    Check(n == 12 && CarcassItem(AN_PARTRIDGE) == IT_PARTRIDGE, "%d partridges in the woods, game to carry home", n);
+    if (!bird) return;
+    Calm(bird);
+    PlaceAt(bird->pos.x + 5, bird->pos.z, 0);
+    G.player.moving = G.player.running = true;
+    float top = 0;
+    for (int k = 0; k < 60; k++) {
+        Wild(0.05f);
+        top = fmaxf(top, bird->pos.y - TerrainHeight(bird->pos.x, bird->pos.z));
+    }
+    Check(top > 1.0f, "a partridge flushed from 5 m flies up (%.1f m) (state %d)", top, bird->state);
+    G.player.moving = G.player.running = false;
+    Calm(bird);
+}
+
+static void TestTorch(void)
+{
+    G.self = G.actor = 0;
+    PlaceAt(3, 4, 0);
+    SetEquip(EQ_NONE);
+    G.night = G.torchGlow = 1.0f;
+    G.torchOn = true;
+    G.torchHeld = false;
+    G.torchT = 0;
+    UpdatePlayer(0.5f, false);
+    bool early = G.torchHeld;
+    UpdatePlayer(0.6f, false);
+    Check(!early && G.torchHeld, "torch: in hand after a second, not before (%d then %d)", early, G.torchHeld);
+    SyncSelf();
+    Check((G.peers[0].flags & PF_TORCH) != 0, "torch: other players are told it burns");
+    float daylight = G.daylight;
+    G.daylight = 0;
+    UpdateLights();
+    G.daylight = daylight;
+    Check(G.dynCount >= 1, "torch: it lights the way (%d lights)", G.dynCount);
+    SetEquip(EQ_MELEE);
+    bool down = !G.torchHeld;
+    UpdatePlayer(1.05f, false);
+    Check(down && G.torchHeld, "torch: down while the sword is drawn, back a second later");
+    G.torchOn = false;
+    UpdatePlayer(0.5f, false);
+    bool still = G.torchHeld;
+    UpdatePlayer(0.6f, false);
+    Check(still && !G.torchHeld, "torch: put away takes a second too");
+    G.night = G.torchGlow = 0;
+    G.torchOn = true;
+    G.torchHeld = true;
+    Check(!TorchBurning(), "torch: by day it does not burn");
+    // Lit from five in the evening, brighter as the dusk deepens.
+    float hour = G.hour;
+    daylight = G.daylight;
+    G.daylight = 0.9f;
+    G.hour = 16.5f;
+    UpdateLights();
+    bool afternoon = TorchBurning();
+    G.hour = 17.2f;
+    UpdateLights();
+    float evening = G.torchGlow;
+    G.hour = 19.5f;
+    UpdateLights();
+    Check(!afternoon && TorchBurning() && evening >= 0.15f && G.torchGlow > evening + 0.3f,
+          "torch: lit from the evening (%.2f at 17:12), brighter at dusk (%.2f at 19:30)", evening, G.torchGlow);
+    G.hour = hour;
+    G.daylight = daylight;
+    UpdateLights();
+    Look w = PlayerLook(1, PackStyle(HAIR_BUN, BEARD_LONG, DRESS_ROBE, JEWEL_GOLD) | STYLE_WOMAN, 0);
+    Look m = PlayerLook(1, PackStyle(HAIR_BUN, BEARD_LONG, DRESS_ROBE, JEWEL_GOLD), 0);
+    Check(w.woman && w.beard == BEARD_NONE && !m.woman && m.beard == BEARD_LONG, "body: a woman's body (no beard) and a man's from the same choices");
+    // The bow is drawn at once: the torch leaves the hand that moment and comes back a second after.
+    G.night = G.torchGlow = 1.0f;
+    SetEquip(EQ_BOW);
+    G.torchHeld = true;
+    G.player.aiming = true;
+    UpdatePlayer(0.02f, false);
+    bool dropped = !G.torchHeld;
+    UpdatePlayer(0.5f, false);
+    early = G.torchHeld;
+    UpdatePlayer(0.6f, false);
+    Check(dropped && !early && G.torchHeld, "torch: dropped the moment the bow is drawn, back a second after (%d %d %d)", dropped, early, G.torchHeld);
+    G.night = G.torchGlow = 0;
+    G.torchHeld = false;
 }
 
 // The law: the city's guards keep the peace inside the canals only; a village stands together for two
@@ -1114,9 +1530,9 @@ static void TestArchers(void)
     // A barbarian camp's bowman.
     int bowman = -1;
     for (int i = 0; i < MAX_RAIDERS && bowman < 0; i++)
-        if (RaiderBowman(i)) bowman = i;
+        if (RaiderBowman(i) && !RaiderBandit(i)) bowman = i;
     int bowmen = 0;
-    for (int i = 0; i < MAX_RAIDERS; i++) bowmen += RaiderBowman(i);
+    for (int i = 0; i < MAX_RAIDERS; i++) bowmen += RaiderBowman(i) && !RaiderBandit(i);
     Raider *b = &G.raiders[bowman];
     Vector3 c = CampCenter(b->camp);
     PlaceAt(c.x + 22, c.z, 0);
@@ -1203,8 +1619,9 @@ static void TestHostWorld(void)
     // Wolves go for the guest alone out on the plain, not for the host at home.
     Animal *w = NULL;
     for (int i = 0; i < G.animalCount && !w; i++)
-        if (G.animals[i].active && G.animals[i].type == AN_WOLF && G.animals[i].pos.x > RIVER_X1 + 20) w = &G.animals[i];
-    if (!w) { Check(false, "no wolf east of the river"); return; }
+        if (G.animals[i].active && G.animals[i].type == AN_WOLF && G.animals[i].pos.x > RIVER_X1 + 20 &&
+            !PeopleNear((Vector3){ G.animals[i].pos.x + 10, 0, G.animals[i].pos.z }, SAFE_RADIUS)) w = &G.animals[i];
+    if (!w) { Check(false, "no wolf east of the river away from people"); return; }
     Calm(w);
     G.peers[1].pos = (Vector3){ w->pos.x + 10, TerrainHeight(w->pos.x + 10, w->pos.z), w->pos.z };
     G.peers[1].aggro = 0;
@@ -1644,13 +2061,13 @@ static void TestSixPlayers(void)
     int savedCount = G.villagerCount, up = 0, guards = 0;
     memcpy(saved, G.villagers, sizeof(saved));
     for (int i = 0; i < G.villagerCount; i++) {
-        up += G.villagers[i].kind == NPC_GUARD && G.villagers[i].a.y >= 5.0f;
+        up += G.villagers[i].kind == NPC_GUARD && G.villagers[i].a.y >= 5.0f && !G.villagers[i].crouch;
         guards += G.villagers[i].kind == NPC_GUARD;
     }
     RemoveZigguratGuards();
     int upAfter = 0, guardsAfter = 0;
     for (int i = 0; i < G.villagerCount; i++) {
-        upAfter += G.villagers[i].kind == NPC_GUARD && G.villagers[i].a.y >= 5.0f;
+        upAfter += G.villagers[i].kind == NPC_GUARD && G.villagers[i].a.y >= 5.0f && !G.villagers[i].crouch;
         guardsAfter += G.villagers[i].kind == NPC_GUARD;
     }
     Check(up >= 3 && upAfter == 0 && guardsAfter == guards - up && G.villagerCount == savedCount - up,
@@ -1697,6 +2114,15 @@ static void RunTests(void)
     TestStreets();
     TestAim();
     TestLaw();
+    TestGuardRound();
+    TestWolfWays();
+    TestBandits();
+    TestConsole();
+    TestTempleLife();
+    TestWilds();
+    TestSounds();
+    TestPartridges();
+    TestTorch();
     TestDeathLosses();
     TestCanals();
     TestArchers();

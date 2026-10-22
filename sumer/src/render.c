@@ -206,17 +206,27 @@ static void BlobTables(void)
     blobReady = true;
 }
 
-static void BlobPoint(Vector3 c, Vector3 r, float cp, float sp, float ct, float st, bool normals)
+// Leaves bulge in clumps: a few waves over the sphere, different for each crown, the same at every level
+// of detail so the far crown keeps its outline.
+static float Lump(Vector3 c, float x, float y, float z)
 {
-    float x = cp * ct, z = cp * st;
+    float ph = c.x * 1.7f + c.z * 2.3f;
+    return 1.0f + 0.17f * sinf(5.0f * x + ph) * sinf(4.0f * z + 1.3f * ph) + 0.12f * sinf(7.0f * y + 3.0f * x + 0.7f * ph)
+         + 0.08f * sinf(9.0f * z - 6.0f * y + ph);
+}
+
+static void BlobPoint(Vector3 c, Vector3 r, float cp, float sp, float ct, float st, bool normals, bool lumpy)
+{
+    float x = cp * ct, z = cp * st, k = lumpy ? Lump(c, x, sp, z) : 1.0f;
     if (normals) VNormal(x / r.x, sp / r.y, z / r.z);
-    VVertex(c.x + r.x * x, c.y + r.y * sp, c.z + r.z * z);
+    VVertex(c.x + r.x * x * k, c.y + r.y * sp * k, c.z + r.z * z * k);
 }
 
 // Smooth normals in the shaders' light: a blob looks round however few its facets.
 static void BlobQuads(const BlobMesh *b, Vector3 c, Vector3 r, Color col)
 {
-    bool normals = GfxOn();
+    // Leaves (alpha 253) are lumpy and lit facet by facet (no normal: the shader takes the face's).
+    bool lumpy = col.a == 253, normals = GfxOn() && !lumpy;
     if (!blobReady) BlobTables();
     rlCheckRenderBatchLimit(b->slices * b->stacks * 4);
     VBegin(RL_QUADS);
@@ -225,10 +235,10 @@ static void BlobQuads(const BlobMesh *b, Vector3 c, Vector3 r, Color col)
         for (int i = 0; i < b->slices; i++) {
             float ct0 = b->ct[i], st0 = b->st[i], ct1 = b->ct[i + 1], st1 = b->st[i + 1];
             SetColor(Lit(col, b->shade[j][i]));
-            BlobPoint(c, r, cp0, sp0, ct0, st0, normals);
-            BlobPoint(c, r, cp1, sp1, ct0, st0, normals);
-            BlobPoint(c, r, cp1, sp1, ct1, st1, normals);
-            BlobPoint(c, r, cp0, sp0, ct1, st1, normals);
+            BlobPoint(c, r, cp0, sp0, ct0, st0, normals, lumpy);
+            BlobPoint(c, r, cp1, sp1, ct0, st0, normals, lumpy);
+            BlobPoint(c, r, cp1, sp1, ct1, st1, normals, lumpy);
+            BlobPoint(c, r, cp0, sp0, ct1, st1, normals, lumpy);
         }
     }
     VEnd();

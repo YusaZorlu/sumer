@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define NET_VERSION   8
+#define NET_VERSION   11
 #define SNAP_EVERY    0.1f
 #define STATE_EVERY   0.066f
 #define RECORD_EVERY  15.0f
@@ -226,7 +226,7 @@ static void WriteSnapshot(Writer *w, bool slow)
         W8(w, Byte(p->swingT * 200.0f));
         W16(w, (unsigned)p->flags);
         W8(w, (unsigned)p->equip); W8(w, (unsigned)p->weapon); W8(w, (unsigned)p->bow); W8(w, (unsigned)p->armor);
-        W8(w, (unsigned)p->style);
+        W16(w, (unsigned)p->style);
         W16(w, (unsigned)Clamp(p->wanted, 0.0f, 65000.0f));
         W8(w, p->alone ? 1u : 0u);
         W8(w, (unsigned)(p->kills < 255 ? p->kills : 255));
@@ -372,7 +372,7 @@ static void ReadSnapshot(Reader *r)
         float facing = RAngle(r), stride = RF(r), draw = (float)R8(r) / 255.0f, health = (float)R8(r);
         float swing = (float)R8(r) / 200.0f;
         int flags = (int)R16(r), equip = (int)R8(r), weapon = (int)R8(r), bow = (int)R8(r), armor = (int)R8(r);
-        unsigned char style = (unsigned char)R8(r);
+        unsigned short style = (unsigned short)R16(r);
         float wanted = (float)R16(r);
         bool alone = R8(r) != 0;
         int kills = (int)R8(r);
@@ -1052,7 +1052,7 @@ static void HostHello(int net, Reader *r)
     W8(&w, (unsigned)slot);
     W32(&w, (unsigned)worldSign);
     WStr(&w, myRoom);
-    W8(&w, (G.pvp ? 1u : 0u) | (G.combat ? 2u : 0u) | (RoyalePhase() == RP_RUN ? 4u : 0u));
+    W8(&w, (G.pvp ? 1u : 0u) | (G.combat ? 2u : 0u) | (RoyalePhase() == RP_RUN ? 4u : 0u) | (G.devTools ? 8u : 0u));
     W8(&w, rec ? 1u : 0u);
     if (rec) WriteRecord(&w, rec);
     WF(&w, p->pos.x);
@@ -1088,7 +1088,7 @@ static void HostState(int slot, Reader *r)
     Vector3 pos = RVec(r);
     float facing = RAngle(r), stride = RF(r), draw = (float)R8(r) / 255.0f, health = (float)R8(r), swing = (float)R8(r) / 200.0f;
     int flags = (int)R16(r), equip = (int)R8(r), weapon = (int)R8(r), bow = (int)R8(r), armor = (int)R8(r);
-    unsigned char style = (unsigned char)R8(r);
+    unsigned short style = (unsigned short)R16(r);
     if (r->bad || !isfinite(pos.x) || fabsf(pos.x) > WORLD_HALF + 5 || fabsf(pos.z) > WORLD_HALF + 5) return;
     p->pos = pos;
     p->facing = facing;
@@ -1127,7 +1127,7 @@ static void SendState(void)
     W8(&w, Byte(p->swingT * 200.0f));
     W16(&w, (unsigned)p->flags);
     W8(&w, (unsigned)p->equip); W8(&w, (unsigned)p->weapon); W8(&w, (unsigned)p->bow); W8(&w, (unsigned)p->armor);
-    W8(&w, (unsigned)p->style);
+    W16(&w, (unsigned)p->style);
     SendHost(&w);
 }
 
@@ -1184,12 +1184,13 @@ static void Drop(const char *why)
 }
 
 // The rules the host picked on the title screen for the game it opens.
-static bool rulePvp = true, ruleCombat;
+static bool rulePvp = true, ruleCombat, ruleDev;
 
-void NetRules(bool pvp, bool combat)
+void NetRules(bool pvp, bool combat, bool dev)
 {
     rulePvp = pvp;
     ruleCombat = pvp && combat;
+    ruleDev = dev;
 }
 
 // A player's kills and deaths at other players' hands, and the ratio: "K/D 3/1 (3.0)".
@@ -1228,6 +1229,7 @@ static void StartHosting(void)
     if (mine) ApplyRecord(mine);
     G.pvp = rulePvp || Royale();
     G.combat = ruleCombat || Royale();
+    G.devTools = ruleDev;
     if (G.pvp) {
         RemoveZigguratGuards();
         G.player.pos = CitySpawn(0);
@@ -1265,6 +1267,7 @@ static void StartGuest(Reader *r)
     G.pvp = (rules & 1u) != 0;
     G.combat = (rules & 2u) != 0;
     RoyaleJoinLate((rules & 4u) != 0);
+    G.devTools = (rules & 8u) != 0;
     G.self = G.actor = slot;
     memset(G.peers, 0, sizeof(G.peers));
     G.peers[slot] = (Peer){ .active = true };

@@ -64,6 +64,7 @@ static const Offer OVEN[] = {
     { IT_DOUGH,   1, IT_NONE, 0, OUT_ITEM, IT_BREAD, 2, 0, 0 },
     { IT_FISH,    2, IT_NONE, 0, OUT_ITEM, IT_GRILLED, 2, 0, 0 },
     { IT_GOOSE,   1, IT_NONE, 0, OUT_ITEM, IT_ROAST, 2, 0, 0 },
+    { IT_PARTRIDGE, 2, IT_NONE, 0, OUT_ITEM, IT_ROAST, 1, 0, 0 },
     { IT_GAZELLE, 1, IT_NONE, 0, OUT_ITEM, IT_ROAST, 3, 0, 0 },
     { IT_ONAGER,  1, IT_NONE, 0, OUT_ITEM, IT_ROAST, 4, 0, 0 },
     { IT_BOAR,    1, IT_NONE, 0, OUT_ITEM, IT_ROAST, 5, 0, 0 },
@@ -166,6 +167,9 @@ static void BuildHouse(int h)
     HBox(&f, 0, H - 0.42f, -D / 2 + t / 2, W + 0.08f, 0.24f, t + 0.08f, band, false);
     HBox(&f, 0, H - 0.42f, D / 2 - t / 2, W + 0.08f, 0.24f, t + 0.08f, band, false);
     HBox(&f, W / 2 - t / 2, H - 0.42f, 0, t + 0.08f, 0.24f, D - 2 * t, band, false);
+    // A flat roof of mud on palm beams; the camera stays under it inside, as in the ziggurat's top room.
+    HBox(&f, 0, H, 0, W + 0.3f, 0.35f, D + 0.3f, Mix(wall, COL_MUD_DARK, 0.3f), true);
+    for (int k = -2; k <= 2; k++) HBox(&f, -W / 2 - 0.25f, H - 0.12f, 1.8f * (float)k, 0.5f, 0.14f, 0.14f, COL_PALM_TRUNK, false);
 
     st[0] = HPoint(&f, 3.0f, -3.0f);
     HBox(&f, 3.0f, 0, -3.0f, 1.3f, 0.45f, 2.3f, COL_WOOD, true);
@@ -246,7 +250,7 @@ void RemoveZigguratGuards(void)
     int kept = 0;
     for (int i = 0; i < G.villagerCount; i++) {
         const Villager *v = &G.villagers[i];
-        if (v->kind == NPC_GUARD && v->a.y >= 5.0f && v->b.y >= 5.0f) continue;
+        if (v->kind == NPC_GUARD && v->a.y >= 5.0f && v->b.y >= 5.0f && !v->crouch) continue;
         G.villagers[kept++] = G.villagers[i];
     }
     G.villagerCount = kept;
@@ -495,7 +499,32 @@ static void BuildTempleStaff(void)
     AddNpc(NPC_CLERIC, (Vector3){ -6, 16.5f, -40.5f }, (Vector3){ 6, 16.5f, -40.5f }, 0.4f, cleric, 0);
     AddNpc(NPC_CLERIC, (Vector3){ 24, 0, -28 }, (Vector3){ 24, 0, -58 }, 0.6f, cleric, 0);
     AddNpc(NPC_CLERIC, (Vector3){ 9, 0, -15.5f }, (Vector3){ 14, 0, -15.5f }, 0.4f, cleric, 0);
-    AddNpc(NPC_CLERIC, (Vector3){ -9, 7, -41 }, (Vector3){ -3, 7, -41 }, 0.4f, cleric, 0);
+    AddNpc(NPC_CLERIC, (Vector3){ -2.2f, 7, -41 }, (Vector3){ 2.2f, 7, -41 }, 0.4f, cleric, 0);
+
+    // Inside the ziggurat. Middle terrace: two guards off duty at supper in their room (they stay in a PvP
+    // game, where only the guards on duty go), two scribes in the tablet room, two worshippers kneeling
+    // before the god. Ground floor: the granary's keeper and a porter, the treasurer at his balance, and
+    // people going from stall to stall in the market hall.
+    static const struct { NpcKind kind; float ax, ay, az, bx, bz, speed, face; bool sit; } inside[] = {
+        { NPC_GUARD, -8.95f, 7, -40.6f, -8.95f, -40.6f, 0, PI / 2, true },
+        { NPC_GUARD, -6.85f, 7, -40.4f, -6.85f, -40.4f, 0, -PI / 2 - 0.4f, true },
+        { NPC_CLERIC, 7.4f, 7, -45.6f, 7.4f, -45.6f, 0, PI / 2, true },
+        { NPC_CLERIC, 8.1f, 7, -36.8f, 8.1f, -43.6f, 0.3f, 0, false },
+        { NPC_CIVILIAN, -0.8f, 7, -46.6f, -0.8f, -46.6f, 0, PI, true },
+        { NPC_CIVILIAN, 0.9f, 7, -46.9f, 0.9f, -46.9f, 0, PI, true },
+        { NPC_CLERIC, -12.6f, 0, -44.6f, -16.4f, -36.0f, 0.3f, 0, false },
+        { NPC_CIVILIAN, -10.6f, 0, -44.7f, -13.8f, -40.2f, 0.45f, 0, false },
+        { NPC_CLERIC, 14.6f, 0, -35.0f, 14.6f, -35.0f, 0, 0, false },
+        { NPC_CIVILIAN, -6.0f, 0, -38.0f, 6.0f, -42.0f, 0.5f, 0, false },
+        { NPC_CIVILIAN, 4.0f, 0, -34.0f, -2.0f, -46.0f, 0.45f, 0, false },
+    };
+    static const Color robes[] = { { 196, 170, 120, 255 }, { 120, 140, 160, 255 }, { 170, 110, 80, 255 } };
+    for (int k = 0; k < (int)(sizeof(inside) / sizeof(inside[0])); k++) {
+        Color robe = inside[k].kind == NPC_GUARD ? guard : inside[k].kind == NPC_CLERIC ? cleric : robes[k % 3];
+        int i = AddNpc(inside[k].kind, (Vector3){ inside[k].ax, inside[k].ay, inside[k].az }, (Vector3){ inside[k].bx, inside[k].ay, inside[k].bz },
+                       inside[k].speed, robe, inside[k].face);
+        if (i >= 0) G.villagers[i].crouch = inside[k].sit;
+    }
     (void)cz;
 }
 
@@ -961,7 +990,7 @@ void DrawVillage(void)
             continue;
         }
         // A warden's other hand holds the bow, so their torch stays on their belt.
-        bool torch = G.night >= 0.3f && (v->kind == NPC_TRAVELLER || v->kind == NPC_GUARD);
+        bool torch = TorchesLit() && (v->kind == NPC_TRAVELLER || v->kind == NPC_GUARD) && !v->crouch;
         if (torch) GripAt(HAND_OTHER, -0.36f, 1.36f, 0.28f);
         if (v->kind == NPC_CIVILIAN || v->kind == NPC_VILLAGER || v->kind == NPC_TRAVELLER || v->kind == NPC_CLERIC) {
             // A villager standing still at the hunters' butt keeps drawing a bow.
@@ -972,6 +1001,9 @@ void DrawVillage(void)
                 GripAt(HAND_WEAPON, 0.36f, 1.12f, 0.24f);
             }
             DrawHuman(pos, face, stride, look, v->crouch && !v->vit.override, archer, pull);
+        } else if (v->kind == NPC_GUARD && v->crouch && !v->vit.override) {
+            // A guard off duty sits at ease; their spear and shield hang on the rack until they are needed.
+            DrawHuman(pos, face, 0, look, true, false, 0);
         } else if (v->kind == NPC_WARDEN) {
             // A village guard: a leather jerkin and cap, and a bow always in hand, drawn or held ready.
             if (!v->vit.drawing) HoldBow(pos, face, false);
@@ -999,7 +1031,7 @@ void DrawVillage(void)
                 Part(0.36f, 1.2f, 0.12f, 0.05f, 2.4f, 0.05f, COL_WOOD);
                 Part(0.36f, 2.5f, 0.12f, 0.08f, 0.26f, 0.08f, COL_BRONZE);
             }
-            if (G.night < 0.3f && !v->vit.drawing && !bowOut) {
+            if (!TorchesLit() && !v->vit.drawing && !bowOut) {
                 GripHere(HAND_OTHER, -0.31f, 1.2f, 0.14f);
                 Part(-0.38f, 1.2f, 0.12f, 0.08f, 0.62f, 0.5f, (Color){ 130, 90, 56, 255 });
             }

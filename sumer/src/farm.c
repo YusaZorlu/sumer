@@ -73,6 +73,13 @@ static void Fence(float x0, float z0, float x1, float z1)
     }
 }
 
+// A plot of tilled earth with four ridges, one under each row of the crop.
+static void Plot3(float x, float z)
+{
+    AddBox(x, 0, z, 3.0f, 0.12f, 3.0f, COL_SOIL, false);
+    for (int r = 0; r < 4; r++) AddBox(x - 1.1f + 0.73f * (float)r, 0.1f, z, 0.32f, 0.07f, 2.8f, (Color){ 108, 82, 56, 252 }, false);
+}
+
 static void BuildCityFarm(float x, float z)
 {
     const float hx = x - 7.5f;
@@ -80,7 +87,7 @@ static void BuildCityFarm(float x, float z)
     AddBox(hx, 3.14f, z, 5.16f, 0.2f, 5.76f, Mix(COL_HOUSE_DARK, COL_MUD_DARK, 0.35f), false);
     AddBox(hx + 2.5f, 0, z, 0.12f, 2.0f, 1.0f, COL_DOORWAY, false);
     for (int j = 0; j < 6; j++)
-        AddBox(x - 2 + 4.0f * (float)(j % 3), 0, z - 2 + 4.0f * (float)(j / 3), 3.0f, 0.12f, 3.0f, COL_SOIL, false);
+        Plot3(x - 2 + 4.0f * (float)(j % 3), z - 2 + 4.0f * (float)(j / 3));
     AddShape(x + 9.0f, 0, z - 4.0f, 0.8f, 1.1f, 0.8f, COL_CLAY, true, SHAPE_BLOB);
     KeepOut(x - 11, z - 5, x + 10, z + 5);
 }
@@ -90,9 +97,9 @@ void BuildFarm(void)
     for (int i = 0; i < MAX_PLOTS; i++) {
         Vector3 p = { 29.0f + 4.0f * (float)(i % 5), 0, 18.0f + 4.0f * (float)(i / 5) };
         G.plots[i] = (Plot){ p, PLOT_EMPTY, 0.0f, 0.0f };
-        AddBox(p.x, 0, p.z, 3.0f, 0.12f, 3.0f, COL_SOIL, false);
+        Plot3(p.x, p.z);
     }
-    AddBox(37.25f, -0.05f, 15.6f, 20.5f, 0.08f, 0.8f, (Color){ 84, 62, 42, 255 }, false);
+    AddBox(37.25f, -0.05f, 15.6f, 20.5f, 0.08f, 0.8f, (Color){ 84, 62, 42, 252 }, false);
     G.stations[STN_DITCH] = (Vector3){ 26.0f, 0, 15.6f };
     AddShape(26.0f, 0, 15.6f, 1.0f, 0.55f, 1.0f, COL_CLAY, true, SHAPE_CYL);
     KeepOut(25.0f, 14.5f, 47.5f, 28.5f);
@@ -600,6 +607,15 @@ void DrawRain(void)
     Vector3 fwd = Vector3Normalize(Vector3Subtract(G.cam.target, c));
     Vector3 right = Vector3Normalize(Vector3CrossProduct(fwd, (Vector3){ 0, 1, 0 }));
     Color drop = { 196, 206, 222, 120 };
+    // Roofs and ceilings near the camera (anything overhead, not standing on the ground) keep the rain off.
+    static int roofs[256];
+    int nroof = 0;
+    for (int i = 0; i < G.boxCount && nroof < 256; i++) {
+        const Box *b = &G.boxes[i];
+        float bottom = b->pos.y - b->size.y / 2;
+        if (b->water || fabsf(b->pos.x - c.x) > half + b->size.x / 2 || fabsf(b->pos.z - c.z) > half + b->size.z / 2) continue;
+        if (bottom > TerrainHeight(b->pos.x, b->pos.z) + 1.8f) roofs[nroof++] = i;
+    }
 
     rlBegin(RL_QUADS);
     for (int i = 0; i < 1400; i++) {
@@ -608,6 +624,12 @@ void DrawRain(void)
         z = c.z + z - span * floorf((z + half) / span);
         if ((x - c.x) * (x - c.x) + (z - c.z) * (z - c.z) < 6.0f) continue;
         float y = c.y + 14.0f - fmodf(t * 19.0f + Hash2(i, 3) * 28.0f, 28.0f);
+        bool dry = false;
+        for (int k = 0; k < nroof && !dry; k++) {
+            const Box *b = &G.boxes[roofs[k]];
+            dry = y < b->pos.y && fabsf(x - b->pos.x) < b->size.x / 2 && fabsf(z - b->pos.z) < b->size.z / 2;
+        }
+        if (dry) continue;
         float len = 0.55f + 0.35f * Hash2(i, 4), w = 0.018f + 0.012f * Hash2(i, 5);
         Vector3 top = { x + 0.12f, y + len, z + 0.05f }, bot = { x, y, z };
         if (i % 64 == 0) rlCheckRenderBatchLimit(256);
@@ -634,7 +656,7 @@ static void DrawWheat(Vector3 pos, float growth, bool dead, bool stubble)
     for (int r = 0; r < 4; r++) {
         for (int k = 0; k < 4; k++) {
             float x = pos.x - 1.1f + (float)r * 0.73f, z = pos.z - 1.1f + (float)k * 0.73f;
-            Part(x, 0.12f + h / 2, z, dead ? 0.16f : 0.12f, h, 0.12f, c);
+            Part(x, 0.12f + h / 2, z, dead ? 0.16f : 0.12f, h, 0.12f, TAG_CROP(c));
             if (ripe && !stubble) Part(x, 0.12f + h + 0.1f, z, 0.16f, 0.22f, 0.16f, (Color){ 200, 160, 70, 255 });
         }
     }
@@ -644,7 +666,7 @@ static void DrawSapling(const Plot *p)
 {
     float s = 0.25f + 0.75f * p->growth;
     float trunk = 3.0f * s;
-    DrawShadedCylinder((Vector3){ p->pos.x, 0.1f, p->pos.z }, 0.08f + 0.12f * s, 0.08f + 0.12f * s, trunk, 0.8f, 6, COL_PALM_TRUNK);
+    DrawShadedCylinder((Vector3){ p->pos.x, 0.1f, p->pos.z }, 0.08f + 0.12f * s, 0.08f + 0.12f * s, trunk, 0.8f, 6, COL_BARK);
     for (int k = 0; k < 5; k++) {
         rlPushMatrix();
         rlTranslatef(p->pos.x, 0.12f + trunk, p->pos.z);

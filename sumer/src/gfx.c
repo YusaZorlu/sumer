@@ -34,6 +34,9 @@ extern const char *SH_BRIGHT_FS, *SH_BLUR_FS, *SH_POST_FS;
 #define TEX_HEIGHT      11
 #define TEX_GRID        12
 #define TEX_TORCH       13
+#define TEX_DETAIL      14
+#define TEX_DETAIL2     15
+#define TEX_DETAIL3     9                   // WebGL 2 promises only 16 units
 
 // 24 bytes: position, normal (0 when the shader is to work it out), color, material.
 typedef struct { float x, y, z; signed char n[4]; unsigned char c[4]; unsigned char m[4]; } GVert;
@@ -52,7 +55,7 @@ typedef struct {
     int mvp, camPos, sunDir, sunGlow, skyZen, skyHor, exposure, quality, lightDir, lightCol, ambSky, ambGround;
     int torchCol, fogDensity, time, worldHalf, night, wet, shadowTexel, shadowRange, groundTile, groundN;
     int heightScale, heightBase, torchSlots, gridN, gridCell, torchRadius, dynCount, dynLights, lightVP;
-    int shadowMap, heightMap, torchGrid, torchData, moonDir, cloudy, texel, bloom, bloomAmt, dir;
+    int shadowMap, heightMap, torchGrid, torchData, moonDir, cloudy, texel, bloom, bloomAmt, dir, detailMap, detailMap2, detailMap3;
 } Locs;
 
 typedef struct {
@@ -76,7 +79,7 @@ static unsigned int quadIndex;
 static Block dynBlocks[MAX_DYN_BLOCKS], skyBlock;
 static int dynUsed;
 static VList dyn, scratch;
-static Texture2D heightTex, gridTex, torchTex;
+static Texture2D heightTex, gridTex, torchTex, detailTex, detail2Tex, detail3Tex, flameTex;
 static float heightScale = 1.0f, heightBase;
 static RenderTexture2D scene, brightRT, blurRT, shadowRT;
 static int sceneW, sceneH, shadowSize, targetTier = -1;
@@ -111,6 +114,7 @@ void VBegin(int mode)
     vInPrim = 0;
     cur.n[0] = cur.n[1] = cur.n[2] = 0;
     cur.m[0] = (unsigned char)material;
+    cur.m[1] = cur.m[2] = cur.m[3] = 0;
     if (sink) {
         // Inside rlPushMatrix the draw code moves and turns its parts; outside it this is the identity.
         vm = rlGetMatrixTransform();
@@ -168,6 +172,12 @@ void VVertex(float x, float y, float z)
         cur.x = vm.m0 * x + vm.m4 * y + vm.m8 * z + vm.m12;
         cur.y = vm.m1 * x + vm.m5 * y + vm.m9 * z + vm.m13;
         cur.z = vm.m2 * x + vm.m6 * y + vm.m10 * z + vm.m14;
+        // People carry where on their own body each point is (1/64 m), so their clothes' weave moves with them.
+        if (material == MAT_FIGURE) {
+            cur.m[1] = (unsigned char)Clamp((x + 2.0f) * 64.0f, 0.0f, 255.0f);
+            cur.m[2] = (unsigned char)Clamp(y * 64.0f, 0.0f, 255.0f);
+            cur.m[3] = (unsigned char)Clamp((z + 2.0f) * 64.0f, 0.0f, 255.0f);
+        }
     } else {
         cur.x = x;
         cur.y = y;
@@ -221,7 +231,7 @@ static Block NewBlock(const GVert *v, int n, bool dynamic, int capacity)
     rlEnableVertexAttribute(2);
     rlSetVertexAttribute(3, 4, RL_UNSIGNED_BYTE, true, (int)sizeof(GVert), 16);
     rlEnableVertexAttribute(3);
-    rlSetVertexAttribute(1, 2, RL_UNSIGNED_BYTE, false, (int)sizeof(GVert), 20);
+    rlSetVertexAttribute(1, 4, RL_UNSIGNED_BYTE, false, (int)sizeof(GVert), 20);
     rlEnableVertexAttribute(1);
     rlDisableVertexArray();
     b.verts = n;
@@ -303,7 +313,7 @@ static Locs Find(Shader s)
     L_(lightCol); L_(ambSky); L_(ambGround); L_(torchCol); L_(fogDensity); L_(time); L_(worldHalf); L_(night); L_(wet);
     L_(shadowTexel); L_(shadowRange); L_(groundTile); L_(groundN); L_(heightScale); L_(heightBase); L_(torchSlots);
     L_(gridN); L_(gridCell); L_(torchRadius); L_(dynCount); L_(dynLights); L_(lightVP); L_(shadowMap); L_(heightMap);
-    L_(torchGrid); L_(torchData); L_(moonDir); L_(cloudy); L_(texel); L_(bloom); L_(bloomAmt); L_(dir);
+    L_(torchGrid); L_(torchData); L_(moonDir); L_(cloudy); L_(texel); L_(bloom); L_(bloomAmt); L_(dir); L_(detailMap); L_(detailMap2); L_(detailMap3);
 #undef L_
     return l;
 }
@@ -336,6 +346,32 @@ static void MakeSky(void)
     free(l.v);
 }
 
+// The pictures in assets/ (built by tools/assets/make_detail.py from CC0 sources; the browser build carries
+// them inside it). detail.png: light and dark for the ground (R), mud-brick walls (G), wood (B) and rock (A);
+// detail2.png: woven cloth (R), fleece and fur (G), leather (B) and the roads (A); detail3.png: bark (R), leaves (G), tilled earth (B) and straw (A); flame.png: two frames of a
+// flame. Mid grey, which changes nothing, if a file is missing.
+static Texture2D LoadAsset(const char *name, bool repeat)
+{
+    Image im = LoadImage(TextFormat("assets/%s", name));
+    if (!im.data) im = LoadImage(TextFormat("%s../../assets/%s", GetApplicationDirectory(), name));
+    if (!im.data) im = GenImageColor(4, 4, (Color){ 128, 128, 128, 128 });
+    ImageFormat(&im, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+    Texture2D t = LoadTextureFromImage(im);
+    UnloadImage(im);
+    GenTextureMipmaps(&t);
+    SetTextureFilter(t, TEXTURE_FILTER_TRILINEAR);
+    SetTextureWrap(t, repeat ? TEXTURE_WRAP_REPEAT : TEXTURE_WRAP_CLAMP);
+    return t;
+}
+
+static void LoadDetail(void)
+{
+    detailTex = LoadAsset("detail.png", true);
+    detail2Tex = LoadAsset("detail2.png", true);
+    detail3Tex = LoadAsset("detail3.png", true);
+    flameTex = LoadAsset("flame.png", false);
+}
+
 static void Init(void)
 {
     inited = true;
@@ -362,6 +398,7 @@ static void Init(void)
     pl = Find(postSh);
     bl = Find(blurSh);
     MakeSky();
+    LoadDetail();
 }
 
 // ---- The setting ----
@@ -753,8 +790,46 @@ static void DrawChunks(const Frustum *f)
 
 // ---- What moves, caught afresh each frame ----
 
+// Flames of torches and fires, gathered while the moving things are caught and drawn after the world as
+// pictures that face the camera (assets/flame.png, two frames that take turns).
+#define MAX_FLAMES 256
+static Vector4 flames[MAX_FLAMES];   // where, and how tall
+static int flameCount;
+
+void GfxFlame(Vector3 p, float size)
+{
+    if (flameCount < MAX_FLAMES) flames[flameCount++] = (Vector4){ p.x, p.y, p.z, size };
+}
+
+static void DrawFlames(void)
+{
+    float t = (float)GetTime();
+    rlDrawRenderBatchActive();
+    BeginBlendMode(BLEND_ADDITIVE);
+    rlDisableDepthMask();
+    rlDisableBackfaceCulling();
+    for (int i = 0; i < flameCount; i++) {
+        Vector4 f = flames[i];
+        float seed = f.x * 1.7f + f.z * 0.9f, k = 0.88f + 0.12f * sinf(t * 13.0f + seed) * sinf(t * 7.0f + seed * 2.0f);
+        int frame = (int)(t * 7.0f + seed) & 1;
+        float h = f.w * k, w = h * 0.5f;
+        // The flame's foot is 72% of the way down its frame: that sits on the torch.
+        Vector3 at = { f.x, f.y + h * 0.5f - h * 0.28f, f.z };
+        Rectangle src = { 128.0f * (float)frame, 0, 128, 256 };
+        DrawBillboardPro(G.cam, flameTex, src, at, (Vector3){ 0, 1, 0 }, (Vector2){ w, h }, (Vector2){ w / 2, h / 2 }, 0.0f,
+                         (Color){ 255, 150, 60, 255 });
+        DrawBillboardPro(G.cam, flameTex, src, at, (Vector3){ 0, 1, 0 }, (Vector2){ w * 0.6f, h * 0.7f }, (Vector2){ w * 0.3f, h * 0.35f + h * 0.08f },
+                         0.0f, (Color){ 255, 230, 150, 255 });
+    }
+    rlDrawRenderBatchActive();
+    rlEnableBackfaceCulling();
+    rlEnableDepthMask();
+    EndBlendMode();
+}
+
 static void CatchMoving(void)
 {
+    flameCount = 0;
     Catch(&dyn);
     SetMaterial(MAT_FIGURE);
     DrawVillage();
@@ -952,7 +1027,7 @@ static void WorldUniforms(const SkyNow *s, Matrix lightVP, int quality)
     U1(l->fogDensity, s->fog);
     U1(l->time, (float)fmod(GetTime(), 3600.0));
     U1(l->worldHalf, WORLD_HALF);
-    U1(l->night, G.night);
+    U1(l->night, G.torchGlow);   // in the world shader it only scales the torches
     U1(l->wet, s->wet);
     U1(l->shadowTexel, 1.0f / (float)shadowSize);
     U1(l->shadowRange, shadowRange);
@@ -974,6 +1049,9 @@ static void WorldUniforms(const SkyNow *s, Matrix lightVP, int quality)
     BindTexture(TEX_HEIGHT, heightTex.id, l->heightMap);
     BindTexture(TEX_GRID, gridTex.id, l->torchGrid);
     BindTexture(TEX_TORCH, torchTex.id, l->torchData);
+    BindTexture(TEX_DETAIL, detailTex.id, l->detailMap);
+    BindTexture(TEX_DETAIL2, detail2Tex.id, l->detailMap2);
+    BindTexture(TEX_DETAIL3, detail3Tex.id, l->detailMap3);
     rlActiveTextureSlot(0);
 }
 
@@ -1010,6 +1088,7 @@ static void ScenePass(const SkyNow *s, Matrix lightVP, int quality)
     DrawMoving();
     rlDisableVertexArray();
     rlDisableShader();
+    DrawFlames();
 
     // Sparks, trails and rain go through rlgl's batch with the same shader, after everything solid.
     BeginShaderMode(worldSh);

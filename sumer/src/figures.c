@@ -17,8 +17,19 @@ typedef struct { float y, rx, rz, z, ruffle; Color c; } Ring;
 // A garment painted onto the torso: what is cloth and what is skin, by where a point is.
 typedef struct { const Look *look; bool woman; } Dress;
 
-static const Color P_DARK = { 26, 20, 18, 255 }, P_EYE = { 226, 220, 206, 255 }, P_GOLD = { 222, 178, 70, 255 },
-                   P_LAPIS = { 40, 70, 168, 255 }, P_CARNELIAN = { 188, 70, 40, 255 }, P_SANDAL = { 96, 66, 44, 255 };
+// What a color is, in its alpha, for the shaders' photo grain (see shaders.c): woven cloth, fleece or fur,
+// leather, metal. Skin and everything else stay at 255.
+enum { T_CLOTH = 1, T_FLEECE, T_LEATHER, T_METAL };
+
+static Color Tag(Color c, int t)
+{
+    c.a = (unsigned char)(255 - t);
+    return c;
+}
+
+static const Color P_DARK = { 26, 20, 18, 255 }, P_EYE = { 226, 220, 206, 255 }, P_GOLD = { 222, 178, 70, 255 - T_METAL },
+                   P_LAPIS = { 40, 70, 168, 255 }, P_CARNELIAN = { 188, 70, 40, 255 }, P_SANDAL = { 96, 66, 44, 255 - T_LEATHER };
+static const Color P_BRONZE = { 190, 130, 60, 255 - T_METAL };   // COL_BRONZE, as metal
 
 // ---- Shapes ----
 
@@ -116,22 +127,24 @@ void (*ExtraFigures)(void);
 static unsigned chosen = HAIR_SHORT | BEARD_FULL << 2 | DRESS_FLEECE << 4, chosenSet;
 static bool chosenLoaded;
 
-unsigned char PackStyle(int hair, int beard, int dress, int jewel)
+unsigned short PackStyle(int hair, int beard, int dress, int jewel)
 {
-    return (unsigned char)((hair & 3) | (beard & 3) << 2 | (dress & 3) << 4 | (jewel & 3) << 6);
+    return (unsigned short)((hair & 3) | (beard & 3) << 2 | (dress & 3) << 4 | (jewel & 3) << 6);
 }
 
-static Look Styled(Look l, unsigned char style)
+static Look Styled(Look l, unsigned short style)
 {
+    l.woman = (style & STYLE_WOMAN) != 0;
     l.hairStyle = style & 3;
     l.beard = style >> 2 & 3;
     l.dress = style >> 4 & 3;
     l.jewel = style >> 6 & 3;
+    if (l.woman) l.beard = BEARD_NONE;
     return l;
 }
 
 // A player: their color on what they wear, the look they chose, the armor they have on.
-Look PlayerLook(int slot, unsigned char style, int armor)
+Look PlayerLook(int slot, unsigned short style, int armor)
 {
     Color own = PlayerColor(slot);
     Look l = { COL_SKIN, own, Mix(own, COL_LINEN, 0.55f), COL_HAIR, 0, 0, 0, 0, HEAD_NONE, (unsigned char)armor, false };
@@ -262,17 +275,17 @@ static void LoadChosen(void)
     chosenLoaded = true;
     FILE *f = fopen(DataPath(LOOK_FILE), "r");
     if (!f) return;
-    if (fscanf(f, "%u", &v) == 1 && v < 256) {
+    if (fscanf(f, "%u", &v) == 1 && v < 512) {
         chosen = v;
         chosenSet = true;
     }
     fclose(f);
 }
 
-unsigned char ChosenStyle(void)
+unsigned short ChosenStyle(void)
 {
     if (!chosenLoaded) LoadChosen();
-    return (unsigned char)chosen;
+    return (unsigned short)chosen;
 }
 
 bool StyleChosen(void)
@@ -281,7 +294,7 @@ bool StyleChosen(void)
     return chosenSet;
 }
 
-void ChooseStyle(unsigned char style)
+void ChooseStyle(unsigned short style)
 {
     chosen = style;
     chosenSet = chosenLoaded = true;
@@ -574,18 +587,18 @@ static void Headgear(const Look *l, const Build *b, float y)
     switch (l->head) {
     case HEAD_HELMET:
         // A bronze helmet over the ears, as the soldiers of the Stele of the Vultures wore.
-        Ball(V3(0, y + 1.835f, -0.012f), V3(0.138f, 0.128f, 0.152f), lod, COL_BRONZE);
-        Bit(0, y + 1.79f, -0.13f, 0.2f, 0.12f, 0.04f, COL_BRONZE);
-        if (b->lod != LOD_FAR) Bit(0, y + 1.94f, -0.01f, 0.03f, 0.05f, 0.18f, Mix(COL_BRONZE, P_DARK, 0.25f));
+        Ball(V3(0, y + 1.835f, -0.012f), V3(0.138f, 0.128f, 0.152f), lod, P_BRONZE);
+        Bit(0, y + 1.79f, -0.13f, 0.2f, 0.12f, 0.04f, P_BRONZE);
+        if (b->lod != LOD_FAR) Bit(0, y + 1.94f, -0.01f, 0.03f, 0.05f, 0.18f, Mix(P_BRONZE, P_DARK, 0.25f));
         break;
     case HEAD_CAP:
-        Ball(V3(0, y + 1.85f, -0.015f), V3(0.128f, 0.1f, 0.142f), lod, (Color){ 128, 88, 56, 255 });
+        Ball(V3(0, y + 1.85f, -0.015f), V3(0.128f, 0.1f, 0.142f), lod, (Color){ 128, 88, 56, 255 - T_LEATHER });
         break;
     case HEAD_STONECAP:
         Ball(V3(0, y + 1.85f, -0.015f), V3(0.13f, 0.1f, 0.144f), lod, (Color){ 128, 122, 112, 255 });
         break;
     case HEAD_HORNS:
-        Ball(V3(0, y + 1.85f, -0.015f), V3(0.134f, 0.11f, 0.148f), lod, COL_BRONZE);
+        Ball(V3(0, y + 1.85f, -0.015f), V3(0.134f, 0.11f, 0.148f), lod, P_BRONZE);
         for (int s = -1; s <= 1; s += 2) {
             Vector3 a = V3(0.11f * (float)s, y + 1.89f, -0.01f), m = V3(0.23f * (float)s, y + 1.97f, 0.0f), t = V3(0.26f * (float)s, y + 2.13f, 0.04f);
             Tube(a, m, 0.035f, 0.028f, b->lod == LOD_FINE ? 8 : 4, COL_LINEN);
@@ -651,7 +664,7 @@ static void Armor(const Look *l, const Build *b, float y)
     switch (l->armor) {
     case ARMOR_WOLF: {
         // A wolf's pelt over the shoulders and down the back, its head worn as a hood.
-        const Color fur = { 168, 160, 146, 255 }, dark = { 112, 106, 96, 255 };
+        const Color fur = { 168, 160, 146, 255 - T_FLEECE }, dark = { 112, 106, 96, 255 - T_FLEECE };
         Ring r[4] = {
             { y + 0.72f, 0.25f, 0.2f, -0.02f, b->lod == LOD_FINE ? 0.05f : 0, dark }, { y + 1.1f, 0.22f, 0.16f, -0.01f, 0, fur },
             { y + 1.42f, 0.25f, 0.155f, 0.0f, 0, fur }, { y + 1.56f, 0.13f, 0.1f, -0.01f, 0, fur },
@@ -671,7 +684,7 @@ static void Armor(const Look *l, const Build *b, float y)
     }
     case ARMOR_LEATHER: {
         // Bands of thick hide laced one over the next.
-        const Color hide = { 96, 62, 40, 255 }, strap = { 58, 38, 26, 255 }, lace = { 196, 170, 120, 255 };
+        const Color hide = { 96, 62, 40, 255 - T_LEATHER }, strap = { 58, 38, 26, 255 - T_LEATHER }, lace = { 196, 170, 120, 255 - T_LEATHER };
         Ring r[8];
         for (int k = 0; k < 8; k++) {
             float t = (float)k / 7.0f, yy = y + 1.02f + 0.48f * t;
@@ -685,7 +698,7 @@ static void Armor(const Look *l, const Build *b, float y)
     }
     case ARMOR_BRONZE: {
         // A thick cloak over the shoulders and back, studded with bronze discs.
-        const Color felt = { 92, 74, 56, 255 };
+        const Color felt = { 92, 74, 56, 255 - T_FLEECE };
         Ring r[4] = {
             { y + 0.62f, 0.27f, 0.21f, -0.015f, b->lod == LOD_FINE ? 0.03f : 0, Mix(felt, P_DARK, 0.2f) }, { y + 1.0f, 0.245f, 0.18f, -0.01f, 0, felt },
             { y + 1.43f, 0.258f, 0.162f, 0.0f, 0, felt }, { y + 1.56f, 0.12f, 0.1f, -0.005f, 0, felt },
@@ -696,7 +709,7 @@ static void Armor(const Look *l, const Build *b, float y)
                 for (int k = 0; k < 5; k++) {
                     float a = PI + 0.35f + (PI - 0.7f) * (float)k / 4.0f, yy = y + 0.8f + 0.22f * (float)row;
                     float rx = Lerp(0.27f, 0.25f, (yy - y - 0.62f) / 0.8f), rz = Lerp(0.21f, 0.17f, (yy - y - 0.62f) / 0.8f);
-                    Bit(rx * cosf(a), yy, rz * sinf(a) - 0.015f, 0.05f, 0.05f, 0.05f, COL_BRONZE);
+                    Bit(rx * cosf(a), yy, rz * sinf(a) - 0.015f, 0.05f, 0.05f, 0.05f, P_BRONZE);
                 }
         break;
     }
@@ -707,25 +720,64 @@ static void Armor(const Look *l, const Build *b, float y)
 
 // ---- Bows ----
 
-static void BowPart(float x, float y, float z, float w, float h, float d, Color c)
+// A bow in the frame being drawn: the grip at 'g', the stave upright and bending back toward the string
+// (more as it is drawn, 'pull' 0-1), tapering to horn tips that curve forward, the grip bound in leather.
+// The string runs tip to tip through 'nock' once that is behind its resting line, an arrow on it.
+void DrawBow(Vector3 g, Vector3 nock, float pull)
 {
-    DrawShadedBox((Vector3){ x, y, z }, (Vector3){ w, h, d }, c);
+    const Color horn = { 58, 46, 36, 255 }, leather = { 96, 62, 40, 255 }, reed = { 176, 156, 104, 255 };
+    float bend = 0.13f + 0.17f * pull;
+    Vector3 p[9];
+    for (int k = 0; k <= 8; k++) {
+        float t = (float)k / 4.0f - 1.0f, a = fabsf(t);
+        p[k] = V3(g.x, g.y + 0.55f * t, g.z - bend * t * t + (a > 0.8f ? 0.35f * (a - 0.8f) : 0.0f));
+    }
+    for (int k = 0; k < 8; k++) {
+        float a0 = fabsf((float)k / 4.0f - 1.0f), a1 = fabsf((float)(k + 1) / 4.0f - 1.0f);
+        Tube(p[k], p[k + 1], Lerp(0.02f, 0.009f, a0), Lerp(0.02f, 0.009f, a1), 6, a0 > 0.8f && a1 > 0.8f ? horn : COL_WOOD);
+    }
+    Tube(V3(g.x, g.y - 0.07f, g.z), V3(g.x, g.y + 0.07f, g.z), 0.025f, 0.025f, 6, leather);
+    if (nock.z < p[0].z - 0.01f) {
+        Tube(p[0], nock, 0.005f, 0.005f, 4, COL_LINEN);
+        Tube(nock, p[8], 0.005f, 0.005f, 4, COL_LINEN);
+    } else {
+        Tube(p[0], p[8], 0.005f, 0.005f, 4, COL_LINEN);
+    }
+    if (pull > 0.02f) {
+        Vector3 d = Vector3Normalize(Vector3Subtract(V3(g.x + 0.02f, g.y, g.z), nock)), tip = Vector3Add(nock, Vector3Scale(d, 0.8f));
+        Tube(nock, tip, 0.006f, 0.006f, 4, reed);
+        Tube(tip, Vector3Add(tip, Vector3Scale(d, 0.06f)), 0.014f, 0.0f, 4, COL_BRONZE);
+        Tube(Vector3Add(nock, Vector3Scale(d, 0.02f)), Vector3Add(nock, Vector3Scale(d, 0.12f)), 0.016f, 0.008f, 3, P_DARK);
+    }
 }
 
-// A bow held low in the other hand, ready to draw: an archer between shots, or walking.
-void HoldBow(Vector3 pos, float facing, bool crouch)
+// A bow held ready to draw, in front of the body, tilted, the other hand on its grip and the hand that
+// draws resting on the string: an archer between shots, or walking. With a torch in the other hand the bow
+// hangs from the drawing hand instead. The hands sway a little as the body breathes.
+void HoldBowFor(Vector3 pos, float facing, bool crouch, bool torch)
 {
+    float t = (float)GetTime() + pos.x * 0.37f, sway = 0.012f * sinf(t * 1.7f);
     rlPushMatrix();
     rlTranslatef(pos.x, pos.y + (crouch ? 0.92f : 1.3f), pos.z);
     rlRotatef(facing * RAD2DEG, 0, 1, 0);
-    rlTranslatef(-0.4f, 0, 0.12f);
-    rlRotatef(-12.0f, 1, 0, 0);
-    GripHere(HAND_OTHER, 0, 0, 0);
-    BowPart(0, 0, 0, 0.05f, 0.9f, 0.06f, COL_WOOD);
-    BowPart(0, 0.5f, 0.05f, 0.04f, 0.16f, 0.05f, COL_WOOD);
-    BowPart(0, -0.5f, 0.05f, 0.04f, 0.16f, 0.05f, COL_WOOD);
-    BowPart(0, 0, -0.07f, 0.015f, 1.05f, 0.015f, COL_LINEN);
+    if (torch) {
+        rlTranslatef(0.4f, 0, 0.12f);
+        rlRotatef(-12.0f, 1, 0, 0);
+        GripHere(HAND_WEAPON, 0, 0, 0);
+    } else {
+        rlTranslatef(-0.1f, -0.02f + sway, 0.36f);
+        rlRotatef(-28.0f, 0, 0, 1);
+        rlRotatef(-8.0f, 1, 0, 0);
+        GripHere(HAND_OTHER, 0, 0, 0);
+        GripHere(HAND_WEAPON, 0, 0.1f, -0.09f);
+    }
+    DrawBow(V3(0, 0, 0), torch ? V3(0, 0, 0) : V3(0, 0.1f, -0.09f), 0);
     rlPopMatrix();
+}
+
+void HoldBow(Vector3 pos, float facing, bool crouch)
+{
+    HoldBowFor(pos, facing, crouch, false);
 }
 
 // A bow carried across the back, string out, for someone whose hands are full.
@@ -736,10 +788,7 @@ void SlungBow(Vector3 pos, float facing)
     rlRotatef(facing * RAD2DEG, 0, 1, 0);
     rlTranslatef(0, 0, -0.24f);
     rlRotatef(28.0f, 0, 0, 1);
-    BowPart(0, 0, 0, 0.05f, 1.0f, 0.05f, COL_WOOD);
-    BowPart(0, 0.55f, 0.04f, 0.04f, 0.14f, 0.05f, COL_WOOD);
-    BowPart(0, -0.55f, 0.04f, 0.04f, 0.14f, 0.05f, COL_WOOD);
-    BowPart(0, 0, -0.06f, 0.012f, 1.15f, 0.012f, COL_LINEN);
+    DrawBow(V3(0, 0, 0), V3(0, 0, 0), 0);
     rlPopMatrix();
 }
 
@@ -753,8 +802,8 @@ static void Body(Vector3 at, float stride, Look look, bool crouch, bool bow, flo
     bool longDress = LongDress(&look);
     float swing = sinf(stride);
 
-    if (!(look.trim.r == look.skin.r && look.trim.g == look.skin.g)) look.trim = Clothe(look.trim, look.skin);
-    look.cloth = Clothe(look.cloth, look.skin);
+    if (!(look.trim.r == look.skin.r && look.trim.g == look.skin.g)) look.trim = Tag(Clothe(look.trim, look.skin), T_CLOTH);
+    look.cloth = Tag(Clothe(look.cloth, look.skin), look.dress == DRESS_FLEECE ? T_FLEECE : T_CLOTH);
 
     // The legs: a step's thigh swing and knee bend, or a crouch on bent knees.
     float thigh[2], bend[2];
@@ -787,6 +836,7 @@ static void Body(Vector3 at, float stride, Look look, bool crouch, bool bow, flo
 
     // The arms: swinging as they walk, drawing a bow, or reaching for what the hands hold.
     float shoulderX = look.woman ? 0.19f : 0.215f, upper = 0.29f, lower = 0.26f;
+    if (bow) DrawBow(V3(-0.2f, 1.48f + y, sit + 0.58f), V3(0.03f, 1.48f + y, sit + fmaxf(0.6f - 0.42f * draw, 0.16f)), draw);
     for (int s = 0; s < 2; s++) {
         float side = s == HAND_WEAPON ? 1.0f : -1.0f;
         Vector3 sh = { side * shoulderX, 1.455f + y, sit }, target, hint = { side * 0.6f, -0.4f, -1.0f };
@@ -805,7 +855,7 @@ static void Body(Vector3 at, float stride, Look look, bool crouch, bool bow, flo
         Reach(sh, target, hint, upper, lower, &elbow, &wrist);
         bool sleeve = look.dress == DRESS_ROBE || (look.dress == DRESS_SHAWL && s != HAND_WEAPON);
         Color upperC = sleeve ? look.cloth : look.skin;
-        if (look.armor == ARMOR_LEATHER) upperC = (Color){ 96, 62, 40, 255 };
+        if (look.armor == ARMOR_LEATHER) upperC = Tag((Color){ 96, 62, 40, 255 }, T_LEATHER);
         Arm(sh, elbow, wrist, upperC, look.skin, &look, &b, look.jewel == JEWEL_BANDS);
     }
     (void)at;

@@ -83,14 +83,20 @@ void AddTree(float x, float z, float s, bool poplar)
 {
     float y = TerrainHeight(x, z);
 
-    AddShape(x, y - 0.2f, z, 0.36f * s, 2.6f * s, 0.36f * s, COL_PALM_TRUNK, true, SHAPE_CYL);
+    AddShape(x, y - 0.2f, z, 0.36f * s, 2.6f * s, 0.36f * s, COL_BARK, true, SHAPE_CYL);
     if (poplar) {
-        AddShape(x, y + 1.6f * s, z, 1.5f * s, 4.6f * s, 1.5f * s, (Color){ 82, 120, 60, 255 }, false, SHAPE_BLOB);
-        AddShape(x, y + 4.8f * s, z, 0.9f * s, 2.2f * s, 0.9f * s, (Color){ 92, 130, 66, 255 }, false, SHAPE_BLOB);
+        AddShape(x, y + 1.6f * s, z, 1.5f * s, 4.6f * s, 1.5f * s, (Color){ 82, 120, 60, 253 }, false, SHAPE_BLOB);
+        AddShape(x, y + 4.8f * s, z, 0.9f * s, 2.2f * s, 0.9f * s, (Color){ 92, 130, 66, 253 }, false, SHAPE_BLOB);
     } else {
         AddShape(x, y + 1.7f * s, z, 3.4f * s, 2.0f * s, 3.2f * s, COL_TREE, false, SHAPE_BLOB);
-        AddShape(x + 0.4f * s, y + 2.9f * s, z - 0.3f * s, 2.4f * s, 1.7f * s, 2.3f * s, (Color){ 84, 118, 64, 255 }, false, SHAPE_BLOB);
-        AddShape(x - 0.7f * s, y + 2.4f * s, z + 0.6f * s, 1.8f * s, 1.3f * s, 1.7f * s, (Color){ 78, 112, 60, 255 }, false, SHAPE_BLOB);
+        AddShape(x + 0.4f * s, y + 2.9f * s, z - 0.3f * s, 2.4f * s, 1.7f * s, 2.3f * s, (Color){ 84, 118, 64, 253 }, false, SHAPE_BLOB);
+        AddShape(x - 0.7f * s, y + 2.4f * s, z + 0.6f * s, 1.8f * s, 1.3f * s, 1.7f * s, (Color){ 78, 112, 60, 253 }, false, SHAPE_BLOB);
+        // Two smaller clumps break the dome, each tree its own way.
+        for (int k = 0; k < 2; k++) {
+            float a = 6.283f * Hash2((int)(x * 7.0f) + k, (int)(z * 7.0f)), d = (0.9f + 0.4f * (float)k) * s;
+            AddShape(x + cosf(a) * d, y + (3.1f - 0.6f * (float)k) * s, z + sinf(a) * d, 1.4f * s, 1.1f * s, 1.3f * s,
+                     (Color){ 88, 124, 66, 253 }, false, SHAPE_BLOB);
+        }
     }
 }
 
@@ -116,8 +122,8 @@ int AddResource(float x, float z, ResKind kind)
     float y = (kind == RES_FISH) ? WATER_LEVEL : TerrainHeight(x, z);
 
     G.res[G.resCount] = (Resource){ { x, y, z }, kind, 0.0f, RandF(0, 360), false };
-    if (kind == RES_PALM) AddShape(x, y - 0.2f, z, 0.46f, 6.7f, 0.46f, COL_PALM_TRUNK, true, SHAPE_CYL);
-    else if (kind == RES_TREE) AddShape(x, y - 0.2f, z, 0.5f, 1.0f, 0.5f, COL_PALM_TRUNK, true, SHAPE_CYL);
+    if (kind == RES_PALM) AddShape(x, y - 0.2f, z, 0.46f, 6.7f, 0.46f, COL_BARK, true, SHAPE_CYL);
+    else if (kind == RES_TREE) AddShape(x, y - 0.2f, z, 0.5f, 1.0f, 0.5f, COL_BARK, true, SHAPE_CYL);
     else if (kind == RES_ORE) AddBoxOn(x, z, 1.4f, 0.9f, 1.2f, COL_ROCK, true);
     return G.resCount++;
 }
@@ -261,6 +267,70 @@ static void Tuft(float x, float z, float s, Color c)
     AddShape(x + s * 0.25f, y, z + s * 0.15f, s * 0.35f, s * RandF(0.8f, 1.3f), s * 0.35f, Mix(c, COL_STRAW, 0.2f), false, SHAPE_CONE);
 }
 
+// Small things of the open land, kept to what grew on the plain: feathery tamarisk by the water, low
+// camelthorn on the dry steppe, fallen limbs and stumps of dead poplar, flat slabs and scatters of
+// stones on the rises. None of it blocks the way.
+static bool Open(float x, float z, float margin)
+{
+    return fabsf(x) < WORLD_LIMIT - 4 && fabsf(z) < WORLD_LIMIT - 4 && !InWater(x, z) &&
+           !InsideWalls(x, z, -6.0f) && !InKeepOut(x, z, margin) && !SolidAt(x, z, margin);
+}
+
+static void BuildWilds(void)
+{
+    const float L = WORLD_LIMIT - 4;
+    const Color tamarisk = { 112, 128, 100, 253 }, bloom = { 196, 150, 160, 253 }, thorn = { 132, 128, 78, 253 };
+    const Color deadwood = { 140, 128, 110, 254 }, pale = { 164, 154, 136, 254 };
+
+    for (int k = 0, tries = 0; k < 170 && tries < 3000; tries++) {
+        float x = RandF(-L, L), z = RandF(-L, L), f = Fertility(x, z);
+        if (f < 0.25f || f > 0.75f || !Open(x, z, 1.5f)) continue;
+        float s = RandF(0.8f, 1.5f), y = TerrainHeight(x, z) - 0.1f;
+        Color c = Hash2(tries, 41) < 0.25f ? Mix(tamarisk, bloom, 0.45f) : tamarisk;
+        AddShape(x, y, z, 1.3f * s, 1.5f * s, 1.2f * s, c, false, SHAPE_BLOB);
+        AddShape(x + 0.6f * s, y, z - 0.3f * s, 0.6f * s, 1.6f * s, 0.6f * s, Mix(c, COL_SHRUB, 0.3f), false, SHAPE_CONE);
+        AddShape(x - 0.5f * s, y, z + 0.5f * s, 1.0f * s, 0.9f * s, 0.9f * s, c, false, SHAPE_BLOB);
+        k++;
+    }
+    for (int k = 0, tries = 0; k < 260 && tries < 3000; tries++) {
+        float x = RandF(-L, L), z = RandF(-L, L);
+        if (Fertility(x, z) > 0.3f || !Open(x, z, 1.0f)) continue;
+        float s = RandF(0.4f, 0.8f), y = TerrainHeight(x, z) - 0.08f;
+        AddShape(x, y, z, 1.3f * s, 0.6f * s, 1.2f * s, thorn, false, SHAPE_BLOB);
+        AddShape(x + 0.3f * s, y, z + 0.2f * s, 0.5f * s, 0.9f * s, 0.5f * s, Mix(thorn, COL_STRAW, 0.4f), false, SHAPE_CONE);
+        k++;
+    }
+    for (int k = 0, tries = 0; k < 90 && tries < 2000; tries++) {
+        float x = RandF(-L, L), z = RandF(-L, L);
+        if (!Open(x, z, 2.5f)) continue;
+        float y = TerrainHeight(x, z), len = RandF(2.0f, 4.0f), r = RandF(0.09f, 0.16f);
+        bool alongX = Hash2(tries, 43) < 0.5f;
+        Color c = Hash2(tries, 47) < 0.5f ? deadwood : pale;
+        if (Hash2(tries, 53) < 0.3f) {   // a broken stump with its top fallen beside it
+            AddShape(x, y - 0.1f, z, 2.2f * r, RandF(0.5f, 1.1f), 2.2f * r, c, false, SHAPE_CYL);
+            x += 1.2f;
+        }
+        AddBox(x, y - 0.05f, z, alongX ? len : 2 * r, 2 * r, alongX ? 2 * r : len, c, false);
+        AddBox(x + (alongX ? len * 0.2f : 0.5f), y, z + (alongX ? 0.5f : len * 0.2f), alongX ? 0.9f : 0.1f, 0.1f, alongX ? 0.1f : 0.9f, c, false);
+        k++;
+    }
+    for (int k = 0, tries = 0; k < 140 && tries < 3000; tries++) {
+        float x = RandF(-L, L), z = RandF(-L, L), h = TerrainHeight(x, z);
+        if ((h < 1.0f && Fertility(x, z) > 0.3f) || !Open(x, z, 1.5f)) continue;
+        Color c = Mix(COL_ROCK, (Color){ 150, 136, 112, 255 }, Hash2(tries, 59));
+        if (Hash2(tries, 61) < 0.4f) {   // a flat slab, half sunk
+            float s = RandF(1.0f, 2.2f);
+            AddBox(x, h - 0.12f, z, s, RandF(0.18f, 0.35f), s * RandF(0.5f, 0.9f), c, false);
+        } else {   // a scatter of stones
+            for (int j = 0; j < 5; j++) {
+                float s = RandF(0.15f, 0.45f);
+                AddShape(x + RandF(-1.2f, 1.2f), h - 0.3f * s, z + RandF(-1.2f, 1.2f), s * 1.2f, s, s, Mix(c, COL_STONE, Hash2(tries, j)), false, SHAPE_BLOB);
+            }
+        }
+        k++;
+    }
+}
+
 // Herbs grow where the ground is green: river meadows, the pastures, the hunters' glade, the west bank.
 static void PlaceHerbs(float x0, float x1, float z0, float z1, int n)
 {
@@ -399,12 +469,39 @@ static void BuildVegetation(void)
         AddShape(x, TerrainHeight(x, z) - 0.35f * s, z, s, s * 0.9f, s * 0.8f, Mix(COL_ROCK, COL_STONE, Hash2(tries, 9)), true, SHAPE_BLOB);
     }
 
+    BuildWilds();
     PlaceHerbs(-124, -100, -500, 500, 12);
     PlaceHerbs(-125, -88, -235, -165, 3);
     PlaceHerbs(-125, -92, 225, 275, 3);
     PlaceHerbs(-120, -15, 330, 510, 6);
     PlaceHerbs(370, 510, -70, 110, 6);
     PlaceHerbs(-530, -160, -530, 530, 48);
+}
+
+// Things are placed on the true lie of the land, but the ground is drawn as 6 m triangles, which sag
+// below it over hilltops and the world's edge. Once the ground is built, whatever was set on the land
+// (its bottom no more than a hand above it) reaches down to the lowest drawn ground under it: walls,
+// posts and trunks grow down, round things (rocks, bushes, huts, tents) sink. Things on floors and
+// platforms stand higher and are left alone.
+static void SettleOnGround(void)
+{
+    for (int i = 0; i < G.boxCount; i++) {
+        Box *b = &G.boxes[i];
+        if (b->water || b->glow) continue;
+        float bottom = b->pos.y - b->size.y / 2, lo = 1e9f;
+        if (bottom > TerrainHeight(b->pos.x, b->pos.z) + 0.25f) continue;
+        for (int u = 0; u <= 2; u++)
+            for (int v = 0; v <= 2; v++)
+                lo = fminf(lo, GroundSurface(b->pos.x + b->size.x * ((float)u / 2 - 0.5f), b->pos.z + b->size.z * ((float)v / 2 - 0.5f)));
+        float gap = bottom - (lo - 0.05f);
+        if (gap <= 0) continue;
+        if (b->shape == SHAPE_BLOB || b->shape == SHAPE_CONE) {
+            b->pos.y -= gap;
+        } else {
+            b->size.y += gap;
+            b->pos.y -= gap / 2;
+        }
+    }
 }
 
 void BuildWorld(void)
@@ -423,6 +520,7 @@ void BuildWorld(void)
     building = false;
     BuildVegetation();
     BuildTerrain();
+    SettleOnGround();
     BuildRoads();
     BuildLights();
 
@@ -642,7 +740,7 @@ static void DrawPalm(const Resource *r)
         Part(0.75f, 0, 0, 1.5f, 0.06f, 0.45f, Mix(COL_PALM_LEAF, COL_WHEAT_GREEN, 0.25f));
         rlPopMatrix();
     }
-    DrawShadedBlob((Vector3){ r->pos.x, r->pos.y + 6.4f, r->pos.z }, (Vector3){ 0.4f, 0.3f, 0.4f }, COL_PALM_TRUNK);
+    DrawShadedBlob((Vector3){ r->pos.x, r->pos.y + 6.4f, r->pos.z }, (Vector3){ 0.4f, 0.3f, 0.4f }, COL_BARK);
     if (r->regrow <= 0) {
         DrawShadedBlob((Vector3){ r->pos.x + 0.38f, r->pos.y + 5.95f, r->pos.z }, (Vector3){ 0.2f, 0.3f, 0.2f }, COL_DATES);
         DrawShadedBlob((Vector3){ r->pos.x - 0.3f, r->pos.y + 6.0f, r->pos.z + 0.25f }, (Vector3){ 0.18f, 0.28f, 0.18f }, COL_DATES);
@@ -667,14 +765,19 @@ static void DrawTreeRes(int i, const Resource *r)
     float s = 0.8f + 0.5f * Hash2(i, 11), x = r->pos.x, y = r->pos.y, z = r->pos.z;
     bool poplar = WestBank(x) ? Hash2(i, 29) < 0.35f : x < -60.0f;
 
-    DrawShadedCylinder((Vector3){ x, y + 0.7f, z }, 0.2f * s, 0.2f * s, 2.3f * s, 0.75f, 7, COL_PALM_TRUNK);
+    DrawShadedCylinder((Vector3){ x, y + 0.7f, z }, 0.2f * s, 0.2f * s, 2.3f * s, 0.75f, 7, COL_BARK);
     if (poplar) {
-        DrawShadedBlob((Vector3){ x, y + 4.0f * s, z }, (Vector3){ 0.75f * s, 2.4f * s, 0.75f * s }, (Color){ 82, 120, 60, 255 });
-        DrawShadedBlob((Vector3){ x, y + 6.4f * s, z }, (Vector3){ 0.45f * s, 1.1f * s, 0.45f * s }, (Color){ 92, 130, 66, 255 });
+        DrawShadedBlob((Vector3){ x, y + 4.0f * s, z }, (Vector3){ 0.75f * s, 2.4f * s, 0.75f * s }, (Color){ 82, 120, 60, 253 });
+        DrawShadedBlob((Vector3){ x, y + 6.4f * s, z }, (Vector3){ 0.45f * s, 1.1f * s, 0.45f * s }, (Color){ 92, 130, 66, 253 });
     } else {
         DrawShadedBlob((Vector3){ x, y + 3.0f * s, z }, (Vector3){ 1.7f * s, 1.05f * s, 1.6f * s }, COL_TREE);
-        DrawShadedBlob((Vector3){ x + 0.4f * s, y + 3.9f * s, z - 0.3f * s }, (Vector3){ 1.2f * s, 0.9f * s, 1.15f * s }, (Color){ 84, 118, 64, 255 });
-        DrawShadedBlob((Vector3){ x - 0.7f * s, y + 3.5f * s, z + 0.6f * s }, (Vector3){ 0.9f * s, 0.7f * s, 0.85f * s }, (Color){ 78, 112, 60, 255 });
+        DrawShadedBlob((Vector3){ x + 0.4f * s, y + 3.9f * s, z - 0.3f * s }, (Vector3){ 1.2f * s, 0.9f * s, 1.15f * s }, (Color){ 84, 118, 64, 253 });
+        DrawShadedBlob((Vector3){ x - 0.7f * s, y + 3.5f * s, z + 0.6f * s }, (Vector3){ 0.9f * s, 0.7f * s, 0.85f * s }, (Color){ 78, 112, 60, 253 });
+        for (int k = 0; k < 2; k++) {
+            float a = 6.283f * Hash2(i, 31 + k), d = (0.9f + 0.4f * (float)k) * s;
+            DrawShadedBlob((Vector3){ x + cosf(a) * d, y + (4.1f - 0.6f * (float)k) * s, z + sinf(a) * d }, (Vector3){ 0.7f * s, 0.55f * s, 0.65f * s },
+                           (Color){ 88, 124, 66, 253 });
+        }
     }
 }
 
@@ -703,14 +806,18 @@ static void DrawFish(int i, const Resource *r)
     if (r->regrow > 0) return;
     float t = (float)GetTime() * 0.6f + (float)i * 0.37f;
     float ph = t - floorf(t);
-    float s = 0.4f + 1.4f * ph;
+    float s = 0.2f + 0.7f * ph;
 
-    rlPushMatrix();
-    rlTranslatef(r->pos.x, r->pos.y + 0.03f, r->pos.z);
-    rlRotatef(45, 0, 1, 0);
-    DrawShadedBox((Vector3){ 0, 0, 0 }, (Vector3){ s, 0.01f, s }, Fade((Color){ 170, 205, 215, 255 }, 1.0f - ph));
-    DrawShadedBox((Vector3){ 0, 0.005f, 0 }, (Vector3){ s * 0.8f, 0.01f, s * 0.8f }, COL_WATER);
-    rlPopMatrix();
+    // A ring spreading on the water: short pale dashes round a circle, fading as it grows.
+    Color c = Fade((Color){ 200, 222, 228, 255 }, 0.7f * (1.0f - ph));
+    for (int k = 0; k < 14; k++) {
+        float a = (float)k * 2.0f * PI / 14.0f;
+        rlPushMatrix();
+        rlTranslatef(r->pos.x + cosf(a) * s, r->pos.y + 0.06f, r->pos.z + sinf(a) * s);
+        rlRotatef(-a * RAD2DEG, 0, 1, 0);
+        DrawShadedBox((Vector3){ 0, 0, 0 }, (Vector3){ 0.04f, 0.01f, s * 0.42f }, c);
+        rlPopMatrix();
+    }
     if (ph < 0.25f) {
         float a = ph / 0.25f;
         Part(r->pos.x + 0.6f * a - 0.3f, r->pos.y + 0.03f + 0.5f * sinf(a * PI), r->pos.z, 0.3f, 0.08f, 0.1f, (Color){ 170, 180, 186, 255 });

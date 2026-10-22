@@ -37,6 +37,7 @@ const ItemDef ITEMS[IT_COUNT] = {
     [IT_HEN]     = { "Hen",          2, 0,  { 220, 200, 170, 255 } },
     [IT_HERB]    = { "Herbs",       10, 0,  { 120, 170,  96, 255 } },
     [IT_SHEEP]   = { "Sheep",        1, 0,  { 226, 220, 204, 255 } },
+    [IT_PARTRIDGE] = { "Partridge",  4, 0,  { 150, 128, 100, 255 } },
 };
 
 const char *const BOW_NAMES[3] = { "Hunting bow", "Recurve bow", "Composite bow" };

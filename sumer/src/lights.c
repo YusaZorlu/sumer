@@ -60,6 +60,8 @@ static void PlaceTorches(void)
         AddTorch(1.4f * f, 19.2f, -41.85f, false);
         AddTorch(6.5f * f, 16.5f, -48.5f, true);
         AddFire(4.3f * f, 8.1f, -48.6f);
+        AddTorch(9.8f * f, 9.4f, -41.0f, false);    // the guards' room and the tablet room
+        AddTorch(17.8f * f, 3.6f, -40.0f, false);   // the granary and the treasury
     }
     for (int c = 0; c < CAMPS; c++) {
         Vector3 camp = CampCenter(c);
@@ -131,12 +133,19 @@ void UpdateLights(void)
     float t = (float)GetTime();
     flicker = 0.92f + 0.08f * sinf(t * 9.0f) * sinf(t * 5.3f + 1.0f);
     G.night = Clamp((0.75f - G.daylight) / 0.6f, 0.0f, 1.0f);
+    // Torches are lit from five in the evening and burn brighter as the dusk deepens into night.
+    G.torchGlow = G.hour >= 17.0f ? fmaxf(G.night, 0.2f + 0.8f * Clamp((G.hour - 17.0f) / 3.0f, 0.0f, 1.0f)) : G.night;
     G.dynCount = 0;
-    if (G.night < 0.3f) return;
+    if (!TorchesLit()) return;
 
     for (int i = 0; i < G.villagerCount; i++) {
         const Villager *v = &G.villagers[i];
         if ((v->kind == NPC_GUARD || v->kind == NPC_TRAVELLER) && !v->vit.dead) AddDynNear(VillagerPos(v), v->vit.override ? v->vit.face : v->face);
+    }
+    for (int s = 0; s < MAX_PLAYERS; s++) {
+        const Peer *p = &G.peers[s];
+        if (s == G.self ? TorchBurning() : (p->active && (p->flags & PF_TORCH)))
+            AddDynNear(s == G.self ? G.player.pos : p->shown, s == G.self ? G.player.facing : p->shownFacing);
     }
     for (int c = 0; c < MAX_CARAVANS; c++) {
         for (int k = 0; k < 3 + CARAVAN_GUARDS; k++) {
@@ -159,13 +168,18 @@ static float Dynamic(Vector3 p, float radius)
     return sum;
 }
 
+bool TorchesLit(void)
+{
+    return G.torchGlow >= 0.15f;
+}
+
 float TorchLightAt(Vector3 p)
 {
-    if (G.night <= 0) return 0.0f;
+    if (G.torchGlow <= 0) return 0.0f;
     float sum = 0;
     for (int t = 0; t < G.torchCount; t++) sum += Falloff(Vector3Distance(p, G.torches[t]), TORCH_RADIUS);
     sum = sum * Flicker() + Dynamic(p, 0.0f);
-    return fminf(sum * 0.8f, LIGHT_MAX) * G.night;
+    return fminf(sum * 0.8f, LIGHT_MAX) * G.torchGlow;
 }
 
 float FogAt(Vector3 p)
@@ -184,28 +198,32 @@ void LightFor(Vector3 p)
 
 float BoxLight(int i)
 {
-    if (G.night <= 0) return 0.0f;
+    if (G.torchGlow <= 0) return 0.0f;
     const Box *b = &G.boxes[i];
     float sum = b->torch * Flicker();
     if (G.dynCount > 0) sum += Dynamic(b->pos, (b->size.x + b->size.y + b->size.z) / 6.0f);
-    return fminf(sum * 0.8f, LIGHT_MAX) * G.night;
+    return fminf(sum * 0.8f, LIGHT_MAX) * G.torchGlow;
 }
 
 // Hand torches only reach tiles near the camera; farther out the night fog hides them anyway.
 float TileLight(int i, int j)
 {
-    if (G.night <= 0) return 0.0f;
+    if (G.torchGlow <= 0) return 0.0f;
     float sum = G.tileTorch[i][j] * Flicker();
     if (G.dynCount > 0) {
         float x = -WORLD_HALF + ((float)i + 0.5f) * TILE_SIZE, z = -WORLD_HALF + ((float)j + 0.5f) * TILE_SIZE;
         float dx = x - G.cam.position.x, dz = z - G.cam.position.z;
         if (dx * dx + dz * dz < 170.0f * 170.0f) sum += Dynamic((Vector3){ x, G.heights[i][j], z }, 2.0f);
     }
-    return fminf(sum * 0.8f, LIGHT_MAX) * G.night;
+    return fminf(sum * 0.8f, LIGHT_MAX) * G.torchGlow;
 }
 
-static void Flame(Vector3 p, float t, float seed)
+static void Flame(Vector3 p, float t, float seed, float size)
 {
+    if (GfxOn()) {
+        GfxFlame(p, size);
+        return;
+    }
     float k = 0.85f + 0.15f * sinf(t * 13.0f + seed) * sinf(t * 7.0f + seed * 2.0f);
     DrawGlowBox((Vector3){ p.x, p.y + 0.1f * k, p.z }, (Vector3){ 0.24f * k, 0.36f * k, 0.24f * k }, (Color){ 255, 130, 40, 255 });
     DrawGlowBox((Vector3){ p.x, p.y + 0.05f, p.z }, (Vector3){ 0.13f, 0.22f * k, 0.13f }, (Color){ 255, 220, 120, 255 });
@@ -213,13 +231,17 @@ static void Flame(Vector3 p, float t, float seed)
 
 void DrawTorches(void)
 {
-    if (G.night < 0.05f) return;
+    // Camp fires and braziers burn all day; with the shaders on they get a flame of their own.
+    if (GfxOn())
+        for (int k = 0; k < fireCount; k++)
+            if (XZDist(fires[k], G.cam.position) < 180.0f) GfxFlame((Vector3){ fires[k].x, fires[k].y - 0.3f, fires[k].z }, 1.4f);
+    if (!TorchesLit()) return;
     float t = (float)GetTime();
     for (int i = 0; i < G.torchCount; i++) {
         bool fire = false;
         for (int k = 0; k < fireCount; k++)
             if (fires[k].x == G.torches[i].x && fires[k].z == G.torches[i].z) fire = true;
-        if (!fire && XZDist(G.torches[i], G.cam.position) < 180.0f) Flame(G.torches[i], t, (float)i);
+        if (!fire && XZDist(G.torches[i], G.cam.position) < 180.0f) Flame(G.torches[i], t, (float)i, 1.1f);
     }
 }
 
@@ -227,5 +249,5 @@ void DrawHandTorch(Vector3 pos, float facing)
 {
     Vector3 h = HandPos(pos, facing);
     DrawShadedBox((Vector3){ h.x, h.y - 0.2f, h.z }, (Vector3){ 0.06f, 0.6f, 0.06f }, COL_WOOD);
-    Flame((Vector3){ h.x, h.y + 0.18f, h.z }, (float)GetTime(), pos.x);
+    Flame((Vector3){ h.x, h.y + 0.12f, h.z }, (float)GetTime(), pos.x, 0.7f);
 }

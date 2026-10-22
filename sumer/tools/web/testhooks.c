@@ -76,7 +76,7 @@ EMSCRIPTEN_KEEPALIVE void TestCommand(int cmd, float a, float b)
     Player *p = &G.player;
     switch (cmd) {
     case 1:
-        p->pos = (Vector3){ a, GroundHeight(a, b, 50.0f), b };
+        p->pos = (Vector3){ a, LandingHeight(a, b), b };
         p->vy = 0;
         break;
     case 2: Interact(false); break;
@@ -110,8 +110,16 @@ EMSCRIPTEN_KEEPALIVE void TestCommand(int cmd, float a, float b)
     case 13: HurtPlayer(a, BY_NONE); break;
     case 14: SetEquip((int)a); break;
     case 15: SetPanel((Panel)(int)a); break;
+    case 16: SfxSetLevel((int)a); break;
     case 20: RoyaleStart(); break;
     case 21: RoyaleSkipTo(a); break;
     default: break;
     }
+}
+
+// Runs a dev console command (see src/console.c) and returns what it said last.
+EMSCRIPTEN_KEEPALIVE const char *TestConsole(const char *cmd)
+{
+    ConsoleRun(cmd);
+    return ConsoleLines() ? ConsoleLine(ConsoleLines() - 1) : "";
 }
