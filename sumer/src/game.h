@@ -880,6 +880,19 @@ const char *PageParam(const char *key);
 void ServerAddress(char *buf, int size, const char *query);
 bool OnWeb(void);
 bool OnPhone(void);
+void ForgetClick(void);
+bool MouseHeld(int button);
+
+// Touch controls (touch.c).
+enum { TB_ATTACK, TB_PARRY, TB_USE, TB_CROUCH, TB_VIEW, TB_BAG, TB_MENU, TB_COUNT };
+bool TouchOn(void);
+void TouchFrame(void);
+bool TouchDown(int b);
+bool TouchPressed(int b);
+Vector2 TouchStick(void);
+bool TouchRun(void);
+Vector2 TouchLook(void);
+void DrawTouch(void);
 Vector2 PointerPosition(void);
 float PixelRatio(void);
 

@@ -86,7 +86,8 @@ void PassHours(float h)
 static void UpdateSleep(float dt)
 {
     if (G.waitBed && G.panel == PANEL_NONE &&
-        (KeyPressed(KEY_E) || KeyPressed(KEY_SPACE) || IsKeyDown(KEY_W) || IsKeyDown(KEY_A) || IsKeyDown(KEY_S) || IsKeyDown(KEY_D))) {
+        (KeyPressed(KEY_E) || KeyPressed(KEY_SPACE) || IsKeyDown(KEY_W) || IsKeyDown(KEY_A) || IsKeyDown(KEY_S) || IsKeyDown(KEY_D) ||
+         TouchPressed(TB_USE) || Vector2Length(TouchStick()) > 0)) {
         G.waitBed = false;
         Say("You get up.");
     }
@@ -464,7 +465,7 @@ static bool HandleWindow(void)
 static void HandleMenus(bool paused)
 {
     if (G.escQuiet > 0) G.escQuiet -= GetFrameTime();
-    if (KeyPressed(KEY_ESCAPE) && !paused && G.escQuiet <= 0) {
+    if ((KeyPressed(KEY_ESCAPE) && !paused && G.escQuiet <= 0) || TouchPressed(TB_MENU)) {
         SetPanel(G.panel == PANEL_NONE ? PANEL_PAUSE : PANEL_NONE);
     } else if (KeyPressed(KEY_H) && (G.panel == PANEL_NONE || G.panel == PANEL_PAUSE || G.panel == PANEL_HELP)) {
         SetPanel(G.panel == PANEL_HELP ? PANEL_NONE : PANEL_HELP);
@@ -474,7 +475,7 @@ static void HandleMenus(bool paused)
     } else if (KeyPressed(KEY_T) && Online() && G.panel == PANEL_NONE && !G.sleeping) {
         SetPanel(PANEL_CHAT);
         while (GetCharPressed() > 0) {}   // the T that opened it is not typed
-    } else if (KeyPressed(KEY_TAB) || (KeyPressed(KEY_I) && G.panel != PANEL_CONSOLE && G.panel != PANEL_CHAT)) {
+    } else if (KeyPressed(KEY_TAB) || TouchPressed(TB_BAG) || (KeyPressed(KEY_I) && G.panel != PANEL_CONSOLE && G.panel != PANEL_CHAT)) {
         if (G.panel == PANEL_NONE) SetPanel(PANEL_BAG);
         else if (G.panel != PANEL_PAUSE && G.panel != PANEL_HELP && G.panel != PANEL_SETTINGS) SetPanel(PANEL_NONE);
     }
@@ -585,7 +586,7 @@ void GameUpdate(void)
     FindTarget(play);
 
     if (play) {
-        if (KeyPressed(KEY_E)) Interact(false);
+        if (KeyPressed(KEY_E) || TouchPressed(TB_USE)) Interact(false);
         if (KeyPressed(KEY_F)) Interact(true);
         if (KeyPressed(KEY_R)) RefillQuiver();
         if (KeyPressed(KEY_ONE)) SetEquip(EQ_BOW);

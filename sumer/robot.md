@@ -107,6 +107,12 @@ in `src/game.h`) holds the whole world.
   caravans, peers). `G.actor` is who is acting; `Say()` goes to the actor (a guest's message is sent to them), `SayTo`
   and `Announce` address others. Peers are in `G.peers[]` (slot 0 is the host); each machine's own slot is `G.self`.
   Guests ease positions toward `netPos`/`netAt`.
+- **Touch controls** (`src/touch.c`): the page's touch events (not pointer events: synthetic touches in headless Chrome
+  give pointer events at 0,0) are read once a frame in `TouchFrame` (called from `PageFrame`); each finger gets a role
+  where it came down: a button, the stick (left 40%, lower 65%) or looking. The game asks `TouchPressed/TouchDown/
+  TouchStick/TouchRun/TouchLook` next to its keys. raylib counts any finger as the left mouse button, so the mouse bow
+  draw uses `MouseHeld` and mouse strikes need the pointer captured. A tap on a touch button is not also a menu click
+  (`ForgetClick`). Shown where `OnPhone()`, else after the first touch. Tested by phone.js with real touch events.
 - **Chat** (T, online only; T fast-forwards only offline): `PANEL_CHAT` keeps the game keys off while the line is typed in
   `DrawChat` (`ui.c`, which also keeps the last 8 lines). A guest sends `M_CHAT` to the host; `HostChat` (`mp.c`) tidies it
   (`ChatTidy`: control characters out, 100 bytes, cut on a whole UTF-8 letter), allows two a second per slot, and sends
@@ -350,8 +356,9 @@ no sound files. Read the comment at the top of the file and the notation comment
 
 ## Ideas that were mentioned and not done
 
-- Firefox works (the owner tested it); Safari is untested. Touch/gamepad input does not exist; the owner wants to decide
-  the phone controls after the graphics work is done (the UI already fits phones and takes taps on its buttons).
+- Firefox works (the owner tested it); Safari is untested. No gamepad input. Touch controls cover only the main keys
+  (the owner asked for move, attack, parry, use, crouch, look, first/third person; Bag and Menu were added so the
+  panels and the pause menu can be reached): no chat, torch, map or weapon keys on touch.
 - Graphics, later steps (the owner wants CC0-only art, a 25-50 MB download at most, and to weigh each effect's cost):
   buildings and props, then effects (wind on cloth and palms, light shafts, ambient occlusion, water reflections,
   sharper far shadows, grass and reeds). Animals are still boxes and blobs. Free model and texture sites (poly.pizza,

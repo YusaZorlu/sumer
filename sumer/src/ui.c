@@ -1159,13 +1159,13 @@ void DrawUI(void)
     }
     if (NetSilence() > 3.0f)
         CenterText("The host's game is not answering. Is its browser tab hidden or closed?", (float)sw / 2, 210, 18, C_BAD);
-    if (OnWeb() && G.panel == PANEL_NONE && !PointerCaptured())
+    if (OnWeb() && G.panel == PANEL_NONE && !PointerCaptured() && !TouchOn())
         CenterText("Click the game to look around with the mouse", (float)sw / 2, (float)sh / 2 + 70, 20, C_GOLD);
 
     if (G.msgT > 0) DrawMessage(sw);
 
     DrawChat(sh);
-    Text(Online() ? "H  controls    T  chat" : "H  controls", 12, (float)sh - 22, 14, Fade(RAYWHITE, 0.6f));
+    if (!TouchOn()) Text(Online() ? "H  controls    T  chat" : "H  controls", 12, (float)sh - 22, 14, Fade(RAYWHITE, 0.6f));
 
     switch (G.panel) {
     case PANEL_BAG:     DrawBagPanel(); break;
@@ -1180,6 +1180,7 @@ void DrawUI(void)
     default: break;
     }
 
+    DrawTouch();
     if (G.hurtT > 0) DrawRectangle(0, 0, sw, sh, Fade(RED, G.hurtT * 0.6f));
     DrawHitLights(sw, sh);
     if (G.sleeping) {

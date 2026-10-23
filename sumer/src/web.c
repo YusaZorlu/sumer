@@ -214,6 +214,12 @@ void PageFrame(void)
     pointer.x = (float)EM_ASM_DOUBLE({ return Module.sumerPointerX; });
     pointer.y = (float)EM_ASM_DOUBLE({ return Module.sumerPointerY; });
 #endif
+    TouchFrame();
+}
+
+void ForgetClick(void)
+{
+    presses = 0;
 }
 
 // Where the pointer is on the screen for menus and buttons. In a browser the page's own record, which
@@ -242,6 +248,13 @@ Vector2 MouseLook(void)
 bool MousePressed(int button)
 {
     return IsMouseButtonPressed(button) || ((presses >> button) & 1);
+}
+
+// A mouse button held down. raylib counts a finger on a touch screen as the left button; that is not one
+// (touch.c reads the fingers).
+bool MouseHeld(int button)
+{
+    return IsMouseButtonDown(button) && GetTouchPointCount() == 0;
 }
 
 // A key raylib saw go down this frame, or one pressed and let go again since the last frame: on a slow
