@@ -59,7 +59,7 @@ rooms are its own, apart from the usual game's on port 8000.
   the townsfolk, villagers, traders and wild animals (partridges too) stay. About 150 more trees stand out in the land. Houses
   are of no use: beds, storerooms, querns, troughs, workbenches and ovens do nothing. Nothing is saved.
 - **Rules**: PvP and combat mode are always on (the best gear, unlimited arrows).
-- **A round**: everyone gathers in the city; the host presses **Enter** to start a round. Each player is set
+- **A round**: everyone gathers in the city; the host presses **Enter** (on a touch screen, **Use** with nothing at hand) to start a round. Each player is set
   down somewhere out in the land, 240-420 m from the city and far from the others, with full health.
 - **The sandstorm**: a wall of dust that closes in on the city in stages. It waits a minute, closes to
   380 m (4 minutes in), rests, to 190 m, rests, to 90 m, rests, and ends 25 m round the middle of the city
@@ -133,8 +133,19 @@ The browser version needs WebGL 2 (any current Chrome, Edge, Firefox; Safari 15 
 `?gfx=low` or `?gfx=classic` to the page's address overrides the setting for that visit.
 
 **On a phone**, held sideways: the title screen, the HUD and every panel shrink to fit a short screen and are
-drawn with the screen's own pixels, so the letters stay sharp; taps work on every button. There are no
-touch controls yet: play with a keyboard (a USB-C or Bluetooth one works; WASD to move, arrow keys to turn).
+drawn with the screen's own pixels, so the letters stay sharp; taps work on every button. Touch controls,
+see-through so the world shows behind them, cover the main keys:
+
+- **Moving**: the stick under the left thumb (it starts wherever the thumb comes down on the left side); pushed
+  to its edge you run.
+- **Looking around**: drag a finger anywhere else (aiming the bow too, while the other thumb holds Attack).
+- **Attack** (strike; hold to draw the bow, let go to shoot), **Parry**, **Use** (E), **Crouch**, **View** (first
+  person or behind you).
+- **Bag** (baskets and equipment, where you also change weapons) and **Menu** at the top; with a panel open the
+  Menu button reads **Close** and puts it away.
+
+The rest (torch, map, chat, music and graphics keys) needs a keyboard, or the buttons in the Esc menu and the bag.
+The controls show on a phone or tablet, and on any other screen once a finger touches the game.
 
 ## Controls
 
@@ -666,6 +677,7 @@ Animals you kill stay gone until the next spring, when their herds are full agai
 | `src/net.c` | The WebSocket to `server.py` |
 | `src/lobby.c` | The browser's title screen: name, play alone, host, join, the hosting rules, music, graphics, language |
 | `src/web.c` | What differs in a browser: saves in IndexedDB, the captured mouse, taps and clicks, the canvas's pixels, phone detection |
+| `src/touch.c` | Touch controls: the stick, looking by dragging, the see-through buttons |
 | `src/shell.html` | The page around the browser game |
 | `src/music.c` | The synthesizer, the three tunes, picking the mood, the volume, feeding the audio stream |
 | `src/sfx.c` | Sound effects made at start (swishes, thuds, a clang, a thump, an arrow's crack), their volume |

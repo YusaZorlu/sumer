@@ -30,6 +30,7 @@ static int Esc(char *dst, int size, const char *src)
 }
 
 const char *ChatLast(void);
+bool TouchButtonAt(int b, Vector2 *c, float *r);
 
 EMSCRIPTEN_KEEPALIVE const char *TestInfo(void)
 {
@@ -53,6 +54,14 @@ EMSCRIPTEN_KEEPALIVE const char *TestInfo(void)
         n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%s{\"s\":%d,\"name\":\"%s\",\"x\":%.2f,\"z\":%.2f,\"flags\":%d,\"health\":%.0f,\"wanted\":%.0f,\"kills\":%d,\"deaths\":%d,\"mark\":%d}",
                       first ? "" : ",", s, name, p->pos.x, p->pos.z, p->flags, p->health, p->wanted, p->kills, p->deaths, p->mark);
         first = 0;
+    }
+    n += snprintf(buf + n, sizeof(buf) - (size_t)n, "],\"aim\":%d,\"moving\":%d,\"stick\":[%.2f,%.2f],\"touch\":%d,\"fp\":%d,\"crouch\":%d,\"parry\":%.2f,\"buttons\":[", G.player.aiming, G.player.moving, TouchStick().x, TouchStick().y, TouchOn(), G.firstPerson,
+                  G.player.crouching, G.parryT + G.parryCool);
+    for (int b = 0; b < TB_COUNT; b++) {
+        Vector2 c;
+        float r;
+        bool shown = TouchButtonAt(b, &c, &r);
+        n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%s[%.1f,%.1f,%.1f]", b ? "," : "", shown ? c.x : -1, shown ? c.y : -1, shown ? r : 0);
     }
     n += snprintf(buf + n, sizeof(buf) - (size_t)n, "],\"animals\":[");
     for (int i = 0; i < G.animalCount; i++) {

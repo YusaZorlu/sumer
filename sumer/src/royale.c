@@ -367,7 +367,9 @@ void RoyaleUpdate(float dt)
     if (out && (MousePressed(MOUSE_BUTTON_LEFT) || KeyPressed(KEY_SPACE)) && G.panel == PANEL_NONE) NextWatched(1);
 
     bool host = G.role != NET_CLIENT;
-    if (host && G.panel == PANEL_NONE && rnd.phase != RP_RUN && KeyPressed(KEY_ENTER) && !IsKeyDown(KEY_LEFT_ALT) && !IsKeyDown(KEY_RIGHT_ALT))
+    // On a touch screen, Use with nothing to use at hand.
+    bool tapStart = TouchPressed(TB_USE) && G.target.kind == TGT_NONE;
+    if (host && G.panel == PANEL_NONE && rnd.phase != RP_RUN && ((KeyPressed(KEY_ENTER) && !IsKeyDown(KEY_LEFT_ALT) && !IsKeyDown(KEY_RIGHT_ALT)) || tapStart))
         RoyaleStart();
     if (!host || rnd.phase != RP_RUN) return;
 
@@ -490,7 +492,8 @@ void DrawRoyaleHUD(float sw, float sh)
     if (rnd.phase == RP_WAIT || rnd.phase == RP_OVER) {
         const char *done = rnd.phase == RP_OVER ? (rnd.winner >= 0 ? TextFormat(L("%s won the round. "), G.peers[rnd.winner].name)
                                                                            : L("The storm won the round. ")) : "";
-        line = G.role != NET_CLIENT ? TextFormat(L("%sBattle royale: %d players here. Press Enter to start a round."), done, players)
+        line = G.role != NET_CLIENT ? TextFormat(L(TouchOn() ? "%sBattle royale: %d players here. Tap Use to start a round."
+                                                           : "%sBattle royale: %d players here. Press Enter to start a round."), done, players)
                                     : TextFormat(L("%sBattle royale: %d players here. Waiting for the host to start a round."), done, players);
     } else {
         float wait = StormWait(rnd.t);

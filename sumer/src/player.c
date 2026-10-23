@@ -27,6 +27,14 @@ static void UpdateLook(Player *p, float dt, bool input)
         p->yaw -= md.x * sens;
         p->pitch += md.y * sens;
     }
+    // A finger dragged over the screen turns the view (by the UI's units it moved).
+    Vector2 td = TouchLook();
+    if (input && (td.x != 0 || td.y != 0)) {
+        float sens = p->aiming ? 0.003f : 0.006f;
+        if (G.followArrow >= 0 && fabsf(td.x) + fabsf(td.y) > 6.0f) G.followArrow = -1;
+        p->yaw -= td.x * sens;
+        p->pitch += td.y * sens;
+    }
     if (input) {
         if (IsKeyDown(KEY_LEFT)) p->yaw += 1.8f * dt;
         if (IsKeyDown(KEY_RIGHT)) p->yaw -= 1.8f * dt;
@@ -37,7 +45,7 @@ static void UpdateLook(Player *p, float dt, bool input)
         if (G.firstPerson && wheel < 0) G.firstPerson = false;
         else if (!G.firstPerson && wheel > 0 && p->dist <= 3.0f) G.firstPerson = true;
         else if (!G.firstPerson) p->dist = Clamp(p->dist - wheel * 1.2f, 3.0f, 22.0f);
-        if (KeyPressed(KEY_P)) {
+        if (KeyPressed(KEY_P) || TouchPressed(TB_VIEW)) {
             G.firstPerson = !G.firstPerson;
             SaveGamePrefs();
         }
@@ -68,7 +76,7 @@ static void UpdateTorch(float dt, bool input)
         G.torchOn = !G.torchOn;
         Say(G.torchOn ? "You take up your torch (B). It burns from the evening on." : "You put your torch away (B).");
     }
-    bool aimWanted = G.equip == EQ_BOW && input && G.cursorLocked && IsMouseButtonDown(MOUSE_BUTTON_LEFT);
+    bool aimWanted = G.equip == EQ_BOW && input && ((G.cursorLocked && MouseHeld(MOUSE_BUTTON_LEFT)) || TouchDown(TB_ATTACK));
     bool bow = G.equip == EQ_BOW && (p->aiming || aimWanted);
     bool goal = G.torchOn && G.climb == 0 && !G.sleeping && !bow;
     if (bow) G.torchHeld = false;
@@ -108,14 +116,15 @@ void SetEquip(int eq)
 
 static void HandleBow(Player *p, float dt, bool input)
 {
-    bool held = input && G.equip == EQ_BOW && G.cursorLocked && IsMouseButtonDown(MOUSE_BUTTON_LEFT);
+    bool held = input && G.equip == EQ_BOW && G.cursorLocked && MouseHeld(MOUSE_BUTTON_LEFT);
 
     // The ignored click is over once the button is up and the frame that saw it press has passed: a
     // quick tap is already up in the frame that sees it, and must not strike then either.
     if (G.ignoreClick) {
-        if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !MousePressed(MOUSE_BUTTON_LEFT)) G.ignoreClick = false;
+        if (!MouseHeld(MOUSE_BUTTON_LEFT) && !MousePressed(MOUSE_BUTTON_LEFT)) G.ignoreClick = false;
         held = false;
     }
+    if (input && G.equip == EQ_BOW && TouchDown(TB_ATTACK)) held = true;
 
     if (held) {
         if (!p->aiming && G.quiver == 0 && !G.combat) {
@@ -271,8 +280,10 @@ void UpdatePlayer(float dt, bool input)
     if (G.swingCool > 0) G.swingCool -= dt;
     if (G.parryT > 0) G.parryT -= dt;
     if (G.parryCool > 0) G.parryCool -= dt;
-    bool strike = G.cursorLocked && MousePressed(MOUSE_BUTTON_LEFT) && !G.ignoreClick;
-    bool parry = (G.cursorLocked && MousePressed(MOUSE_BUTTON_RIGHT)) || KeyPressed(KEY_Q);
+    // The mouse fights only once the game has it (a tap on a touch screen is a click too).
+    bool mouse = G.cursorLocked && PointerCaptured();
+    bool strike = (mouse && MousePressed(MOUSE_BUTTON_LEFT) && !G.ignoreClick) || TouchPressed(TB_ATTACK);
+    bool parry = (mouse && MousePressed(MOUSE_BUTTON_RIGHT)) || KeyPressed(KEY_Q) || TouchPressed(TB_PARRY);
     bool armed = G.equip == EQ_MELEE || G.equip == EQ_MACE, mace = G.equip == EQ_MACE;
     // The war mace is too heavy to parry with; only the melee weapon turns blows aside.
     if (input && mace && parry) Say("The war mace is too heavy to parry with. Parry with your melee weapon (2).");
@@ -301,8 +312,10 @@ void UpdatePlayer(float dt, bool input)
         if (IsKeyDown(KEY_S)) move = Vector3Subtract(move, fwd);
         if (IsKeyDown(KEY_D)) move = Vector3Add(move, right);
         if (IsKeyDown(KEY_A)) move = Vector3Subtract(move, right);
+        Vector2 st = TouchStick();
+        move = Vector3Add(move, Vector3Add(Vector3Scale(fwd, st.y), Vector3Scale(right, st.x)));
 
-        if (KeyPressed(KEY_C)) p->crouching = !p->crouching;
+        if (KeyPressed(KEY_C) || TouchPressed(TB_CROUCH)) p->crouching = !p->crouching;
         if (KeyPressed(KEY_SPACE) && !p->aiming) {
             if (p->crouching) p->crouching = false;
             else if (p->grounded) {
@@ -317,7 +330,7 @@ void UpdatePlayer(float dt, bool input)
     p->moving = Vector3Length(move) > 0.01f;
     if (p->moving || p->aiming) G.followArrow = -1;
     bool hungry = G.food <= 0.0f;
-    bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+    bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT) || TouchRun();
     p->running = p->moving && input && shift && !p->crouching && !p->aiming && !hungry;
 
     float speed = hungry ? HUNGRY_SPEED : WALK_SPEED;
