@@ -399,6 +399,8 @@ const Phrase TR_PHRASES[] = {
     { "Bag", "Çanta" },
     { "Menu", "Menü" },
     { "Close", "Kapat" },
+    { "Jump", "Zıpla" },
+    { "Weapon", "Silah" },
     { "H  controls    T  chat", "H  kontroller    T  sohbet" },
     { "save", "kaydet" },
     { "fullscreen", "tam ekran" },

@@ -113,6 +113,9 @@ in `src/game.h`) holds the whole world.
   TouchStick/TouchRun/TouchLook` next to its keys. raylib counts any finger as the left mouse button, so the mouse bow
   draw uses `MouseHeld` and mouse strikes need the pointer captured. A tap on a touch button is not also a menu click
   (`ForgetClick`). Shown where `OnPhone()`, else after the first touch. Tested by phone.js with real touch events.
+  On a phone (`OnPhone()`) the game never asks for pointer lock (`LockMouse`, `WantPointer`) and never pauses on
+  losing focus or the pointer: Firefox for Android granted the lock on a tap and its loss paused the game. The
+  title screen's name field opens `window.prompt` (`AskText`) on a touch screen, the only way to a phone keyboard.
 - **Chat** (T, online only; T fast-forwards only offline): `PANEL_CHAT` keeps the game keys off while the line is typed in
   `DrawChat` (`ui.c`, which also keeps the last 8 lines). A guest sends `M_CHAT` to the host; `HostChat` (`mp.c`) tidies it
   (`ChatTidy`: control characters out, 100 bytes, cut on a whole UTF-8 letter), allows two a second per slot, and sends
@@ -357,8 +360,8 @@ no sound files. Read the comment at the top of the file and the notation comment
 ## Ideas that were mentioned and not done
 
 - Firefox works (the owner tested it); Safari is untested. No gamepad input. Touch controls cover only the main keys
-  (the owner asked for move, attack, parry, use, crouch, look, first/third person; Bag and Menu were added so the
-  panels and the pause menu can be reached): no chat, torch, map or weapon keys on touch.
+  (the owner asked for move, attack, parry, use, crouch, look, first/third person, then jump and previous/next
+  weapon; Bag and Menu were added so the panels and the pause menu can be reached): no chat, torch or map keys on touch.
 - Graphics, later steps (the owner wants CC0-only art, a 25-50 MB download at most, and to weigh each effect's cost):
   buildings and props, then effects (wind on cloth and palms, light shafts, ambient occlusion, water reflections,
   sharper far shadows, grass and reeds). Animals are still boxes and blobs. Free model and texture sites (poly.pizza,

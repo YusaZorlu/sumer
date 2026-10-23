@@ -441,7 +441,8 @@ static bool HandleWindow(void)
     if (KeyPressed(KEY_F11) || (alt && KeyPressed(KEY_ENTER))) ToggleBorderlessWindowed();
 
     bool focused = IsWindowFocused(), paused = false;
-    if (!focused && G.wasFocused && G.panel == PANEL_NONE) {
+    // A phone does not pause by itself: a tap can move the focus, and leaving the browser stops the game anyway.
+    if (!focused && G.wasFocused && G.panel == PANEL_NONE && !OnPhone()) {
         SetPanel(PANEL_PAUSE);
         paused = true;
     }
@@ -449,7 +450,7 @@ static bool HandleWindow(void)
 
     if (!OnWeb()) return paused;
     bool captured = PointerCaptured();
-    if (G.wasCaptured && !captured && G.panel == PANEL_NONE) {
+    if (G.wasCaptured && !captured && G.panel == PANEL_NONE && !OnPhone()) {
         SetPanel(PANEL_PAUSE);
         paused = true;
         // The Esc that released the mouse can reach the game a frame later; it must not close the menu again.
@@ -489,7 +490,7 @@ static void HandleMenus(bool paused)
         Say("The %s won't trade with you now.", L(G.traders[G.trader].name));
     }
     if (G.panel == PANEL_NONE && !G.cursorLocked && MousePressed(MOUSE_BUTTON_LEFT)) {
-        DisableCursor();
+        LockMouse(true);
         WantPointer(true);
         G.cursorLocked = true;
         G.ignoreClick = true;
@@ -593,6 +594,8 @@ void GameUpdate(void)
         if (KeyPressed(KEY_TWO)) SetEquip(EQ_MELEE);
         if (KeyPressed(KEY_THREE)) SetEquip(EQ_MACE);
         if (KeyPressed(KEY_FOUR)) SetEquip(EQ_NONE);
+        if (TouchPressed(TB_PREV)) NextEquip(-1);
+        if (TouchPressed(TB_NEXT)) NextEquip(1);
         if (KeyPressed(KEY_M)) G.mapZoom = (G.mapZoom + 1) % 3;
         if (KeyPressed(KEY_N)) {
             static const char *const says[4] = { "Music off.", "Music low.", "Music medium.", "Music high." };

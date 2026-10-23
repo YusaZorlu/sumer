@@ -25,12 +25,12 @@ void SetPanel(Panel p)
     G.player.aiming = false;
     G.player.draw = 0;
     if (p == PANEL_NONE) {
-        DisableCursor();
+        LockMouse(true);
         WantPointer(true);
         G.cursorLocked = true;
         G.ignoreClick = true;
     } else {
-        EnableCursor();
+        LockMouse(false);
         WantPointer(false);
         G.cursorLocked = false;
     }

@@ -664,6 +664,7 @@ void Fmt(char *buf, int size, const char *fmt, ...) PRINTF_LIKE(3, 4);
 
 void UpdatePlayer(float dt, bool input);
 void SetEquip(int eq);
+void NextEquip(int step);
 void StartClimb(int ladder, bool up);
 const char *EquipName(int eq);
 void FollowCamera(float dt);
@@ -882,9 +883,11 @@ bool OnWeb(void);
 bool OnPhone(void);
 void ForgetClick(void);
 bool MouseHeld(int button);
+void LockMouse(bool lock);
+bool AskText(const char *title, const char *now, char *out, int size);
 
 // Touch controls (touch.c).
-enum { TB_ATTACK, TB_PARRY, TB_USE, TB_CROUCH, TB_VIEW, TB_BAG, TB_MENU, TB_COUNT };
+enum { TB_ATTACK, TB_PARRY, TB_USE, TB_CROUCH, TB_VIEW, TB_BAG, TB_MENU, TB_JUMP, TB_PREV, TB_NEXT, TB_COUNT };
 bool TouchOn(void);
 void TouchFrame(void);
 bool TouchDown(int b);

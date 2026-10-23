@@ -68,7 +68,7 @@ void OpenLobby(const char *why)
     open = true;
     stage = LOBBY_MENU;
     snprintf(note, sizeof(note), "%s", why && why[0] ? L(why) : "");
-    EnableCursor();
+    LockMouse(false);
     WantPointer(false);
 }
 
@@ -216,6 +216,16 @@ void LobbyFrame(void)
     if (stage == LOBBY_MENU && ((int)(GetTime() * 2.0) & 1)) {
         Vector2 m = MeasureTextEx(GameFont(), name, 20, 2);
         DrawRectangle((int)(field.x + 12 + m.x), (int)field.y + 8, 2, 22, text);
+    }
+    // A phone has no keys to type with: a tap on the field opens the browser's box, and with it the keyboard.
+    if (stage == LOBBY_MENU && TouchOn() && CheckCollisionPointRec(UiMouse(), field) && MousePressed(MOUSE_BUTTON_LEFT)) {
+        char got[64];
+        if (AskText(L("Your name"), name, got, (int)sizeof(got))) {
+            int n = 0;
+            for (const char *c = got; *c && n < NAME_LEN - 1; c++)
+                if (NameChar((unsigned char)*c) && !(*c == ' ' && n == 0)) name[n++] = *c;
+            name[n] = '\0';
+        }
     }
     y += 50;
     Label(TextFormat(L("Room: %s   (add ?room=a-name to the address for a game of your own)"), room), x, y, 15, dim);
