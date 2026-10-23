@@ -23,9 +23,9 @@ static const Vector2 EAST[] = {
 static const Vector2 HERDERS[] = { { 0, 80 }, { 0, 172 }, { -24, 228 }, { -46, 296 }, { -58, 360 }, { HERDERS_X, HERDERS_Z - 14 } };
 // Out of the north gate, between the barley fields, up to the ford.
 static const Vector2 NORTH[] = { { -37, -86 }, { -37, -165 }, { -50, -250 }, { -75, -340 }, { -100, -430 }, { -120, -490 }, { -128, -512 } };
-// From the west gate along the bank and over the harbor bridge to the ferry.
+// From the west gate along the bank and over the harbor bridge to the old landing stage.
 static const Vector2 FERRY[] = { { -96, 26 }, { -112, 22 }, { -115, 4 }, { -114, -24 }, { -112, -40 }, { -119, -56 }, { -124, -62 } };
-// Tracks on the far bank, from the ford down to the ferry landing and on to the south.
+// Tracks on the far bank, from the ford down to the old landing stage and on to the south.
 static const Vector2 WEST_NORTH[] = { { -152, -512 }, { -176, -470 }, { -186, -380 }, { -182, -280 }, { -172, -170 }, { -163, -100 }, { -153, -66 } };
 static const Vector2 WEST_SOUTH[] = { { -153, -58 }, { -170, -10 }, { -188, 80 }, { -205, 180 }, { -228, 280 }, { -262, 400 }, { -290, 520 } };
 
@@ -183,7 +183,7 @@ void BuildRoads(void)
 
 void DrawRoads(void)
 {
-    const Color dirt = { 168, 148, 110, 255 };
+    const Color dirt = { 168, 148, 110, 254 };   // alpha 254: the shaders lay the roads' packed earth on it
     Vector3 eye = G.cam.position, fwd = Vector3Normalize(Vector3Subtract(G.cam.target, eye));
     bool all = DrawingAll();
 

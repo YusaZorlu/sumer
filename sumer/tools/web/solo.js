@@ -1,4 +1,4 @@
-const { launch, open, info, cmd, waitFor, sleep } = require('./lib.js');
+const { launch, open, info, cmd, consoleCmd, waitFor, sleep } = require('./lib.js');
 const SHOTS = __dirname + '/shots/';
 (async () => {
   const browser = await launch();
@@ -6,12 +6,35 @@ const SHOTS = __dirname + '/shots/';
   await sleep(3000);
   await page.screenshot({ path: SHOTS + 'lobby.png' });
   const t0 = Date.now();
-  await page.goto('http://localhost:8123/?auto=solo&name=Ann');
+  await page.goto('http://localhost:8123/?auto=solo&name=Ann&dev=1');
   const s = await waitFor(page, 'solo game', i => i.lobby === 0 && i.role === 0);
   console.log('solo started in', Date.now() - t0, 'ms', JSON.stringify({ x: s.x, z: s.z, day: s.day, hour: s.hour, msg: s.msg }));
   await sleep(4000);
   const fps = await page.evaluate(async () => { let n = 0; const t = performance.now(); await new Promise(r => { function f() { n++; if (performance.now() - t < 3000) requestAnimationFrame(f); else r(); } requestAnimationFrame(f); }); return n / 3; });
   console.log('frames per second (headless software GL):', fps.toFixed(1));
   await page.screenshot({ path: SHOTS + 'solo.png' });
+
+  // The dev console, opened and typed into with real keys, and driven from a test.
+  let failed = 0;
+  const check = (ok, what) => { console.log((ok ? 'PASS: ' : 'FAIL: ') + what); if (!ok) failed++; };
+  await page.mouse.click(640, 360);
+  await sleep(300);
+  await page.keyboard.press('Backquote');
+  await sleep(300);
+  check((await info(page)).panel === 8, 'the ` key opens the dev console');
+  await page.keyboard.type('hour 22');
+  await page.keyboard.press('Enter');
+  await sleep(300);
+  const h = (await info(page)).hour;
+  check(Math.abs(h - 22) < 0.2, `typing "hour 22" and Enter sets the hour (${h.toFixed(2)})`);
+  await page.screenshot({ path: SHOTS + 'console.png' });
+  await page.keyboard.press('Escape');
+  await sleep(300);
+  check((await info(page)).panel === 0, 'Esc closes it');
+  const said = await consoleCmd(page, 'tp 50 60');
+  const at = await info(page);
+  check(Math.abs(at.x - 50) < 0.5 && Math.abs(at.z - 60) < 0.5, `TestConsole("tp 50 60") moves the player: "${said}"`);
+  console.log(failed ? failed + ' FAILED' : 'ALL PASSED');
   await browser.close();
+  if (failed) process.exit(1);
 })().catch(e => { console.error(e); process.exit(1); });

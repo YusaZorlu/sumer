@@ -4,6 +4,20 @@
 #include <string.h>
 #include <emscripten/emscripten.h>
 
+void LobbyAgain(void);
+void MusicGains(float *out);
+
+// The music's gains, for the music tests: the made tunes (day, fight, night), then the places' tracks
+// (city, village, open land, ziggurat; negative while that stream is paused).
+EMSCRIPTEN_KEEPALIVE const char *TestMusic(void)
+{
+    static char buf[200];
+    float g[7];
+    MusicGains(g);
+    snprintf(buf, sizeof(buf), "[%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f]", g[0], g[1], g[2], g[3], g[4], g[5], g[6]);
+    return buf;
+}
+
 static int Esc(char *dst, int size, const char *src)
 {
     int n = 0;
@@ -15,19 +29,23 @@ static int Esc(char *dst, int size, const char *src)
     return n;
 }
 
+const char *ChatLast(void);
+bool TouchButtonAt(int b, Vector2 *c, float *r);
+
 EMSCRIPTEN_KEEPALIVE const char *TestInfo(void)
 {
     static char buf[32768];
-    char msg[300], failure[300];
+    char msg[300], failure[300], chat[300];
     Esc(msg, sizeof(msg), G.msgT > 0 ? G.msg : "");
+    Esc(chat, sizeof(chat), ChatLast());
     Esc(failure, sizeof(failure), NetFailure());
     int n = snprintf(buf, sizeof(buf),
         "{\"lobby\":%d,\"role\":%d,\"self\":%d,\"players\":%d,\"day\":%d,\"hour\":%.3f,\"x\":%.2f,\"y\":%.2f,\"z\":%.2f,"
-        "\"yaw\":%.3f,\"pitch\":%.3f,\"captured\":%d,\"lang\":%d,\"health\":%.1f,\"food\":%.1f,\"quiver\":%d,\"henCount\":%d,\"eggs\":%d,\"waitBed\":%d,\"sleeping\":%d,\"panel\":%d,\"swing\":%.2f,\"cool\":%.2f,\"equip\":%d,\"pvp\":%d,\"combat\":%d,\"mood\":%d,\"musicLevel\":%d,\"hitLight\":[%.2f,%.2f,%.2f,%.2f],\"flinch\":%.2f,\"villagers\":%d,\"gfx\":%d,\"ui\":%.3f,\"shake\":%.2f,"
-        "\"target\":%d,\"targetIndex\":%d,\"promptE\":\"%s\",\"msg\":\"%s\",\"failure\":\"%s\",\"peers\":[",
+        "\"yaw\":%.3f,\"pitch\":%.3f,\"captured\":%d,\"lang\":%d,\"health\":%.1f,\"food\":%.1f,\"quiver\":%d,\"henCount\":%d,\"eggs\":%d,\"waitBed\":%d,\"sleeping\":%d,\"panel\":%d,\"swing\":%.2f,\"cool\":%.2f,\"equip\":%d,\"pvp\":%d,\"combat\":%d,\"mood\":%d,\"place\":%d,\"musicLevel\":%d,\"hitLight\":[%.2f,%.2f,%.2f,%.2f],\"flinch\":%.2f,\"villagers\":%d,\"gfx\":%d,\"ui\":%.3f,\"shake\":%.2f,"
+        "\"target\":%d,\"targetIndex\":%d,\"promptE\":\"%s\",\"msg\":\"%s\",\"chat\":\"%s\",\"failure\":\"%s\",\"peers\":[",
         InLobby(), G.role, G.self, PlayerCount(), G.day, G.hour, G.player.pos.x, G.player.pos.y, G.player.pos.z,
-        G.player.yaw, G.player.pitch, PointerCaptured(), Language(), G.health, G.food, G.quiver, G.henCount, G.coopEggs, G.waitBed, G.sleeping, G.panel, G.swingT, G.swingCool, G.equip, G.pvp, G.combat, MusicMood(), MusicLevel(), G.hitLight[0], G.hitLight[1], G.hitLight[2], G.hitLight[3], G.flinchT, G.villagerCount, GfxTier(), UiScale(), G.shakeT, G.target.kind, G.target.index,
-        G.promptE, msg, failure);
+        G.player.yaw, G.player.pitch, PointerCaptured(), Language(), G.health, G.food, G.quiver, G.henCount, G.coopEggs, G.waitBed, G.sleeping, G.panel, G.swingT, G.swingCool, G.equip, G.pvp, G.combat, MusicMood(), MusicPlace(), MusicLevel(), G.hitLight[0], G.hitLight[1], G.hitLight[2], G.hitLight[3], G.flinchT, G.villagerCount, GfxTier(), UiScale(), G.shakeT, G.target.kind, G.target.index,
+        G.promptE, msg, chat, failure);
     for (int s = 0, first = 1; s < MAX_PLAYERS; s++) {
         const Peer *p = &G.peers[s];
         if (!p->active) continue;
@@ -36,6 +54,14 @@ EMSCRIPTEN_KEEPALIVE const char *TestInfo(void)
         n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%s{\"s\":%d,\"name\":\"%s\",\"x\":%.2f,\"z\":%.2f,\"flags\":%d,\"health\":%.0f,\"wanted\":%.0f,\"kills\":%d,\"deaths\":%d,\"mark\":%d}",
                       first ? "" : ",", s, name, p->pos.x, p->pos.z, p->flags, p->health, p->wanted, p->kills, p->deaths, p->mark);
         first = 0;
+    }
+    n += snprintf(buf + n, sizeof(buf) - (size_t)n, "],\"aim\":%d,\"moving\":%d,\"stick\":[%.2f,%.2f],\"touch\":%d,\"fp\":%d,\"crouch\":%d,\"parry\":%.2f,\"buttons\":[", G.player.aiming, G.player.moving, TouchStick().x, TouchStick().y, TouchOn(), G.firstPerson,
+                  G.player.crouching, G.parryT + G.parryCool);
+    for (int b = 0; b < TB_COUNT; b++) {
+        Vector2 c;
+        float r;
+        bool shown = TouchButtonAt(b, &c, &r);
+        n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%s[%.1f,%.1f,%.1f]", b ? "," : "", shown ? c.x : -1, shown ? c.y : -1, shown ? r : 0);
     }
     n += snprintf(buf + n, sizeof(buf) - (size_t)n, "],\"animals\":[");
     for (int i = 0; i < G.animalCount; i++) {
@@ -70,7 +96,7 @@ EMSCRIPTEN_KEEPALIVE void TestCommand(int cmd, float a, float b)
     Player *p = &G.player;
     switch (cmd) {
     case 1:
-        p->pos = (Vector3){ a, GroundHeight(a, b, 50.0f), b };
+        p->pos = (Vector3){ a, LandingHeight(a, b), b };
         p->vy = 0;
         break;
     case 2: Interact(false); break;
@@ -104,6 +130,16 @@ EMSCRIPTEN_KEEPALIVE void TestCommand(int cmd, float a, float b)
     case 13: HurtPlayer(a, BY_NONE); break;
     case 14: SetEquip((int)a); break;
     case 15: SetPanel((Panel)(int)a); break;
+    case 16: SfxSetLevel((int)a); break;
+    case 17: G.quit = true; break;
+    case 18: LobbyAgain(); break;
     default: break;
     }
+}
+
+// Runs a dev console command (see src/console.c) and returns what it said last.
+EMSCRIPTEN_KEEPALIVE const char *TestConsole(const char *cmd)
+{
+    ConsoleRun(cmd);
+    return ConsoleLines() ? ConsoleLine(ConsoleLines() - 1) : "";
 }

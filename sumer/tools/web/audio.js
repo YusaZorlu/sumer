@@ -64,6 +64,18 @@ function check(ok, what) { console.log((ok ? 'PASS: ' : 'FAIL: ') + what); if (!
   // This browser renders about 5 frames a second and Web Audio shares its thread, so a few empty blocks are normal here.
   check(m.zero <= Math.max(2, m.calls * 0.05), `almost no dropouts while the music plays (${m.zero} empty callbacks of ${m.calls}, at about 5 frames a second)`);
   check(s.mood === 0, 'mood is the morning tune at noon (' + s.mood + ')');
+  check(s.place === 0, 'at home in the city the city\'s recorded track plays (' + s.place + ')');
+
+  // The music of places: a village's track among the herders, the open land's out on the plain.
+  await cmd(page, 1, -62, 418);
+  s = await waitFor(page, 'village music', x => x.place === 1, 10000).catch(() => info(page));
+  await sleep(4000); m = await rms();
+  check(s.place === 1 && m.rms > 0.003, `in the herders' village its track plays (place ${s.place}, rms ${m.rms.toFixed(4)})`);
+  await cmd(page, 1, 300, -100);
+  s = await waitFor(page, 'open land music', x => x.place === 2, 10000).catch(() => info(page));
+  await sleep(4000); m = await rms();
+  check(s.place === 2 && m.rms > 0.003, `out on the plain the open land's track plays (place ${s.place}, rms ${m.rms.toFixed(4)})`);
+  await cmd(page, 1, 20, 26);
 
   await cmd(page, 9, 23.5);
   s = await waitFor(page, 'night mood', x => x.mood === 2, 20000).catch(() => info(page));
@@ -73,9 +85,26 @@ function check(ok, what) { console.log((ok ? 'PASS: ' : 'FAIL: ') + what); if (!
 
   await cmd(page, 13, 3);
   s = await waitFor(page, 'fight mood', x => x.mood === 1, 5000).catch(() => info(page));
-  check(s.mood === 1, 'mood is the fight tune after a blow (' + s.mood + ')');
+  check(s.mood === 1 && s.place === -1, 'mood is the fight tune after a blow, no place track (' + s.mood + ', ' + s.place + ')');
   await sleep(6000); m = await rms();
   check(m.rms > 0.01, `the fight tune is louder than silence (rms ${m.rms.toFixed(4)})`);
+
+  // Leaving for the title in the middle of a fight and coming back: the fight is over, only the place's
+  // track plays (the tunes used to pile up).
+  await cmd(page, 17);
+  await waitFor(page, 'the title', x => x.lobby === 1, 30000).catch(() => null);
+  await sleep(1500);
+  await cmd(page, 18);
+  await waitFor(page, 'the game again', x => x.lobby === 0, 60000).catch(() => null);
+  const gains = async () => JSON.parse(await page.evaluate(() => Module.ccall('TestMusic', 'string', [], [])));
+  let g = null;
+  for (let t0 = Date.now(); Date.now() - t0 < 40000; await sleep(1000)) {
+    g = await gains();
+    if (g[0] === 0 && g[1] === 0 && g[2] === 0) break;
+  }
+  s = await info(page);
+  check(s.mood !== 1 && s.place === 0 && g && g[0] === 0 && g[1] === 0 && g[2] === 0 && g[3] > 0 && Math.max(g[4], g[5], g[6]) < 0.05,
+        `back in the game after leaving a fight: no fight, only the city's track (mood ${s.mood}, place ${s.place}, gains ${JSON.stringify(g)})`);
 
   // N cycles the volume: medium -> high -> off -> low -> medium
   const before = (await info(page)).musicLevel;
@@ -87,7 +116,8 @@ function check(ok, what) { console.log((ok ? 'PASS: ' : 'FAIL: ') + what); if (!
   s = await info(page);
   check(s.musicLevel === (before + 2) % 4, `N again (${s.musicLevel}, "${s.msg}")`);
   while ((await info(page)).musicLevel !== 0) { await page.keyboard.press('KeyN'); await sleep(300); }
-  await sleep(1500); await rms(); await sleep(3000); m = await rms();
+  // The volume eases down over a few frames, and this browser draws about five a second: give it time.
+  await sleep(3000); await rms(); await sleep(3000); m = await rms();
   check(m.rms < 0.001, `with the music off the output goes quiet (rms ${m.rms.toFixed(4)})`);
   while ((await info(page)).musicLevel !== 2) { await page.keyboard.press('KeyN'); await sleep(300); }
 

@@ -46,9 +46,11 @@ static const AnimalDef DEFS[AN_TYPES] = {
     [AN_GOOSE]   = { "Goose", { 0.3f, 0.3f, 0.55f }, 0.24f, { 204, 200, 190, 255 }, { 90, 90, 92, 255 },
                      0.8f, 5.5f, 15.0f, 1.6f, 0.45f, 12, IT_GOOSE, true, true },
     [AN_WOLF]    = { "Wolf", { 0.36f, 0.46f, 1.1f }, 0.55f, { 128, 122, 112, 255 }, { 72, 68, 62, 255 },
-                     1.8f, 7.0f, 22.0f, 1.0f, 1.0f, 60, IT_WOLF, false, false },
+                     1.8f, 7.0f, 22.0f, 1.0f, 1.0f, 78, IT_WOLF, false, false },
     [AN_SNAKE]   = { "Snake", { 0.14f, 0.1f, 1.2f }, 0.0f, { 112, 118, 64, 255 }, { 62, 68, 40, 255 },
                      0.7f, 3.2f, 3.0f, 1.0f, 1.0f, 16, IT_NONE, false, false },
+    [AN_PARTRIDGE] = { "Partridge", { 0.2f, 0.19f, 0.3f }, 0.08f, { 150, 128, 100, 255 }, { 96, 84, 70, 255 },
+                     0.7f, 6.5f, 14.0f, 1.8f, 0.45f, 6, IT_PARTRIDGE, false, true },
 };
 
 // City side: herds near and far, five packs of four (one denning by the far-north ford).
@@ -79,6 +81,11 @@ static const Herd HERDS[] = {
     { AN_WOLF,    4, { 160, -480, 340, 380 } },
     { AN_WOLF,    4, { 160, 120, 340, 380 } },
     { AN_WOLF,    5, { -534, -150, 300, 400 } },
+    // Coveys of partridges in four of the woods (kept last: saves count animals by their place here).
+    { AN_PARTRIDGE, 3, { 272, 152, 56, 56 } },
+    { AN_PARTRIDGE, 3, { 445, -75, 60, 60 } },
+    { AN_PARTRIDGE, 3, { -280, -330, 60, 60 } },
+    { AN_PARTRIDGE, 3, { -454, 266, 68, 68 } },
 };
 #define HERD_COUNT ((int)(sizeof(HERDS) / sizeof(HERDS[0])))
 
@@ -249,6 +256,24 @@ static bool Wounded(const Animal *a)
     return (float)a->hp < 0.45f * (float)DEFS[a->type].hp;
 }
 
+// No other of its pack on its feet within 40 m.
+static bool Lone(const Animal *a)
+{
+    for (int i = 0; i < G.animalCount; i++) {
+        const Animal *m = &G.animals[i];
+        if (m != a && m->active && m->state != ST_DEAD && m->state != ST_FLEE && m->type == a->type && m->pack == a->pack &&
+            XZDist(m->pos, a->pos) < 40.0f)
+            return false;
+    }
+    return true;
+}
+
+// A wolf runs from a fight only when it is badly hurt and has no pack beside it; with the pack it fights on.
+static bool Beaten(const Animal *a)
+{
+    return Wounded(a) && Lone(a);
+}
+
 static void StartleMates(const Animal *a);
 
 // Prey bolts; a charging boar keeps charging and a snake slips away into other grass.
@@ -286,23 +311,51 @@ static void Wander(Animal *a, const AnimalDef *d, float dt)
     a->speed = (GetRandomValue(0, 2) == 0) ? 0.0f : d->walk;
 }
 
+static bool Blocked(const Animal *a, const AnimalDef *d, float nx, float nz)
+{
+    bool airborne = d->flies && a->pos.y > RestHeight(a->pos.x, a->pos.z) + 0.8f;
+    return (!airborne && ((!d->swims && InWater(nx, nz)) || SolidAt(nx, nz, 0.4f))) ||
+           InsideWalls(nx, nz, a->type == AN_WOLF ? -8.0f : -4.0f) || fabsf(nx) > WORLD_LIMIT || fabsf(nz) > WORLD_LIMIT;
+}
+
+// Goes the way it heads; a tree, a rock or the water in the way, it tries ever wider side steps, first
+// to its own side (half the animals go round left, half right), and turns away only when none is free.
+// Two animals on the ground never stand in one another: the nearer is eased aside.
 static void Step(Animal *a, const AnimalDef *d, float dt)
 {
+    static const float tries[7] = { 0.0f, 0.6f, -0.6f, 1.2f, -1.2f, 1.8f, -1.8f };
     if (a->speed <= 0) return;
 
-    float nx = a->pos.x + sinf(a->heading) * a->speed * dt;
-    float nz = a->pos.z + cosf(a->heading) * a->speed * dt;
-    bool airborne = d->flies && a->pos.y > RestHeight(a->pos.x, a->pos.z) + 0.8f;
-    bool blocked = !airborne && ((!d->swims && InWater(nx, nz)) || SolidAt(nx, nz, 0.4f));
-    if (InsideWalls(nx, nz, a->type == AN_WOLF ? -8.0f : -4.0f)) blocked = true;
-
-    if (blocked || fabsf(nx) > WORLD_LIMIT || fabsf(nz) > WORLD_LIMIT) {
+    float side = ((a - G.animals) & 1) ? 1.0f : -1.0f, step = a->speed * dt;
+    int k = 0;
+    for (; k < 7; k++) {
+        float h = a->heading + tries[k] * side;
+        float nx = a->pos.x + sinf(h) * step, nz = a->pos.z + cosf(h) * step;
+        if (Blocked(a, d, nx, nz)) continue;
+        a->pos.x = nx;
+        a->pos.z = nz;
+        if (k > 2 && a->state != ST_HUNT) a->heading = h;   // a hunter heads for its prey again next step
+        break;
+    }
+    if (k == 7) {
         a->heading += (a->state == ST_FLEE) ? 1.2f : PI * 0.6f;
         return;
     }
-    a->pos.x = nx;
-    a->pos.z = nz;
-    if (!d->flies) a->pos.y = TerrainHeight(nx, nz);
+    if (!d->flies) {
+        for (int i = 0; i < G.animalCount; i++) {
+            const Animal *o = &G.animals[i];
+            if (o == a || !o->active || o->state == ST_DEAD || DEFS[o->type].flies) continue;
+            float dx = a->pos.x - o->pos.x, dz = a->pos.z - o->pos.z, dd = dx * dx + dz * dz;
+            float gap = (d->body.z + DEFS[o->type].body.z) * 0.45f;
+            if (dd >= gap * gap || dd < 1e-6f) continue;
+            float dist = sqrtf(dd), nx = o->pos.x + dx / dist * gap, nz = o->pos.z + dz / dist * gap;
+            if (!Blocked(a, d, nx, nz)) {
+                a->pos.x = nx;
+                a->pos.z = nz;
+            }
+        }
+        a->pos.y = TerrainHeight(a->pos.x, a->pos.z);
+    }
 }
 
 // A pack or a sounder keeps together: one that strays too far from the first of its group goes back to it.
@@ -324,7 +377,7 @@ static void HuntPack(const Animal *leader, int s)
 {
     for (int i = 0; i < G.animalCount; i++) {
         Animal *m = &G.animals[i];
-        if (m->active && m->type == AN_WOLF && m->pack == leader->pack && m->state != ST_DEAD && !Wounded(m) &&
+        if (m->active && m->type == AN_WOLF && m->pack == leader->pack && m->state != ST_DEAD && !Beaten(m) &&
             Vector3Distance(m->pos, leader->pos) < 45.0f) {
             m->state = ST_HUNT;
             m->timer = 0;
@@ -347,7 +400,8 @@ static Vector3 AwayFromPlayers(const Animal *a)
 static float WolfRange(int s, bool night)
 {
     int f = G.peers[s].flags;
-    return (night ? 38.0f : 22.0f) * ((f & PF_CROUCH) ? 0.6f : (f & PF_RUN) ? 1.3f : 1.0f);
+    // A torch in the dark is seen from far off.
+    return (night ? 38.0f : 22.0f) * ((f & PF_CROUCH) ? 0.6f : (f & PF_RUN) ? 1.3f : 1.0f) * ((f & PF_TORCH) ? 1.6f : 1.0f);
 }
 
 // Hunts a player who is alone outside the walls, or one who shot at the pack; bites, circles, bites again.
@@ -377,9 +431,9 @@ static void UpdateWolf(Animal *a, const AnimalDef *d, float dt)
         Vector3 to = p ? Vector3Subtract(p->pos, a->pos) : (Vector3){ 0, 0, 0 };
         to.y = 0;
         float dist = Vector3Length(to);
-        if (!p || !PlayerAwake(s) || (!p->alone && p->aggro <= 0) || dist > 80.0f || Intimidated(s) || Wounded(a)) {
+        if (!p || !PlayerAwake(s) || (!p->alone && p->aggro <= 0) || dist > 80.0f || Intimidated(s) || Beaten(a)) {
             a->state = ST_FLEE;
-            a->timer = Wounded(a) ? 12.0f : 6.0f;
+            a->timer = Beaten(a) ? 12.0f : 6.0f;
             if (p && Intimidated(s) && dist < 30.0f && Warn(s, WARN_WOLF, 30.0f)) SayTo(s, "The wolves shy away from your wolf-pelt cloak.");
             break;
         }
@@ -621,6 +675,7 @@ void UpdateWildlife(float dt)
         int s = NearestPlayer(a->pos, &dist);
         Vector3 away = AwayFromPlayers(a);
         float range = d->sense * (s >= 0 ? PlayerStance(s) : 1.0f) * Lerp(1.0f, d->nightSense, G.night);
+        if (s >= 0 && (G.peers[s].flags & PF_TORCH)) range *= Lerp(1.0f, 2.2f, G.night);   // prey sees a torch coming
 
         if (dist < range) a->awareness += d->wariness * (1.0f - dist / range) * 1.8f * dt;
         else a->awareness -= 0.15f * dt;
@@ -671,6 +726,20 @@ static void Kill(Animal *a)
     a->speed = 0;
     a->timer = a->type == AN_SNAKE ? 60.0f : 240.0f;
     a->awareness = 0;
+}
+
+// Dev console: every beast on its feet within r of p falls dead; how many.
+int KillAnimalsNear(Vector3 p, float r)
+{
+    int n = 0;
+    for (int i = 0; i < G.animalCount; i++) {
+        Animal *a = &G.animals[i];
+        if (!a->active || a->state == ST_DEAD || XZDist(a->pos, p) > r) continue;
+        a->hp = 0;
+        Kill(a);
+        n++;
+    }
+    return n;
 }
 
 // An arrow that hisses past or lands close by: wolves come for the archer, everything else runs.
@@ -842,10 +911,10 @@ static void HitAnimal(Animal *a, int damage)
         Say(near ? "The snake strikes back!" : "The snake slithers away through the grass.");
     } else if (a->type == AN_WOLF) {
         if (PlayerIn(s)) G.peers[s].aggro = 90.0f;
-        if (Wounded(a)) {
+        if (Beaten(a)) {
             a->state = ST_FLEE;
             a->timer = 12.0f;
-            Say("Wolf badly wounded. It limps away.");
+            Say("Wolf badly wounded and alone. It limps away.");
         } else {
             HuntPack(a, s);
             Say("The wolf turns on you, and its pack with it!");
@@ -1028,8 +1097,11 @@ Vector3 AimPoint(void)
 
     float t = RayTerrain(o, dir, best);
     if (t > tmin && t < best) best = t;
-    for (int i = 0; i < G.boxCount; i++) {
-        const Box *b = &G.boxes[i];
+    int n;
+    Vector3 end = Vector3Add(o, Vector3Scale(dir, best));
+    const int *near = BoxesNear(o.x, o.z, end.x, end.z, &n);
+    for (int k = 0; k < n; k++) {
+        const Box *b = &G.boxes[near[k]];
         if (!b->solid || b->water) continue;
         BoundingBox bb = { Vector3Subtract(b->pos, Vector3Scale(b->size, 0.5f)),
                            Vector3Add(b->pos, Vector3Scale(b->size, 0.5f)) };
@@ -1168,6 +1240,28 @@ static void DrawAnimal(const Animal *a)
         }
         break;
     }
+    case AN_PARTRIDGE: {
+        // A round grey-brown bird, chestnut bars on its flanks, a small head close to the body; it bursts up
+        // on whirring wings when flushed.
+        const Color rust = { 160, 84, 50, 255 }, beak = { 110, 100, 80, 255 };
+        Part(-0.04f, lh / 2, 0, 0.02f, lh, 0.02f, rust);
+        Part(0.04f, lh / 2, 0, 0.02f, lh, 0.02f, rust);
+        Blob(0, lh + bh / 2, 0, bw, bh, bl, d->coat);
+        for (int s = -1; s <= 1; s += 2) Part(s * bw * 0.46f, lh + bh * 0.45f, -0.02f, 0.02f, 0.07f, 0.14f, rust);
+        Blob(0, top + 0.02f, bl / 2 - 0.02f, 0.12f, 0.12f, 0.13f, d->dark);
+        Part(0, top + 0.02f, bl / 2 + 0.06f, 0.025f, 0.02f, 0.05f, beak);
+        if (a->state == ST_FLEE) {
+            float flap = sinf(t * 30.0f) * 40.0f;
+            for (int s = -1; s <= 1; s += 2) {
+                rlPushMatrix();
+                rlTranslatef(s * bw / 2, top - 0.04f, 0);
+                rlRotatef(s * flap, 0, 0, 1);
+                Part(s * 0.13f, 0, 0, 0.26f, 0.02f, 0.16f, d->dark);
+                rlPopMatrix();
+            }
+        }
+        break;
+    }
     case AN_GOOSE: {
         const Color beak = { 230, 130, 40, 255 };
         Part(-0.07f, lh / 2, 0, 0.04f, lh, 0.04f, beak);
@@ -1213,7 +1307,7 @@ void DrawWildlife(void)
     for (int i = 0; i < G.animalCount; i++) {
         const Animal *a = &G.animals[i];
         float d = XZDist(a->pos, G.cam.position);
-        if (!a->active || d > 260.0f || (a->type == AN_SNAKE && d > 110.0f)) continue;
+        if (!a->active || d > 260.0f || (a->type == AN_SNAKE && d > 110.0f) || !InView(a->pos, 2.5f)) continue;
         LightFor(a->pos);
         if (a->type == AN_SNAKE) DrawSnakeGrass(a, i);
         SetDrawFlash(FlashAt(a->pos));

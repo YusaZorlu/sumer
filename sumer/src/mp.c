@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define NET_VERSION   7
+#define NET_VERSION   12
 #define SNAP_EVERY    0.1f
 #define STATE_EVERY   0.066f
 #define RECORD_EVERY  15.0f
@@ -20,8 +20,8 @@
 #define MSG_MAX       60000
 #define MAX_ARGS      REQ_ARGS
 
-enum { M_HELLO = 1, M_WELCOME, M_ROSTER, M_SNAP, M_STATE, M_REQ, M_REPLY, M_EVENT, M_RECORD, M_KICK };
-enum { EV_HURT = 1, EV_SAY, EV_HIT, EV_IMPACT, EV_SKIP, EV_PARRIED, EV_STUNNED, EV_LANDED };
+enum { M_HELLO = 1, M_WELCOME, M_ROSTER, M_SNAP, M_STATE, M_REQ, M_REPLY, M_EVENT, M_RECORD, M_KICK, M_CHAT };
+enum { EV_HURT = 1, EV_SAY, EV_HIT, EV_IMPACT, EV_SKIP, EV_PARRIED, EV_STUNNED, EV_LANDED, EV_CHAT };
 
 typedef struct { int id, kind, args[MAX_ARGS], nargs; float age; } Pending;
 typedef struct { Vector3 pos; Color color; int count; float speed; bool ring; } Effect;
@@ -225,7 +225,7 @@ static void WriteSnapshot(Writer *w, bool slow)
         W8(w, Byte(p->swingT * 200.0f));
         W16(w, (unsigned)p->flags);
         W8(w, (unsigned)p->equip); W8(w, (unsigned)p->weapon); W8(w, (unsigned)p->bow); W8(w, (unsigned)p->armor);
-        W8(w, (unsigned)p->style);
+        W16(w, (unsigned)p->style);
         W16(w, (unsigned)Clamp(p->wanted, 0.0f, 65000.0f));
         W8(w, p->alone ? 1u : 0u);
         W8(w, (unsigned)(p->kills < 255 ? p->kills : 255));
@@ -370,7 +370,7 @@ static void ReadSnapshot(Reader *r)
         float facing = RAngle(r), stride = RF(r), draw = (float)R8(r) / 255.0f, health = (float)R8(r);
         float swing = (float)R8(r) / 200.0f;
         int flags = (int)R16(r), equip = (int)R8(r), weapon = (int)R8(r), bow = (int)R8(r), armor = (int)R8(r);
-        unsigned char style = (unsigned char)R8(r);
+        unsigned short style = (unsigned short)R16(r);
         float wanted = (float)R16(r);
         bool alone = R8(r) != 0;
         int kills = (int)R8(r);
@@ -388,8 +388,8 @@ static void ReadSnapshot(Reader *r)
             p->shown = pos;
             p->shownFacing = facing;
         }
+        PeerMoved(p, pos);
         p->active = true;
-        p->pos = pos;
         p->facing = facing;
         p->stride = stride;
         p->draw = draw;
@@ -403,7 +403,6 @@ static void ReadSnapshot(Reader *r)
         p->style = style;
         p->wanted = wanted;
         p->alone = alone;
-        p->heard = 0;
     }
 
     int animals = (int)R8(r);
@@ -568,6 +567,9 @@ static void Ease(float dt)
     for (int i = 0; i < G.animalCount; i++) {
         Animal *a = &G.animals[i];
         if (!a->active) continue;
+        // Carried on the way it was going at the speed it had, so it runs on smoothly between pictures.
+        a->netPos.x += sinf(a->netHeading) * a->speed * dt;
+        a->netPos.z += cosf(a->netHeading) * a->speed * dt;
         a->pos = Vector3Lerp(a->pos, a->netPos, k);
         float d = atan2f(sinf(a->netHeading - a->heading), cosf(a->netHeading - a->heading));
         a->heading += d * k;
@@ -748,6 +750,50 @@ void LocalSayV(const char *fmt, va_list ap)
     SayArg args[MAX_ARGS];
     int n = TakeArgs(fmt, ap, args, MAX_ARGS);
     Show(fmt, args, n);
+}
+
+// A line of chat fit to pass on: no control characters, no spaces at the ends, and if too long cut short
+// on a whole letter. Its length; 0 when nothing is left to say.
+int ChatTidy(const char *in, char *out, int size)
+{
+    int n = 0;
+    for (const unsigned char *c = (const unsigned char *)in; *c && n < size - 1; c++)
+        if (*c >= 32 && *c != 127 && (*c != ' ' || n > 0)) out[n++] = (char)*c;
+    int lead = n;
+    while (lead > 0 && ((unsigned char)out[lead - 1] & 0xC0) == 0x80) lead--;
+    if (lead > 0 && (unsigned char)out[lead - 1] >= 0xC0) {
+        unsigned b = (unsigned char)out[lead - 1];
+        if (n - (lead - 1) < (b >= 0xF0 ? 4 : b >= 0xE0 ? 3 : 2)) n = lead - 1;
+    }
+    while (n > 0 && out[n - 1] == ' ') n--;
+    out[n] = '\0';
+    return n;
+}
+
+// The host passes a line on to everyone and shows it itself, tidied, and at most two a second from anyone.
+static void HostChat(int slot, const char *raw)
+{
+    static double last[MAX_PLAYERS];
+    char text[CHAT_MAX + 1];
+    if (!ChatTidy(raw, text, (int)sizeof(text)) || GetTime() - last[slot] < 0.5) return;
+    last[slot] = GetTime();
+    Writer w = Begin(M_EVENT);
+    W8(&w, EV_CHAT);
+    W8(&w, (unsigned)slot);
+    WStr(&w, text);
+    SendAll(&w);
+    ChatAdd(slot, text);
+}
+
+void NetChat(const char *text)
+{
+    if (G.role == NET_HOST) {
+        HostChat(G.self, text);
+    } else if (G.role == NET_CLIENT) {
+        Writer w = Begin(M_CHAT);
+        WStr(&w, text);
+        SendHost(&w);
+    }
 }
 
 static void ShowSay(Reader *r)
@@ -1040,7 +1086,7 @@ static void HostHello(int net, Reader *r)
     W8(&w, (unsigned)slot);
     W32(&w, (unsigned)worldSign);
     WStr(&w, myRoom);
-    W8(&w, (G.pvp ? 1u : 0u) | (G.combat ? 2u : 0u));
+    W8(&w, (G.pvp ? 1u : 0u) | (G.combat ? 2u : 0u) | (G.devTools ? 4u : 0u));
     W8(&w, rec ? 1u : 0u);
     if (rec) WriteRecord(&w, rec);
     WF(&w, p->pos.x);
@@ -1076,9 +1122,9 @@ static void HostState(int slot, Reader *r)
     Vector3 pos = RVec(r);
     float facing = RAngle(r), stride = RF(r), draw = (float)R8(r) / 255.0f, health = (float)R8(r), swing = (float)R8(r) / 200.0f;
     int flags = (int)R16(r), equip = (int)R8(r), weapon = (int)R8(r), bow = (int)R8(r), armor = (int)R8(r);
-    unsigned char style = (unsigned char)R8(r);
+    unsigned short style = (unsigned short)R16(r);
     if (r->bad || !isfinite(pos.x) || fabsf(pos.x) > WORLD_HALF + 5 || fabsf(pos.z) > WORLD_HALF + 5) return;
-    p->pos = pos;
+    PeerMoved(p, pos);
     p->facing = facing;
     p->stride = stride;
     p->draw = draw;
@@ -1090,7 +1136,6 @@ static void HostState(int slot, Reader *r)
     p->bow = bow;
     p->armor = armor;
     p->style = style;
-    p->heard = 0;
 }
 
 static void HostRecord(int slot, Reader *r)
@@ -1115,7 +1160,7 @@ static void SendState(void)
     W8(&w, Byte(p->swingT * 200.0f));
     W16(&w, (unsigned)p->flags);
     W8(&w, (unsigned)p->equip); W8(&w, (unsigned)p->weapon); W8(&w, (unsigned)p->bow); W8(&w, (unsigned)p->armor);
-    W8(&w, (unsigned)p->style);
+    W16(&w, (unsigned)p->style);
     SendHost(&w);
 }
 
@@ -1139,6 +1184,7 @@ static void ResetSession(void)
     effectCount = 0;
     snapT = stateT = recordT = saveT = lostT = 0;
     snapCount = 0;
+    ChatClear();
 }
 
 bool NetBegin(bool host, const char *name, const char *room)
@@ -1172,12 +1218,13 @@ static void Drop(const char *why)
 }
 
 // The rules the host picked on the title screen for the game it opens.
-static bool rulePvp = true, ruleCombat;
+static bool rulePvp = true, ruleCombat, ruleDev;
 
-void NetRules(bool pvp, bool combat)
+void NetRules(bool pvp, bool combat, bool dev)
 {
     rulePvp = pvp;
     ruleCombat = pvp && combat;
+    ruleDev = dev;
 }
 
 // A player's kills and deaths at other players' hands, and the ratio: "K/D 3/1 (3.0)".
@@ -1215,6 +1262,7 @@ static void StartHosting(void)
     if (mine) ApplyRecord(mine);
     G.pvp = rulePvp;
     G.combat = ruleCombat;
+    G.devTools = ruleDev;
     if (G.pvp) {
         RemoveZigguratGuards();
         G.player.pos = CitySpawn(0);
@@ -1250,6 +1298,7 @@ static void StartGuest(Reader *r)
     G.role = NET_CLIENT;
     G.pvp = (rules & 1u) != 0;
     G.combat = (rules & 2u) != 0;
+    G.devTools = (rules & 4u) != 0;
     G.self = G.actor = slot;
     memset(G.peers, 0, sizeof(G.peers));
     G.peers[slot] = (Peer){ .active = true };
@@ -1358,6 +1407,12 @@ static void HostFrame(float dt)
         case M_STATE:  HostState(slot, &r); break;
         case M_REQ:    HostRequest(slot, &r); break;
         case M_RECORD: HostRecord(slot, &r); break;
+        case M_CHAT: {
+            char text[256];
+            RStr(&r, text, (int)sizeof(text));
+            if (!r.bad) HostChat(slot, text);
+            break;
+        }
         default: break;
         }
     }
@@ -1411,6 +1466,13 @@ static void ClientEvent(Reader *r)
         break;
     }
     case EV_SAY: ShowSay(r); break;
+    case EV_CHAT: {
+        int slot = (int)R8(r);
+        char text[CHAT_MAX + 1];
+        RStr(r, text, (int)sizeof(text));
+        if (!r->bad && slot < MAX_PLAYERS) ChatAdd(slot, text);
+        break;
+    }
     case EV_HIT:
         G.hitMarkT = 0.3f;
         if (R8(r) == 1) SfxPlay(SFX_ARROW, 0.8f);

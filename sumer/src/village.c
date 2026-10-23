@@ -64,6 +64,7 @@ static const Offer OVEN[] = {
     { IT_DOUGH,   1, IT_NONE, 0, OUT_ITEM, IT_BREAD, 2, 0, 0 },
     { IT_FISH,    2, IT_NONE, 0, OUT_ITEM, IT_GRILLED, 2, 0, 0 },
     { IT_GOOSE,   1, IT_NONE, 0, OUT_ITEM, IT_ROAST, 2, 0, 0 },
+    { IT_PARTRIDGE, 2, IT_NONE, 0, OUT_ITEM, IT_ROAST, 1, 0, 0 },
     { IT_GAZELLE, 1, IT_NONE, 0, OUT_ITEM, IT_ROAST, 3, 0, 0 },
     { IT_ONAGER,  1, IT_NONE, 0, OUT_ITEM, IT_ROAST, 4, 0, 0 },
     { IT_BOAR,    1, IT_NONE, 0, OUT_ITEM, IT_ROAST, 5, 0, 0 },
@@ -135,6 +136,89 @@ static Vector3 HPoint(const Frame *f, float lx, float lz)
     return (Vector3){ p.x, 0, p.y };
 }
 
+// The alehouse by the potters' quarter, its door on the street: the oldest such place we know of stood in
+// the potters' district of Lagash, about 2700 BC. Two long tables with benches where townsfolk sit and
+// talk, a counter with jars and cups at the back, lamps on the walls. No weapons are carried inside.
+static const Frame ALE = { -69.0f, 17.5f, 3 };   // door on its local -x side, toward the street (+z)
+#define ALE_W 10.0f
+#define ALE_D 14.0f
+
+bool InAlehouse(Vector3 p)
+{
+    return p.y < 3.0f && fabsf(p.x - ALE.cx) < ALE_D / 2 - 0.4f && fabsf(p.z - ALE.cz) < ALE_W / 2 - 0.4f;
+}
+
+static void BuildAlehouse(void)
+{
+    const float W = ALE_W, D = ALE_D, H = 3.2f, t = 0.5f, gap = 1.8f, seg = (D - 2 * t - gap) / 2;
+    const Color wall = { 204, 176, 132, 255 }, band = { 150, 70, 50, 255 }, bench = { 120, 86, 56, 255 }, cup = { 176, 104, 70, 255 };
+    const Frame *f = &ALE;
+    HBox(f, 0, 0, -D / 2 + t / 2, W, H, t, wall, true);
+    HBox(f, 0, 0, D / 2 - t / 2, W, H, t, wall, true);
+    HBox(f, W / 2 - t / 2, 0, 0, t, H, D - 2 * t, wall, true);
+    HBox(f, -W / 2 + t / 2, 0, -gap / 2 - seg / 2, t, H, seg, wall, true);
+    HBox(f, -W / 2 + t / 2, 0, gap / 2 + seg / 2, t, H, seg, wall, true);
+    HBox(f, -W / 2 + t / 2, H - 0.6f, 0, t + 0.1f, 0.6f, gap, wall, false);
+    HBox(f, 0, 0, 0, W - 2 * t, 0.04f, D - 2 * t, COL_BRICK, false);
+    HBox(f, -W / 2 + t / 2, H - 0.45f, 0, t + 0.12f, 0.26f, D + 0.1f, band, false);
+    HBox(f, 0, H, 0, W + 0.3f, 0.35f, D + 0.3f, Mix(wall, COL_MUD_DARK, 0.3f), true);
+    for (int k = -3; k <= 3; k++) HBox(f, -W / 2 - 0.25f, H - 0.12f, 1.9f * (float)k, 0.5f, 0.14f, 0.14f, COL_PALM_TRUNK, false);
+    // A reed awning over the door and two jars beside it, so the street can tell what the house is.
+    HBox(f, -W / 2 - 0.8f, 2.4f, 0, 1.4f, 0.06f, 3.2f, COL_STRAW, false);
+    for (int s = -1; s <= 1; s += 2) {
+        HBox(f, -W / 2 - 1.4f, 0, 1.5f * (float)s, 0.09f, 2.45f, 0.09f, COL_WOOD, false);
+        HShape(f, -W / 2 - 0.4f, -0.05f, 1.6f * (float)s, 0.55f, 0.75f, 0.55f, COL_POT, true, SHAPE_BLOB);
+    }
+    // Two long tables, benches along both sides, bowls, cups and bread on them.
+    for (int s = -1; s <= 1; s += 2) {
+        float z = 3.3f * (float)s;
+        HBox(f, -0.6f, 0, z, 4.4f, 0.55f, 0.9f, COL_WOOD, true);
+        HBox(f, -0.6f, 0, z - 0.85f, 4.4f, 0.32f, 0.35f, bench, false);
+        HBox(f, -0.6f, 0, z + 0.85f, 4.4f, 0.32f, 0.35f, bench, false);
+        for (int k = 0; k < 4; k++) {
+            float x = -2.3f + 1.15f * (float)k;
+            HShape(f, x, 0.55f, z + ((k & 1) ? 0.22f : -0.22f), 0.11f, 0.1f, 0.11f, cup, false, SHAPE_CYL);
+        }
+        HShape(f, -0.6f, 0.55f, z, 0.32f, 0.14f, 0.26f, (Color){ 196, 150, 90, 255 }, false, SHAPE_BLOB);
+        HShape(f, 0.4f, 0.55f, z, 0.3f, 0.12f, 0.3f, COL_POT, false, SHAPE_CYL);
+    }
+    // The counter at the back: big jars stoppered with clay, a shelf of cups.
+    HBox(f, W / 2 - 1.6f, 0, 0, 0.7f, 1.0f, 4.0f, COL_MUD_DARK, true);
+    for (int k = 0; k < 4; k++) {
+        HShape(f, W / 2 - 0.8f, -0.1f, -2.4f + 1.6f * (float)k, 0.8f, 1.25f, 0.8f, COL_POT, true, SHAPE_BLOB);
+        HShape(f, W / 2 - 0.8f, 1.08f, -2.4f + 1.6f * (float)k, 0.36f, 0.2f, 0.36f, COL_CLAY_DARK, false, SHAPE_CYL);
+    }
+    HBox(f, W / 2 - t - 0.12f, 1.7f, 0, 0.24f, 0.06f, 3.0f, COL_WOOD, false);
+    for (int k = 0; k < 6; k++) HShape(f, W / 2 - t - 0.12f, 1.76f, -1.25f + 0.5f * (float)k, 0.12f, 0.14f, 0.12f, cup, false, SHAPE_CYL);
+    for (int s = -1; s <= 1; s += 2) {
+        Vector3 lamp = HPoint(f, 1.0f, (D / 2 - t - 0.15f) * (float)s);
+        AddTorch(lamp.x, 2.3f, lamp.z, false);
+    }
+    KeepOut(ALE.cx - D / 2 - 1.5f, ALE.cz - W / 2 - 0.5f, ALE.cx + D / 2 + 1.5f, ALE.cz + W / 2 + 2.2f);
+}
+
+// Townsfolk at the alehouse's tables, four to a table, facing across it; the keeper behind the counter.
+static void AlehouseFolk(void)
+{
+    static const Color robes[] = { { 196, 170, 120, 255 }, { 150, 110, 80, 255 }, { 120, 140, 160, 255 }, { 210, 196, 170, 255 }, { 170, 110, 80, 255 } };
+    int n = 0;
+    for (int s = -1; s <= 1; s += 2)
+        for (int side = -1; side <= 1; side += 2)
+            for (int k = 0; k < 2; k++) {
+                float lx = -1.9f + 2.4f * (float)k + 0.4f * (float)((s + side) / 2), lz = 3.3f * (float)s + 0.85f * (float)side;
+                Vector3 p = HPoint(&ALE, lx, lz);
+                // Facing the table: local -z or +z, turned by the frame (rot 3 turns local z into world x).
+                float face = side > 0 ? -PI / 2 : PI / 2;
+                int i = AddNpc(NPC_CIVILIAN, p, p, 0, robes[n++ % 5], face);
+                if (i >= 0) {
+                    G.villagers[i].crouch = true;
+                    G.villagers[i].talks = true;
+                }
+            }
+    Vector3 keeper = HPoint(&ALE, ALE_W / 2 - 1.1f, 0);
+    AddNpc(NPC_CIVILIAN, keeper, keeper, 0, (Color){ 160, 70, 52, 255 }, 0);
+}
+
 // Walls tinted toward the owner's color, a band of it under the roofline and over the door.
 static void BuildHouse(int h)
 {
@@ -156,6 +240,9 @@ static void BuildHouse(int h)
     HBox(&f, 0, H - 0.42f, -D / 2 + t / 2, W + 0.08f, 0.24f, t + 0.08f, band, false);
     HBox(&f, 0, H - 0.42f, D / 2 - t / 2, W + 0.08f, 0.24f, t + 0.08f, band, false);
     HBox(&f, W / 2 - t / 2, H - 0.42f, 0, t + 0.08f, 0.24f, D - 2 * t, band, false);
+    // A flat roof of mud on palm beams; the camera stays under it inside, as in the ziggurat's top room.
+    HBox(&f, 0, H, 0, W + 0.3f, 0.35f, D + 0.3f, Mix(wall, COL_MUD_DARK, 0.3f), true);
+    for (int k = -2; k <= 2; k++) HBox(&f, -W / 2 - 0.25f, H - 0.12f, 1.8f * (float)k, 0.5f, 0.14f, 0.14f, COL_PALM_TRUNK, false);
 
     st[0] = HPoint(&f, 3.0f, -3.0f);
     HBox(&f, 3.0f, 0, -3.0f, 1.3f, 0.45f, 2.3f, COL_WOOD, true);
@@ -236,7 +323,7 @@ void RemoveZigguratGuards(void)
     int kept = 0;
     for (int i = 0; i < G.villagerCount; i++) {
         const Villager *v = &G.villagers[i];
-        if (v->kind == NPC_GUARD && v->a.y >= 5.0f && v->b.y >= 5.0f) continue;
+        if (v->kind == NPC_GUARD && v->a.y >= 5.0f && v->b.y >= 5.0f && !v->crouch) continue;
         G.villagers[kept++] = G.villagers[i];
     }
     G.villagerCount = kept;
@@ -302,8 +389,8 @@ static void BuildMarket(void)
 int AddNpc(NpcKind kind, Vector3 a, Vector3 b, float speed, Color robe, float face)
 {
     if (G.villagerCount >= MAX_VILLAGERS) return -1;
-    G.villagers[G.villagerCount] = (Villager){ a, b, speed > 0 ? RandF(0, 1) : 0.0f, 1.0f, speed, robe, kind, face, 0.0f, false, false,
-                                               { .hp = 0 }, -1, 0.0f, 0.0f, -1, -1, 0.0f, 0.0f, 0 };
+    G.villagers[G.villagerCount] = (Villager){ a, b, speed > 0 ? RandF(0, 1) : 0.0f, 1.0f, speed, robe, kind, face, 0.0f, false, false, false,
+                                               { .hp = 0 }, -1, 0.0f, 0.0f, -1, -1, 0.0f, 0.0f, 0, false };
     return G.villagerCount++;
 }
 
@@ -485,7 +572,32 @@ static void BuildTempleStaff(void)
     AddNpc(NPC_CLERIC, (Vector3){ -6, 16.5f, -40.5f }, (Vector3){ 6, 16.5f, -40.5f }, 0.4f, cleric, 0);
     AddNpc(NPC_CLERIC, (Vector3){ 24, 0, -28 }, (Vector3){ 24, 0, -58 }, 0.6f, cleric, 0);
     AddNpc(NPC_CLERIC, (Vector3){ 9, 0, -15.5f }, (Vector3){ 14, 0, -15.5f }, 0.4f, cleric, 0);
-    AddNpc(NPC_CLERIC, (Vector3){ -9, 7, -41 }, (Vector3){ -3, 7, -41 }, 0.4f, cleric, 0);
+    AddNpc(NPC_CLERIC, (Vector3){ -2.2f, 7, -41 }, (Vector3){ 2.2f, 7, -41 }, 0.4f, cleric, 0);
+
+    // Inside the ziggurat. Middle terrace: two guards off duty at supper in their room (they stay in a PvP
+    // game, where only the guards on duty go), two scribes in the tablet room, two worshippers kneeling
+    // before the god. Ground floor: the granary's keeper and a porter, the treasurer at his balance, and
+    // people going from stall to stall in the market hall.
+    static const struct { NpcKind kind; float ax, ay, az, bx, bz, speed, face; bool sit; } inside[] = {
+        { NPC_GUARD, -8.95f, 7, -40.6f, -8.95f, -40.6f, 0, PI / 2, true },
+        { NPC_GUARD, -6.85f, 7, -40.4f, -6.85f, -40.4f, 0, -PI / 2 - 0.4f, true },
+        { NPC_CLERIC, 7.4f, 7, -45.6f, 7.4f, -45.6f, 0, PI / 2, true },
+        { NPC_CLERIC, 8.1f, 7, -36.8f, 8.1f, -43.6f, 0.3f, 0, false },
+        { NPC_CIVILIAN, -0.8f, 7, -46.6f, -0.8f, -46.6f, 0, PI, true },
+        { NPC_CIVILIAN, 0.9f, 7, -46.9f, 0.9f, -46.9f, 0, PI, true },
+        { NPC_CLERIC, -12.6f, 0, -44.6f, -16.4f, -36.0f, 0.3f, 0, false },
+        { NPC_CIVILIAN, -10.6f, 0, -44.7f, -13.8f, -40.2f, 0.45f, 0, false },
+        { NPC_CLERIC, 14.6f, 0, -35.0f, 14.6f, -35.0f, 0, 0, false },
+        { NPC_CIVILIAN, -6.0f, 0, -38.0f, 6.0f, -42.0f, 0.5f, 0, false },
+        { NPC_CIVILIAN, 4.0f, 0, -34.0f, -2.0f, -46.0f, 0.45f, 0, false },
+    };
+    static const Color robes[] = { { 196, 170, 120, 255 }, { 120, 140, 160, 255 }, { 170, 110, 80, 255 } };
+    for (int k = 0; k < (int)(sizeof(inside) / sizeof(inside[0])); k++) {
+        Color robe = inside[k].kind == NPC_GUARD ? guard : inside[k].kind == NPC_CLERIC ? cleric : robes[k % 3];
+        int i = AddNpc(inside[k].kind, (Vector3){ inside[k].ax, inside[k].ay, inside[k].az }, (Vector3){ inside[k].bx, inside[k].ay, inside[k].bz },
+                       inside[k].speed, robe, inside[k].face);
+        if (i >= 0) G.villagers[i].crouch = inside[k].sit;
+    }
     (void)cz;
 }
 
@@ -593,6 +705,7 @@ static void WalkVillager(Villager *v, int i, float dt)
 void BuildVillage(void)
 {
     BuildHome();
+    BuildAlehouse();
     BuildFarm();
     BuildPen();
     BuildMarket();
@@ -614,6 +727,7 @@ void BuildVillage(void)
         AddVillager(c.x - 3.5f, c.z, c.x + 7.5f, c.z, 0.45f, (Color){ 204, 194, 164, 255 });
     }
     BuildTempleStaff();
+    AlehouseFolk();
 }
 
 static void WanderIn(Wanderer *w, Rectangle area, float speed, float dt)
@@ -858,6 +972,46 @@ static void Part(float x, float y, float z, float w, float h, float l, Color c)
     DrawShadedBox((Vector3){ x, y, z }, (Vector3){ w, h, l }, c);
 }
 
+// What a villager at work holds, hands set on it: among the herders a distaff of wool and a spinning
+// spindle hanging from the thread, among the fishers a net being mended, among the hunters a flint
+// knife and a strip of hide.
+static void WorkInHands(Vector3 pos, float face, bool crouch, int village, float t)
+{
+    const Color wool = { 226, 218, 196, 255 }, hide = { 150, 112, 76, 255 }, net = { 176, 160, 120, 255 };
+    float y = crouch ? 0.72f : 1.08f;
+    rlPushMatrix();
+    rlTranslatef(pos.x, pos.y, pos.z);
+    rlRotatef(face * RAD2DEG, 0, 1, 0);
+    if (village == VIL_HERDERS) {
+        GripHere(HAND_OTHER, -0.12f, y, 0.3f);
+        Part(-0.12f, y + 0.2f, 0.3f, 0.025f, 0.45f, 0.025f, COL_WOOD);
+        DrawShadedBlob((Vector3){ -0.12f, y + 0.42f, 0.3f }, (Vector3){ 0.08f, 0.11f, 0.08f }, wool);
+        float tw = 0.05f * sinf(t * 3.0f), sy = y - 0.28f;
+        GripHere(HAND_WEAPON, 0.1f, y + 0.05f, 0.32f);
+        Part(0.0f, y + 0.2f, 0.31f, 0.2f, 0.004f, 0.004f, wool);   // the thread drawn out from the wool
+        Part(0.1f + tw, sy + 0.16f, 0.32f, 0.004f, 0.22f, 0.004f, wool);
+        rlPushMatrix();
+        rlTranslatef(0.1f + tw, sy, 0.32f);
+        rlRotatef(t * 400.0f, 0, 1, 0);
+        Part(0, 0, 0, 0.012f, 0.22f, 0.012f, COL_WOOD);
+        Part(0, -0.06f, 0, 0.07f, 0.02f, 0.07f, COL_CLAY);   // the whorl
+        rlPopMatrix();
+    } else if (village == VIL_FISHERS) {
+        GripHere(HAND_OTHER, -0.2f, y, 0.32f);
+        GripHere(HAND_WEAPON, 0.2f, y, 0.32f);
+        for (int k = 0; k < 4; k++) {
+            Part(0, y - 0.1f * (float)k, 0.34f, 0.42f, 0.008f, 0.008f, net);
+            Part(-0.2f + 0.133f * (float)k, y - 0.15f, 0.34f, 0.008f, 0.32f, 0.008f, net);
+        }
+    } else {
+        GripHere(HAND_OTHER, -0.14f, y, 0.3f);
+        GripHere(HAND_WEAPON, 0.12f, y + 0.03f * sinf(t * 2.5f), 0.32f);
+        Part(-0.04f, y - 0.02f, 0.3f, 0.26f, 0.01f, 0.14f, hide);
+        Part(0.12f, y + 0.07f + 0.03f * sinf(t * 2.5f), 0.32f, 0.02f, 0.1f, 0.03f, (Color){ 60, 58, 56, 255 });
+    }
+    rlPopMatrix();
+}
+
 // A walking staff, a bundle on the back and a wide straw hat.
 static void DrawTravelGear(Vector3 pos, float face, Color robe)
 {
@@ -916,7 +1070,7 @@ void DrawVillage(void)
     for (int i = 0; i < MAX_COWS; i++) DrawCow(&G.cows[i], i);
     for (int i = 0; i < MAX_SHEEP; i++) DrawSheep(&G.sheep[i], i);
     for (int i = 0; i < MAX_FLOCK; i++) {
-        if (XZDist(G.flock[i].pos, G.cam.position) > 200.0f) continue;
+        if (XZDist(G.flock[i].pos, G.cam.position) > 200.0f || !InView(G.flock[i].pos, 1.5f)) continue;
         LightFor(G.flock[i].pos);
         DrawSheep(&G.flock[i], i);
     }
@@ -926,7 +1080,7 @@ void DrawVillage(void)
         if (tr->roaming) continue;
         Look look = PersonLook(LOOK_MERCHANT, 300u + (unsigned)i, tr->robe);
         Vector3 tp = TraderPos(tr);
-        if (XZDist(tp, G.cam.position) > 220.0f) continue;
+        if (XZDist(tp, G.cam.position) > 220.0f || !InView(tp, 2.0f)) continue;
         LightFor(tp);
         if (tr->vit.dead) DrawPersonBody(tp, tr->vit.face, look);
         else DrawHuman(tp, tr->vit.override ? tr->vit.face : tr->facing, tr->vit.override ? (float)GetTime() * 8.0f : 0.0f, look, false, false, 0);
@@ -937,7 +1091,10 @@ void DrawVillage(void)
         // The legs swing with the time walked, so a new stretch of street does not jolt them.
         float stride = v->moving ? (float)GetTime() * v->speed * 3.0f + (float)i : 0.0f;
         float face = v->vit.override ? v->vit.face : v->face;
-        if (XZDist(pos, G.cam.position) > 200.0f) continue;
+        if (XZDist(pos, G.cam.position) > 200.0f || !InView(pos, 2.0f)) continue;
+        // At the alehouse's tables they turn from one to another, a hand up now and then as they speak.
+        float talk = v->talks && !v->vit.override ? (float)GetTime() * 0.6f + (float)i * 1.7f : 0.0f;
+        if (talk != 0.0f) face += 0.3f * sinf(talk);
         if (v->vit.override && v->vit.hostile > 0) stride = (float)GetTime() * 8.0f;
         // An archer stands still while it draws.
         float pull = v->vit.drawing ? Clamp(1.0f - v->vit.windup / BOW_DRAW_TIME, 0.0f, 1.0f) : 0.0f;
@@ -950,27 +1107,39 @@ void DrawVillage(void)
             DrawPersonBody(pos, face, look);
             continue;
         }
-        bool torch = G.night >= 0.3f && (v->kind == NPC_TRAVELLER || v->kind == NPC_WARDEN || v->kind == NPC_GUARD);
+        // A warden's other hand holds the bow, so their torch stays on their belt.
+        bool torch = TorchesLit() && (v->kind == NPC_TRAVELLER || v->kind == NPC_GUARD) && !v->crouch;
         if (torch) GripAt(HAND_OTHER, -0.36f, 1.36f, 0.28f);
         if (v->kind == NPC_CIVILIAN || v->kind == NPC_VILLAGER || v->kind == NPC_TRAVELLER || v->kind == NPC_CLERIC) {
-            // A villager standing still at the hunters' butt keeps drawing a bow.
-            bool archer = v->kind == NPC_VILLAGER && v->speed <= 0 && !v->vit.override;
+            // The villager at the hunters' butt keeps drawing a bow; the others at work have their work in hand.
+            bool atWork = v->kind == NPC_VILLAGER && v->speed <= 0 && !v->vit.override, archer = atWork && v->bow > 0;
             float pull = archer ? fmaxf(0.0f, sinf((float)GetTime() * 0.9f + (float)i)) : 0.0f;
+            if (atWork && !archer) WorkInHands(pos, face, v->crouch, VillageAt(pos), (float)GetTime() + (float)i);
+            if (talk != 0.0f && sinf(talk * 1.9f) > 0.2f) GripAt(HAND_WEAPON, 0.27f, 0.95f + 0.06f * sinf(talk * 11.0f), 0.32f);
             if (v->kind == NPC_TRAVELLER) {
                 DrawTravelGear(pos, face, v->robe);
                 GripAt(HAND_WEAPON, 0.36f, 1.12f, 0.24f);
             }
-            DrawHuman(pos, face, stride, look, false, archer, pull);
+            DrawHuman(pos, face, stride, look, v->crouch && !v->vit.override, archer, pull);
+        } else if (v->kind == NPC_GUARD && v->crouch && !v->vit.override) {
+            // A guard off duty sits at ease; their spear and shield hang on the rack until they are needed.
+            DrawHuman(pos, face, 0, look, true, false, 0);
         } else if (v->kind == NPC_WARDEN) {
-            // A village guard: a leather jerkin and cap, and a bow always in hand.
-            DrawHuman(pos, face, stride, look, false, true, pull);
+            // A village guard: a leather jerkin and cap, and a bow always in hand, drawn or held ready.
+            if (!v->vit.drawing) HoldBow(pos, face, false);
+            DrawHuman(pos, face, stride, look, false, v->vit.drawing, pull);
         } else {
+            // A guard with a bow holds it ready while the one they are after is out of a spear's reach
+            // (worked out from what every machine knows, so guests see the same).
+            bool bowOut = false;
+            if (v->bow > 0 && v->vit.override && v->vit.hostile > 0 && v->vit.target >= 0 && v->vit.target < MAX_PLAYERS && G.peers[v->vit.target].active)
+                bowOut = XZDist(pos, G.peers[v->vit.target].pos) > 4.0f;
             // A city guard: a bronze helmet and studded cloak, a spear, and a shield by day.
             rlPushMatrix();
             rlTranslatef(pos.x, pos.y, pos.z);
             rlRotatef(face * RAD2DEG, 0, 1, 0);
-            if (v->vit.drawing) {
-                // The spear slung on the back while the bow is drawn.
+            if (v->vit.drawing || bowOut) {
+                // The spear slung on the back while the bow is out.
                 Part(0.1f, 1.3f, -0.25f, 0.05f, 2.4f, 0.05f, COL_WOOD);
             } else if (v->vit.swing > 0 || v->vit.windup > 0) {
                 float z = SpearThrust(v->vit.windup, v->vit.swing), y = v->vit.windup > 0.1f ? 1.45f : 1.35f;
@@ -982,11 +1151,13 @@ void DrawVillage(void)
                 Part(0.36f, 1.2f, 0.12f, 0.05f, 2.4f, 0.05f, COL_WOOD);
                 Part(0.36f, 2.5f, 0.12f, 0.08f, 0.26f, 0.08f, COL_BRONZE);
             }
-            if (G.night < 0.3f && !v->vit.drawing) {
+            if (!TorchesLit() && !v->vit.drawing && !bowOut) {
                 GripHere(HAND_OTHER, -0.31f, 1.2f, 0.14f);
                 Part(-0.38f, 1.2f, 0.12f, 0.08f, 0.62f, 0.5f, (Color){ 130, 90, 56, 255 });
             }
             rlPopMatrix();
+            if (bowOut && !v->vit.drawing) HoldBow(pos, face, false);
+            else if (v->bow > 0 && !v->vit.drawing) SlungBow(pos, face);
             DrawHuman(pos, face, stride, look, false, v->vit.drawing, pull);
         }
         if (torch) DrawHandTorch(pos, face);

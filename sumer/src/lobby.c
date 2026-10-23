@@ -8,7 +8,7 @@
 #define NAME_FILE "sumer.name"
 
 static enum { LOBBY_MENU, LOBBY_CONNECT } stage;
-static bool open, loaded, autoDone, confirmNew, pvp = true, combat;
+static bool open, loaded, autoDone, confirmNew, pvp = true, combat, dev;
 static char name[NAME_LEN], room[32], note[200];
 static float connectT;
 
@@ -63,11 +63,12 @@ void OpenLobby(const char *why)
         if (given[0]) snprintf(name, sizeof(name), "%s", given);
         if (strcmp(PageParam("pvp"), "0") == 0) pvp = false;
         if (strcmp(PageParam("combat"), "1") == 0) combat = true;
+        if (strcmp(PageParam("dev"), "1") == 0) dev = true;
     }
     open = true;
     stage = LOBBY_MENU;
     snprintf(note, sizeof(note), "%s", why && why[0] ? L(why) : "");
-    EnableCursor();
+    LockMouse(false);
     WantPointer(false);
 }
 
@@ -93,6 +94,16 @@ static void Enter(void)
     G.wasCaptured = false;
 }
 
+static void PlayAlone(void);
+
+#ifdef SUMER_TEST
+// For tests: back at the title, start again the way the page's address says (?auto=solo plays alone).
+void LobbyAgain(void)
+{
+    autoDone = false;
+}
+#endif
+
 static void PlayAlone(void)
 {
     SaveName();
@@ -102,6 +113,7 @@ static void PlayAlone(void)
         Say("Welcome back. Day %d. Slot %d was loaded.", G.day, SaveSlot() + 1);
         G.msgT = 6.0f;
     }
+    G.devTools = dev;
     Enter();
 }
 
@@ -110,7 +122,7 @@ static void Connect(bool host)
     SaveName();
     note[0] = '\0';
     connectT = 0;
-    NetRules(pvp, combat);
+    NetRules(pvp, combat, dev);
     if (NetBegin(host, PlayerName(), room)) stage = LOBBY_CONNECT;
     else snprintf(note, sizeof(note), "%s", NetFailure());
 }
@@ -205,6 +217,16 @@ void LobbyFrame(void)
         Vector2 m = MeasureTextEx(GameFont(), name, 20, 2);
         DrawRectangle((int)(field.x + 12 + m.x), (int)field.y + 8, 2, 22, text);
     }
+    // A phone has no keys to type with: a tap on the field opens the browser's box, and with it the keyboard.
+    if (stage == LOBBY_MENU && TouchOn() && CheckCollisionPointRec(UiMouse(), field) && MousePressed(MOUSE_BUTTON_LEFT)) {
+        char got[64];
+        if (AskText(L("Your name"), name, got, (int)sizeof(got))) {
+            int n = 0;
+            for (const char *c = got; *c && n < NAME_LEN - 1; c++)
+                if (NameChar((unsigned char)*c) && !(*c == ' ' && n == 0)) name[n++] = *c;
+            name[n] = '\0';
+        }
+    }
     y += 50;
     Label(TextFormat(L("Room: %s   (add ?room=a-name to the address for a game of your own)"), room), x, y, 15, dim);
     y += 40;
@@ -233,6 +255,10 @@ void LobbyFrame(void)
     Label("Rules when you host:", x, y + 6, 15, dim);
     if (Choice((Rectangle){ x + 200, y, 190, 28 }, pvp ? "PvP: on" : "PvP: off", menu)) pvp = !pvp;
     if (Choice((Rectangle){ x + 400, y, 240, 28 }, pvp && combat ? "Combat mode: on" : "Combat mode: off", menu && pvp)) combat = !combat;
+    y += 34;
+    // Dev tools go for playing alone too: the dev console (Tab, then its button, or `).
+    if (Choice((Rectangle){ x + 200, y, 190, 28 }, dev ? "Dev tools: on" : "Dev tools: off", menu)) dev = !dev;
+    Label("The dev console, alone or hosting.", x + 400, y + 6, 13, dim);
     y += 40;
     if (Choice((Rectangle){ x, y, 250, 46 }, "Join a game", menu && named)) Connect(false);
     Label("Joins the game hosted in this room.", x + 270, y + 14, 15, dim);

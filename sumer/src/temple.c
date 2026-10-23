@@ -76,8 +76,23 @@ static void BuildTier1(void)
         for (int k = 0; k < 4; k++) AddShape(14.5f * f + (k - 1.5f) * 1.3f * f, 0, -46.3f, 0.7f, 1.1f, 0.7f, COL_POT, true, SHAPE_BLOB);
         for (int k = 0; k < 3; k++) AddBox(17.3f * f, 0, -42.0f + 2.2f * (float)k, 0.8f, 0.9f, 1.6f, s < 0 ? COL_STRAW : COL_WOOD, true);
         if (s > 0) {
+            // The east wing: the temple's treasury, where metal is weighed in and out on a balance.
             for (int k = 0; k < 3; k++) AddBox(13.5f + 1.0f * (float)k, 0.9f, -34.0f, 0.6f, 0.25f, 0.4f, COL_BRONZE, false);
             AddBox(14.5f, 0, -34.0f, 3.2f, 0.9f, 0.9f, COL_WOOD, true);
+            Trim(16.2f, 0.9f, -34.1f, 16.28f, 1.6f, -34.02f, COL_WOOD);
+            Trim(15.7f, 1.55f, -34.1f, 16.8f, 1.6f, -34.02f, COL_WOOD);
+            Trim(15.6f, 1.15f, -34.2f, 15.85f, 1.18f, -33.95f, COL_BRONZE);
+            Trim(16.65f, 1.2f, -34.2f, 16.9f, 1.23f, -33.95f, COL_BRONZE);
+            AddBox(12.6f, 0, -38.0f, 0.9f, 0.7f, 0.9f, COL_WOOD, true);
+            AddBox(12.6f, 0.7f, -38.0f, 0.95f, 0.08f, 0.95f, COL_BRONZE, false);
+        } else {
+            // The west wing: the granary. Heaps of barley on mats, measured out by the temple's stores.
+            for (int k = 0; k < 2; k++) {
+                float x = -14.2f - 1.8f * (float)k, z = -38.4f - 1.4f * (float)k;
+                AddBox(x, 0, z, 1.9f, 0.03f, 1.6f, COL_STRAW, false);
+                AddShape(x, 0, z, 1.5f, 0.7f, 1.3f, (Color){ 214, 190, 120, 255 }, false, SHAPE_BLOB);
+            }
+            AddShape(-12.6f, 0, -37.0f, 0.5f, 0.45f, 0.5f, COL_STRAW, false, SHAPE_CYL);
         }
     }
 
@@ -130,6 +145,73 @@ static void BuildGatehouse(void)
     }
 }
 
+static const Color HIDE = { 130, 94, 62, 255 }, TABLET = { 176, 138, 96, 255 };
+
+// The west room of the middle terrace: where the temple guards sleep and eat off duty. Cots with
+// blankets, a rack of spears and leather shields, a table with bread and beer.
+static void BuildGuardRoom(void)
+{
+    for (int k = 0; k < 3; k++) {
+        float z = -48.8f + 2.0f * (float)k;
+        AddBox(-8.0f, T1, z, 1.6f, 0.45f, 0.9f, COL_LINEN, true);
+        Trim(-8.3f, T1 + 0.45f, z - 0.46f, -7.2f, T1 + 0.5f, z + 0.46f, COL_BLANKET);
+        AddShape(-8.6f, T1 + 0.45f, z, 0.32f, 0.14f, 0.5f, (Color){ 214, 206, 186, 255 }, false, SHAPE_BLOB);
+    }
+    // The rack against the west wall: two posts, a bar, three spears and two shields.
+    Trim(-9.95f, T1, -37.4f, -9.8f, T1 + 1.9f, -37.25f, COL_WOOD);
+    Trim(-9.95f, T1, -35.0f, -9.8f, T1 + 1.9f, -34.85f, COL_WOOD);
+    Trim(-9.95f, T1 + 1.55f, -37.4f, -9.75f, T1 + 1.65f, -34.85f, COL_WOOD);
+    for (int k = 0; k < 3; k++) {
+        float z = -36.9f + 0.45f * (float)k;
+        AddShape(-9.7f, T1, z, 0.06f, 2.3f, 0.06f, COL_WOOD, false, SHAPE_CYL);
+        AddShape(-9.7f, T1 + 2.3f, z, 0.1f, 0.28f, 0.1f, COL_BRONZE, false, SHAPE_CONE);
+    }
+    for (int k = 0; k < 2; k++) {
+        float z = -38.6f - 1.0f * (float)k;
+        Trim(-9.98f, T1 + 0.2f, z - 0.35f, -9.9f, T1 + 1.1f, z + 0.35f, HIDE);
+        Trim(-9.9f, T1 + 0.58f, z - 0.08f, -9.86f, T1 + 0.72f, z + 0.08f, COL_BRONZE);
+    }
+    // Supper: a low table, two stools, bread, a jug of beer and cups.
+    AddBox(-8.0f, T1, -40.6f, 1.3f, 0.5f, 0.8f, COL_WOOD, true);
+    AddBox(-9.1f, T1, -40.6f, 0.4f, 0.32f, 0.4f, COL_WOOD, false);
+    AddBox(-7.0f, T1, -39.5f, 0.4f, 0.32f, 0.4f, COL_WOOD, false);
+    AddShape(-8.2f, T1 + 0.5f, -40.7f, 0.34f, 0.14f, 0.3f, (Color){ 196, 150, 90, 255 }, false, SHAPE_BLOB);
+    AddShape(-7.7f, T1 + 0.5f, -40.4f, 0.22f, 0.36f, 0.22f, COL_POT, false, SHAPE_BLOB);
+    AddShape(-8.5f, T1 + 0.5f, -40.35f, 0.1f, 0.1f, 0.1f, COL_CLAY, false, SHAPE_CYL);
+    AddShape(-7.6f, T1 + 0.5f, -40.85f, 0.1f, 0.1f, 0.1f, COL_CLAY, false, SHAPE_CYL);
+    for (int k = 0; k < 2; k++) AddShape(-9.4f, T1, -43.6f + 0.7f * (float)k, 0.5f, 0.8f, 0.5f, COL_POT, true, SHAPE_BLOB);
+}
+
+// The east room: the temple's tablet house, where scribes keep the accounts of its fields, flocks and
+// stores on clay. Shelves of tablets along the wall, a writing bench, baskets of tablets.
+static void BuildTabletRoom(void)
+{
+    for (int u = 0; u < 2; u++) {
+        float z0 = u ? -38.6f : -48.6f, z1 = z0 + 3.4f;
+        Trim(9.45f, T1, z0, 9.95f, T1 + 2.1f, z0 + 0.1f, COL_WOOD);
+        Trim(9.45f, T1, z1 - 0.1f, 9.95f, T1 + 2.1f, z1, COL_WOOD);
+        for (int b = 0; b < 3; b++) {
+            float y = T1 + 0.45f + 0.6f * (float)b;
+            Trim(9.45f, y - 0.05f, z0, 9.95f, y, z1, COL_WOOD);
+            for (int k = 0; k < 9; k++) {
+                if (Hash2(u * 40 + b * 10 + k, 3) < 0.15f) continue;
+                float z = z0 + 0.3f + 0.35f * (float)k;
+                Trim(9.55f, y, z - 0.1f, 9.85f, y + 0.24f + 0.06f * Hash2(k, b), z + 0.1f, Mix(TABLET, COL_CLAY, Hash2(k + u, b + 7) * 0.5f));
+            }
+        }
+    }
+    AddBox(8.2f, T1, -45.6f, 0.8f, 0.42f, 1.4f, COL_WOOD, true);
+    AddBox(7.25f, T1, -45.6f, 1.0f, 0.03f, 1.6f, COL_STRAW, false);
+    Trim(8.0f, T1 + 0.42f, -46.0f, 8.3f, T1 + 0.46f, -45.6f, TABLET);
+    Trim(8.05f, T1 + 0.42f, -45.3f, 8.35f, T1 + 0.46f, -44.95f, TABLET);
+    Trim(7.9f, T1 + 0.46f, -45.5f, 8.2f, T1 + 0.48f, -45.48f, COL_REED);
+    for (int k = 0; k < 2; k++) {
+        float z = -40.0f - 1.1f * (float)k;
+        AddShape(9.2f, T1, z, 0.7f, 0.5f, 0.7f, COL_STRAW, true, SHAPE_CYL);
+        for (int t = 0; t < 3; t++) Trim(9.0f + 0.15f * (float)t, T1 + 0.5f, z - 0.15f, 9.12f + 0.15f * (float)t, T1 + 0.62f, z + 0.12f, TABLET);
+    }
+}
+
 static void BuildTier2(void)
 {
     const Color c = COL_MUD_LIGHT;
@@ -155,15 +237,17 @@ static void BuildTier2(void)
         AddShape(3.0f * (float)s, T1, -45.5f, 0.8f, 4.0f, 0.8f, COL_WHITEWASH, true, SHAPE_CYL);
         AddShape(4.3f * (float)s, T1, -48.6f, 0.5f, 0.9f, 0.5f, COL_STONE, true, SHAPE_CYL);
         AddGlow(4.3f * (float)s, T1 + 0.9f, -48.6f, 0.36f, 0.26f, 0.36f, COL_FIRE);
-        for (int k = 0; k < 3; k++)
-            AddBox(8.0f * (float)s, T1, -48.8f + 2.0f * (float)k, 1.6f, 0.5f, 0.9f, COL_LINEN, true);
-        for (int k = 0; k < 4; k++)
-            AddShape(9.4f * (float)s, T1, -38.0f + 1.0f * (float)k, 0.6f, 1.0f, 0.6f, COL_POT, true, SHAPE_BLOB);
     }
+    BuildGuardRoom();
+    BuildTabletRoom();
     AddBox(0, T1, -48.9f, 4.0f, 1.0f, 1.2f, COL_WOOD, true);
     AddBox(0, T1 + 1.0f, -48.9f, 0.9f, 1.6f, 0.6f, COL_BRONZE, false);
     AddBox(0, T1 + 2.6f, -48.9f, 0.5f, 0.5f, 0.5f, (Color){ 220, 180, 90, 255 }, false);
     AddBox(0, T1, -42.0f, 3.0f, 0.04f, 12.0f, COL_BLANKET, false);
+    // Offerings on the god's table: bread, dates and a jar of oil.
+    AddShape(-1.3f, T1 + 1.0f, -48.7f, 0.36f, 0.14f, 0.3f, (Color){ 196, 150, 90, 255 }, false, SHAPE_BLOB);
+    AddShape(1.2f, T1 + 1.0f, -48.8f, 0.4f, 0.16f, 0.34f, COL_DATES, false, SHAPE_BLOB);
+    AddShape(1.6f, T1 + 1.0f, -48.5f, 0.22f, 0.4f, 0.22f, COL_POT, false, SHAPE_BLOB);
 
     StairZ(-1.5f, 1.5f, -28.2f, 0.5f, T1, 0.5f, 10, COL_MUD_DARK);
     Block(-1.5f, T1, -34, 1.5f, T2, -33.2f, COL_MUD_DARK);

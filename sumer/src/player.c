@@ -27,6 +27,14 @@ static void UpdateLook(Player *p, float dt, bool input)
         p->yaw -= md.x * sens;
         p->pitch += md.y * sens;
     }
+    // A finger dragged over the screen turns the view (by the UI's units it moved).
+    Vector2 td = TouchLook();
+    if (input && (td.x != 0 || td.y != 0)) {
+        float sens = p->aiming ? 0.003f : 0.006f;
+        if (G.followArrow >= 0 && fabsf(td.x) + fabsf(td.y) > 6.0f) G.followArrow = -1;
+        p->yaw -= td.x * sens;
+        p->pitch += td.y * sens;
+    }
     if (input) {
         if (IsKeyDown(KEY_LEFT)) p->yaw += 1.8f * dt;
         if (IsKeyDown(KEY_RIGHT)) p->yaw -= 1.8f * dt;
@@ -37,7 +45,10 @@ static void UpdateLook(Player *p, float dt, bool input)
         if (G.firstPerson && wheel < 0) G.firstPerson = false;
         else if (!G.firstPerson && wheel > 0 && p->dist <= 3.0f) G.firstPerson = true;
         else if (!G.firstPerson) p->dist = Clamp(p->dist - wheel * 1.2f, 3.0f, 22.0f);
-        if (KeyPressed(KEY_P)) G.firstPerson = !G.firstPerson;
+        if (KeyPressed(KEY_P) || TouchPressed(TB_VIEW)) {
+            G.firstPerson = !G.firstPerson;
+            SaveGamePrefs();
+        }
     }
     p->pitch = Clamp(p->pitch, G.firstPerson ? -1.3f : -0.45f, 1.35f);
 }
@@ -47,14 +58,54 @@ const char *EquipName(int eq)
     return eq == EQ_BOW ? L(BOW_NAMES[UseBow()]) : eq == EQ_MELEE ? WeaponName(UseWeapon()) : eq == EQ_MACE ? MaceName() : L("Bare hands");
 }
 
+#define TORCH_TIME 1.0f
+
+// From the evening on: by day the torch stays unlit at the belt.
+bool TorchBurning(void)
+{
+    return G.torchHeld && TorchesLit();
+}
+
+// A torch is held in the other hand with bare hands, the sword or the mace; drawing the bow needs both hands,
+// so it is dropped from the hand the moment the bow is drawn, and the draw starts at once. The other changes
+// take a second: lighting it, putting it away, taking it up again after a shot or a change of weapon.
+static void UpdateTorch(float dt, bool input)
+{
+    const Player *p = &G.player;
+    if (input && KeyPressed(KEY_B)) {
+        G.torchOn = !G.torchOn;
+        Say(G.torchOn ? "You take up your torch (B). It burns from the evening on." : "You put your torch away (B).");
+    }
+    bool aimWanted = G.equip == EQ_BOW && input && ((G.cursorLocked && MouseHeld(MOUSE_BUTTON_LEFT)) || TouchDown(TB_ATTACK));
+    bool bow = G.equip == EQ_BOW && (p->aiming || aimWanted);
+    bool goal = G.torchOn && G.climb == 0 && !G.sleeping && !bow;
+    if (bow) G.torchHeld = false;
+    if (goal == G.torchHeld) {
+        G.torchT = 0;
+        return;
+    }
+    G.torchT += dt;
+    if (G.torchT >= TORCH_TIME) {
+        G.torchHeld = goal;
+        G.torchT = 0;
+    }
+}
+
 void SetEquip(int eq)
 {
     if (G.equip == eq) return;
+    if (eq != EQ_NONE && InAlehouse(G.player.pos)) {
+        Say("No weapons in the alehouse.");
+        return;
+    }
     if (eq == EQ_MACE && !UseMace()) {
         Say("You have no war mace. The smith in the craft quarter makes one.");
         return;
     }
     G.equip = eq;
+    // The hands are busy changing weapons: the torch comes back a second later.
+    G.torchHeld = false;
+    G.torchT = 0;
     G.player.aiming = false;
     G.player.draw = 0;
     G.swingT = 0;
@@ -63,16 +114,26 @@ void SetEquip(int eq)
     else Say("%s in hand.", EquipName(eq));
 }
 
+// The previous or next of hands free, bow, melee weapon and war mace (if there is one).
+void NextEquip(int step)
+{
+    int eq = G.equip;
+    do eq = (eq + step + 4) % 4;
+    while (eq == EQ_MACE && !UseMace());
+    SetEquip(eq);
+}
+
 static void HandleBow(Player *p, float dt, bool input)
 {
-    bool held = input && G.equip == EQ_BOW && G.cursorLocked && IsMouseButtonDown(MOUSE_BUTTON_LEFT);
+    bool held = input && G.equip == EQ_BOW && G.cursorLocked && MouseHeld(MOUSE_BUTTON_LEFT);
 
     // The ignored click is over once the button is up and the frame that saw it press has passed: a
     // quick tap is already up in the frame that sees it, and must not strike then either.
     if (G.ignoreClick) {
-        if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !MousePressed(MOUSE_BUTTON_LEFT)) G.ignoreClick = false;
+        if (!MouseHeld(MOUSE_BUTTON_LEFT) && !MousePressed(MOUSE_BUTTON_LEFT)) G.ignoreClick = false;
         held = false;
     }
+    if (input && G.equip == EQ_BOW && TouchDown(TB_ATTACK)) held = true;
 
     if (held) {
         if (!p->aiming && G.quiver == 0 && !G.combat) {
@@ -105,15 +166,18 @@ static void HandleBow(Player *p, float dt, bool input)
 static void MoveHorizontal(Player *p, Vector3 move, float speed, float dt)
 {
     Vector2 next = { p->pos.x + move.x * speed * dt, p->pos.z + move.z * speed * dt };
+    float reach = PLAYER_RADIUS + speed * dt + 1.0f;
+    int n;
+    const int *near = BoxesNear(p->pos.x - reach, p->pos.z - reach, p->pos.x + reach, p->pos.z + reach, &n);
 
     for (int pass = 0; pass < 2; pass++)
-        for (int i = 0; i < G.boxCount; i++)
-            if (IsBlocking(&G.boxes[i], p->pos.y)) next = PushOut(next, PLAYER_RADIUS, &G.boxes[i]);
+        for (int k = 0; k < n; k++)
+            if (!G.boxes[near[k]].water && IsBlocking(&G.boxes[near[k]], p->pos.y)) next = PushOut(next, PLAYER_RADIUS, &G.boxes[near[k]]);
     Vector2 shoved = PushOutBodies(next, PLAYER_RADIUS, OWNER_PLAYER + G.self);
     if (shoved.x != next.x || shoved.y != next.y) {
         next = shoved;
-        for (int i = 0; i < G.boxCount; i++)
-            if (IsBlocking(&G.boxes[i], p->pos.y)) next = PushOut(next, PLAYER_RADIUS, &G.boxes[i]);
+        for (int k = 0; k < n; k++)
+            if (!G.boxes[near[k]].water && IsBlocking(&G.boxes[near[k]], p->pos.y)) next = PushOut(next, PLAYER_RADIUS, &G.boxes[near[k]]);
     }
     p->pos.x = Clamp(next.x, -WORLD_LIMIT, WORLD_LIMIT);
     p->pos.z = Clamp(next.y, -WORLD_LIMIT, WORLD_LIMIT);
@@ -122,6 +186,8 @@ static void MoveHorizontal(Player *p, Vector3 move, float speed, float dt)
 static void MoveVertical(Player *p, float dt)
 {
     float ground = GroundHeight(p->pos.x, p->pos.z, p->pos.y);
+    // In deep water the body floats with its head out, treading water over the river bed.
+    if (InWater(p->pos.x, p->pos.z)) ground = fmaxf(ground, WATER_LEVEL - 1.25f);
 
     // Glue to stairs on the way down instead of hopping off each step.
     if (p->grounded && p->vy <= 0 && p->pos.y - ground < 0.6f) {
@@ -188,11 +254,31 @@ static void UpdateClimb(Player *p, float dt)
     }
 }
 
+// Weapons are put away inside the alehouse and taken up again on the way out.
+static void AlehouseRule(void)
+{
+    static int before = -1;
+    bool in = InAlehouse(G.player.pos);
+    if (in && before < 0) {
+        before = G.equip;
+        if (G.equip != EQ_NONE) {
+            SetEquip(EQ_NONE);
+            Say("You put your weapons away in the alehouse.");
+        }
+    } else if (!in && before >= 0) {
+        int was = before;
+        before = -1;
+        if (was != EQ_NONE && G.equip == EQ_NONE) SetEquip(was);
+    }
+}
+
 void UpdatePlayer(float dt, bool input)
 {
     Player *p = &G.player;
 
     UpdateLook(p, dt, input);
+    AlehouseRule();
+    UpdateTorch(dt, input);
     if (G.climb) {
         UpdateClimb(p, dt);
         return;
@@ -203,8 +289,10 @@ void UpdatePlayer(float dt, bool input)
     if (G.swingCool > 0) G.swingCool -= dt;
     if (G.parryT > 0) G.parryT -= dt;
     if (G.parryCool > 0) G.parryCool -= dt;
-    bool strike = G.cursorLocked && MousePressed(MOUSE_BUTTON_LEFT) && !G.ignoreClick;
-    bool parry = (G.cursorLocked && MousePressed(MOUSE_BUTTON_RIGHT)) || KeyPressed(KEY_Q);
+    // The mouse fights only once the game has it (a tap on a touch screen is a click too).
+    bool mouse = G.cursorLocked && PointerCaptured();
+    bool strike = (mouse && MousePressed(MOUSE_BUTTON_LEFT) && !G.ignoreClick) || TouchPressed(TB_ATTACK);
+    bool parry = (mouse && MousePressed(MOUSE_BUTTON_RIGHT)) || KeyPressed(KEY_Q) || TouchPressed(TB_PARRY);
     bool armed = G.equip == EQ_MELEE || G.equip == EQ_MACE, mace = G.equip == EQ_MACE;
     // The war mace is too heavy to parry with; only the melee weapon turns blows aside.
     if (input && mace && parry) Say("The war mace is too heavy to parry with. Parry with your melee weapon (2).");
@@ -233,9 +321,11 @@ void UpdatePlayer(float dt, bool input)
         if (IsKeyDown(KEY_S)) move = Vector3Subtract(move, fwd);
         if (IsKeyDown(KEY_D)) move = Vector3Add(move, right);
         if (IsKeyDown(KEY_A)) move = Vector3Subtract(move, right);
+        Vector2 st = TouchStick();
+        move = Vector3Add(move, Vector3Add(Vector3Scale(fwd, st.y), Vector3Scale(right, st.x)));
 
-        if (KeyPressed(KEY_C)) p->crouching = !p->crouching;
-        if (KeyPressed(KEY_SPACE) && !p->aiming) {
+        if (KeyPressed(KEY_C) || TouchPressed(TB_CROUCH)) p->crouching = !p->crouching;
+        if ((KeyPressed(KEY_SPACE) || TouchPressed(TB_JUMP)) && !p->aiming) {
             if (p->crouching) p->crouching = false;
             else if (p->grounded) {
                 p->vy = JUMP_SPEED;
@@ -249,13 +339,16 @@ void UpdatePlayer(float dt, bool input)
     p->moving = Vector3Length(move) > 0.01f;
     if (p->moving || p->aiming) G.followArrow = -1;
     bool hungry = G.food <= 0.0f;
-    bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+    bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT) || TouchRun();
     p->running = p->moving && input && shift && !p->crouching && !p->aiming && !hungry;
 
     float speed = hungry ? HUNGRY_SPEED : WALK_SPEED;
     if (p->crouching) speed = CROUCH_SPEED;
     else if (p->running) speed = RUN_SPEED * Boost();
+    if (G.devSpeed > 0) speed *= G.devSpeed;
 
+    // Water is waded through, slowly.
+    if (p->pos.y < WATER_LEVEL + 0.2f) speed *= WadeSpeed(p->pos.x, p->pos.z);   // on a bridge or quay you walk
     if (p->moving) {
         move = Vector3Normalize(move);
         MoveHorizontal(p, move, speed, dt);
@@ -328,9 +421,12 @@ static void PlaceCamera(float dt)
     Ray ray = { target, dir };
     float dist = Lerp(p->dist, 3.0f, G.camShoulder);
 
-    for (int i = 0; i < G.boxCount; i++) {
-        const Box *b = &G.boxes[i];
-        if (b->size.y < 1.0f || b->water) continue;
+    int n;
+    Vector3 far = Vector3Add(target, Vector3Scale(dir, dist));
+    const int *near = BoxesNear(target.x - 1, target.z - 1, far.x + 1, far.z + 1, &n);
+    for (int k = 0; k < n; k++) {
+        const Box *b = &G.boxes[near[k]];
+        if (b->water || (b->size.y < 1.0f && b->pos.y < target.y + 0.5f)) continue;   // thin things count only as roofs overhead
         float reach = dist + (b->size.x + b->size.z) * 0.5f;
         if (fabsf(b->pos.x - target.x) > reach || fabsf(b->pos.z - target.z) > reach) continue;
         BoundingBox bb = { Vector3Subtract(b->pos, Vector3Scale(b->size, 0.5f)),
@@ -568,20 +664,80 @@ void DrawWeaponPart(int kind)
     rlPopMatrix();
 }
 
-static void DrawHeldBow(const Player *p)
+
+// ---- First person: the hands and what they hold, in front of the eye ----
+
+// A forearm reaching from below the view to the hand at (x, y, z) in the eye's frame, and the hand.
+static void ViewArm(float x, float y, float z, Color skin, Color sleeve)
 {
-    float shoulder = p->crouching ? 0.92f : 1.3f;
+    Vector3 hand = { x, y, z }, elbow = { x * 1.6f + (x > 0 ? 0.08f : -0.08f), y - 0.32f, z - 0.18f };
+    Vector3 mid = Vector3Lerp(hand, elbow, 0.5f), d = Vector3Subtract(hand, elbow);
     rlPushMatrix();
-    rlTranslatef(p->pos.x, p->pos.y + shoulder, p->pos.z);
-    rlRotatef(p->facing * RAD2DEG, 0, 1, 0);
-    rlTranslatef(-0.4f, 0, 0.12f);
-    rlRotatef(-12.0f, 1, 0, 0);
-    GripHere(HAND_OTHER, 0, 0, 0);
-    WPart(0, 0, 0, 0.05f, 0.9f, 0.06f, COL_WOOD);
-    WPart(0, 0.5f, 0.05f, 0.04f, 0.16f, 0.05f, COL_WOOD);
-    WPart(0, -0.5f, 0.05f, 0.04f, 0.16f, 0.05f, COL_WOOD);
-    WPart(0, 0, -0.07f, 0.015f, 1.05f, 0.015f, COL_LINEN);
+    rlTranslatef(mid.x, mid.y, mid.z);
+    rlRotatef(atan2f(d.x, d.z) * RAD2DEG, 0, 1, 0);
+    rlRotatef(-atan2f(d.y, sqrtf(d.x * d.x + d.z * d.z)) * RAD2DEG, 1, 0, 0);
+    WPart(0, 0, 0, 0.065f, 0.06f, Vector3Length(d), sleeve);
     rlPopMatrix();
+    DrawShadedBlob(hand, (Vector3){ 0.036f, 0.032f, 0.045f }, skin);
+}
+
+// Seen from the eye: the bow in both hands (drawn back while aiming), the sword or mace in the weapon hand
+// with its swing, the torch in the other. They bob a little with each step and sway as the body breathes,
+// little enough not to swim in front of the eye.
+static void ViewModel(const Player *p, Look look)
+{
+    Vector3 fwd = Vector3Normalize(Vector3Subtract(G.cam.target, G.cam.position));
+    Vector3 right = Vector3Normalize(Vector3CrossProduct(fwd, (Vector3){ 0, 1, 0 })), up = Vector3CrossProduct(right, fwd);
+    float t = (float)GetTime(), still = p->aiming ? 0.25f : 1.0f;
+    float bobX = p->moving ? 0.012f * sinf(p->stride * 0.5f) : 0.0f, bobY = p->moving ? 0.01f * fabsf(cosf(p->stride * 0.5f)) : 0.0f;
+    float swayX = 0.004f * sinf(t * 1.1f), swayY = 0.005f * sinf(t * 1.7f);
+    Vector3 o = Vector3Add(G.cam.position, Vector3Add(Vector3Scale(right, (bobX + swayX) * still), Vector3Scale(up, (swayY - bobY) * still)));
+    Matrix m = { right.x, up.x, fwd.x, o.x, right.y, up.y, fwd.y, o.y, right.z, up.z, fwd.z, o.z, 0, 0, 0, 1 };
+    Color skin = look.skin, sleeve = (look.dress == DRESS_ROBE) ? look.cloth : look.skin;
+    if (UseArmor() == ARMOR_LEATHER) sleeve = (Color){ 96, 62, 40, 255 };
+    bool torch = TorchBurning();
+
+    rlPushMatrix();
+    rlMultMatrixf(MatrixToFloat(m));
+    if (G.equip == EQ_BOW) {
+        // The bow upright before the left hand; aiming, the right hand draws the string back toward the cheek.
+        float pull = p->aiming ? p->draw : 0.0f;
+        Vector3 grip = p->aiming ? (Vector3){ -0.1f, -0.1f, 0.62f } : torch ? (Vector3){ 0.26f, -0.36f, 0.6f } : (Vector3){ -0.2f, -0.34f, 0.62f };
+        rlPushMatrix();
+        rlTranslatef(grip.x, grip.y, grip.z);
+        rlRotatef(p->aiming ? -8.0f : -38.0f, 0, 0, 1);
+        float back = -0.07f - 0.36f * pull;
+        DrawBow((Vector3){ 0, 0, 0 }, (Vector3){ 0, 0, back }, pull);
+        rlPopMatrix();
+        if (!torch) ViewArm(grip.x - 0.01f, grip.y - 0.02f, grip.z - 0.02f, skin, sleeve);
+        Vector3 nock = p->aiming ? (Vector3){ grip.x + 0.03f, grip.y, grip.z + back } : (Vector3){ grip.x + 0.06f, grip.y + 0.1f, grip.z - 0.08f };
+        if (!torch) ViewArm(nock.x + 0.04f, nock.y - 0.02f, nock.z, skin, sleeve);
+        else ViewArm(grip.x + 0.01f, grip.y - 0.02f, grip.z - 0.02f, skin, sleeve);
+    } else if (G.equip == EQ_MELEE || G.equip == EQ_MACE) {
+        bool mace = G.equip == EQ_MACE;
+        float s = SwingElapsed(G.swingT, mace);
+        float pitch = mace ? 20.0f : WeaponAngle(s), yaw = mace && s >= 0.0f ? MaceYaw(s) * 0.6f : 0.0f;
+        if (G.parryT > 0) pitch = -20.0f, yaw = -60.0f;
+        Vector3 hand = { 0.24f, -0.32f, 0.56f };
+        rlPushMatrix();
+        rlTranslatef(hand.x, hand.y, hand.z);
+        rlRotatef(yaw, 0, 1, 0);
+        rlRotatef(pitch - 30.0f, 1, 0, 0);
+        DrawWeaponPart(mace ? WEAPON_MACE : UseWeapon());
+        ViewArm(hand.x, hand.y, hand.z, skin, sleeve);
+    }
+    if (torch) {
+        Vector3 hand = { -0.28f, -0.34f, 0.64f };
+        WPart(hand.x, hand.y + 0.1f, hand.z, 0.03f, 0.36f, 0.03f, COL_WOOD);
+        WPart(hand.x, hand.y + 0.29f, hand.z, 0.05f, 0.05f, 0.05f, COL_CLAY_DARK);
+        ViewArm(hand.x, hand.y, hand.z, skin, sleeve);
+    }
+    rlPopMatrix();
+    if (torch) {
+        Vector3 tip = { -0.28f, -0.02f, 0.64f };
+        Vector3 w = Vector3Add(o, Vector3Add(Vector3Add(Vector3Scale(right, tip.x), Vector3Scale(up, tip.y)), Vector3Scale(fwd, tip.z)));
+        GfxFlame(w, 0.3f);
+    }
 }
 
 void DrawPlayer(void)
@@ -589,7 +745,18 @@ void DrawPlayer(void)
     const Player *p = &G.player;
     Look look = PlayerLook(G.self, ChosenStyle(), UseArmor());
 
-    if (G.camDist < 1.3f && G.panel != PANEL_LOOK) return;
+    // Riding behind an arrow, the eye has left the head: the hands in view would ride along with it, so
+    // they are left out, and once the camera is clear of the head the body is drawn where it shot from.
+    Vector3 head = { p->pos.x, p->pos.y + 1.5f, p->pos.z };
+    bool away = G.camBlend > 0.01f;
+    if (G.camDist < 1.3f && G.panel != PANEL_LOOK && !(away && Vector3Distance(G.cam.position, head) > 1.2f)) {
+        if (!away && G.firstPerson && G.climb == 0 && !G.waitBed && !G.sleeping) {
+            LightFor(p->pos);
+            ViewModel(p, look);
+            G.drawTorch = G.drawFog = 0;
+        }
+        return;
+    }
     LightFor(p->pos);
     if (G.waitBed) {
         DrawInBed(G.self, p->pos, p->facing, look);
@@ -608,8 +775,11 @@ void DrawPlayer(void)
         HoldWeapon(p->pos, p->facing, p->crouching, mace, SwingElapsed(G.swingT, mace), G.parryT > 0);
         DrawWeaponPart(mace ? WEAPON_MACE : UseWeapon());
     }
-    if (G.climb == 0 && G.equip == EQ_BOW && !p->aiming) DrawHeldBow(p);
+    bool torch = TorchBurning() && G.climb == 0;
+    if (torch) GripAt(HAND_OTHER, -0.36f, 1.36f, 0.28f);
+    if (G.climb == 0 && G.equip == EQ_BOW && !p->aiming) HoldBowFor(p->pos, p->facing, p->crouching, torch);
     DrawHuman(p->pos, p->facing, p->stride, hit > 0 ? Flushed(look, hit) : look, p->crouching, p->aiming, p->draw);
     if (degrees > 0.5f) EndLean();
+    if (torch) DrawHandTorch(p->pos, p->facing);
     G.drawTorch = G.drawFog = 0;
 }

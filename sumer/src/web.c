@@ -64,10 +64,12 @@ void SyncStorage(void)
 #endif
 }
 
-// A browser grants the mouse only during a click, so the page asks for it on the next one.
+// A browser grants the mouse only during a click, so the page asks for it on the next one. Never on a phone:
+// there a tap would take the pointer, and losing it again would pause the game.
 void WantPointer(bool captured)
 {
 #if defined(__EMSCRIPTEN__)
+    if (OnPhone()) captured = false;
     EM_ASM({
         Module.sumerWantLock = $0;
         if (!$0 && document.pointerLockElement) document.exitPointerLock();
@@ -214,6 +216,12 @@ void PageFrame(void)
     pointer.x = (float)EM_ASM_DOUBLE({ return Module.sumerPointerX; });
     pointer.y = (float)EM_ASM_DOUBLE({ return Module.sumerPointerY; });
 #endif
+    TouchFrame();
+}
+
+void ForgetClick(void)
+{
+    presses = 0;
 }
 
 // Where the pointer is on the screen for menus and buttons. In a browser the page's own record, which
@@ -244,6 +252,42 @@ bool MousePressed(int button)
     return IsMouseButtonPressed(button) || ((presses >> button) & 1);
 }
 
+// A mouse button held down. raylib counts a finger on a touch screen as the left button; that is not one
+// (touch.c reads the fingers).
+bool MouseHeld(int button)
+{
+    return IsMouseButtonDown(button) && GetTouchPointCount() == 0;
+}
+
+// The mouse taken by the game (raylib asks the browser for it on the next click) or given back; a phone keeps it.
+void LockMouse(bool lock)
+{
+    if (OnWeb() && OnPhone()) return;
+    if (lock) DisableCursor();
+    else EnableCursor();
+}
+
+// A line typed into the browser's own box, the way to a phone's keyboard; false if cancelled.
+bool AskText(const char *title, const char *now, char *out, int size)
+{
+#if defined(__EMSCRIPTEN__)
+    char *got = (char *)EM_ASM_PTR({
+        var v = window.prompt(UTF8ToString($0), UTF8ToString($1));
+        return v === null ? 0 : stringToNewUTF8(v.substring(0, 60));
+    }, title, now);
+    if (!got) return false;
+    snprintf(out, (size_t)size, "%s", got);
+    free(got);
+    return true;
+#else
+    (void)title;
+    (void)now;
+    (void)out;
+    (void)size;
+    return false;
+#endif
+}
+
 // A key raylib saw go down this frame, or one pressed and let go again since the last frame: on a slow
 // page a quick tap can fall between two frames.
 bool KeyPressed(int key)
@@ -258,12 +302,14 @@ bool KeyPressed(int key)
 bool OnPhone(void)
 {
 #if defined(__EMSCRIPTEN__)
-    return EM_ASM_INT({
+    static int phone = -1;
+    if (phone < 0) phone = EM_ASM_INT({
         var ua = navigator.userAgent || "";
         if (/Android|iPhone|iPad|iPod|Mobile/i.test(ua)) return 1;
         if (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) return 1;
         return window.matchMedia && window.matchMedia('(pointer: coarse)').matches ? 1 : 0;
-    }) != 0;
+    });
+    return phone != 0;
 #else
     return false;
 #endif

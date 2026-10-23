@@ -111,15 +111,33 @@ static bool indoors;   // shotin: stand on the floor under a roof, not on the ro
 static void Shot(const char *out, float x, float z, float yaw, float pitch, float dist, float hour, int frames, bool rain)
 {
     Player *p = &G.player;
-    p->pos = (Vector3){ x, GroundHeight(x, z, indoors ? 1.0f : 50.0f), z };
+    // SHOT_FLOOR=<height> stands indoors on the floor just below that height (a ziggurat's upper rooms).
+    float from = getenv("SHOT_FLOOR") ? (float)atof(getenv("SHOT_FLOOR")) : indoors ? 1.0f : 50.0f;
+    p->pos = (Vector3){ x, GroundHeight(x, z, from), z };
     p->yaw = yaw;
     p->pitch = pitch;
     p->dist = dist;
     G.camDist = dist;
     G.hour = hour;
     G.panel = PANEL_NONE;
+    // SHOT_FP=1: through the player's eyes; SHOT_EQUIP=<0-3>: what is in hand; SHOT_AIM=<0-1>: the bow drawn that far.
+    if (getenv("SHOT_FP")) G.firstPerson = atoi(getenv("SHOT_FP")) != 0;
+    if (getenv("SHOT_EQUIP")) G.equip = atoi(getenv("SHOT_EQUIP"));
+    if (getenv("SHOT_AIM")) G.arrowCam = false;   // the loosed arrows must not carry the camera off
+    // SHOT_ARROW=1: an arrow is loosed straight ahead on the first frame and the camera rides behind it.
     for (int f = 0; f < frames; f++) {
+        if (f == 1 && getenv("SHOT_ARROW")) {
+            Vector3 from = { p->pos.x, p->pos.y + 1.5f, p->pos.z };
+            G.arrowCam = true;
+            G.followArrow = ShootArrow(from, Vector3Add(from, (Vector3){ -sinf(p->yaw) * 60, 2, -cosf(p->yaw) * 60 }), 1.0f);
+            G.followT = 0;
+        }
+        if (getenv("SHOT_AIM")) {
+            p->aiming = true;
+            p->draw = (float)atof(getenv("SHOT_AIM"));
+        }
         GameUpdate();
+        if (getenv("SHOT_AIM")) p->aiming = true;
         if (rain) G.raining = true;
         BeginDrawing();
         GameDraw();
@@ -134,6 +152,48 @@ static void Shot(const char *out, float x, float z, float yaw, float pitch, floa
     EndDrawing();
 }
 
+
+// Things meant to stand on the ground that hang above the drawn ground somewhere under them: each one's
+// gap, place, size and shape, worst first, and how many in all. floaters [min gap, default 0.08 m]
+static void Floaters(float minGap)
+{
+    int count = 0, shown = 0;
+    float worst = 0;
+    for (int pass = 0; pass < 2; pass++) {
+        for (int i = 0; i < G.boxCount; i++) {
+            const Box *b = &G.boxes[i];
+            if (b->water || b->glow) continue;
+            float bottom = b->pos.y - b->size.y / 2, lo = 1e9f, hi = -1e9f;
+            for (int u = 0; u <= 2; u++)
+                for (int v = 0; v <= 2; v++) {
+                    float x = b->pos.x + b->size.x * ((float)u / 2 - 0.5f) * 0.9f, z = b->pos.z + b->size.z * ((float)v / 2 - 0.5f) * 0.9f;
+                    float g = GroundSurface(x, z);
+                    lo = fminf(lo, g);
+                    hi = fmaxf(hi, g);
+                }
+            // Standing on the ground: its bottom within half a metre of the highest ground under it.
+            if (bottom > hi + 0.5f || bottom - lo < minGap || lo < WATER_LEVEL) continue;
+            // Resting on something else (a floor, a plinth, a quay) is not floating.
+            bool held = false;
+            for (int k = 0; k < G.boxCount && !held; k++) {
+                const Box *o = &G.boxes[k];
+                float top = o->pos.y + o->size.y / 2;
+                held = k != i && !o->glow && top > bottom - 0.12f && o->pos.y - o->size.y / 2 < bottom - 0.05f &&
+                       fabsf(o->pos.x - b->pos.x) < (o->size.x + b->size.x) / 2 && fabsf(o->pos.z - b->pos.z) < (o->size.z + b->size.z) / 2;
+            }
+            if (held) continue;
+            if (pass == 0) {
+                count++;
+                worst = fmaxf(worst, bottom - lo);
+            } else if (bottom - lo > worst * 0.5f && shown < 40) {
+                shown++;
+                printf("gap %.2f at (%.1f, %.1f) size %.2f x %.2f x %.2f shape %d built %d solid %d color %d,%d,%d\n", bottom - lo, b->pos.x, b->pos.z,
+                       b->size.x, b->size.y, b->size.z, b->shape, b->built, b->solid, b->color.r, b->color.g, b->color.b);
+            }
+        }
+    }
+    printf("%d floating (gap over %.2f m), the worst %.2f m\n", count, minGap, worst);
+}
 
 // Where any walker's way dips into a canal bed: every villager lane, street edge and patrol sampled
 // every 0.5 m; prints each wet stretch. wetways
@@ -305,6 +365,12 @@ static void ShotPanel(const char *out, int panel, int lang, int trader)
     BagAdd(IT_BREAD, 3);
     G.herbT = 12.0f;
     G.trader = trader;
+    if (panel == PANEL_CONSOLE) {
+        G.devTools = true;
+        ConsoleRun("help");
+        ConsoleRun("where");
+        ConsoleRun("give dates 5");
+    }
     G.msgT = 0;
     for (int f = 0; f < 3; f++) {
         G.panel = (Panel)panel;
@@ -618,6 +684,8 @@ int main(int argc, char **argv)
         GameInit();
         bool again = LoadGame();
         printf("reload %d: day %d %.1fh at %.0f,%.0f weapon %d armor %d pelts %d\n", again, G.day, G.hour, G.player.pos.x, G.player.pos.z, G.weapon, G.armor, BagCount(IT_WOLF));
+    } else if (strcmp(argv[1], "floaters") == 0) {
+        Floaters(argc > 2 ? (float)atof(argv[2]) : 0.08f);
     } else if (strcmp(argv[1], "ui") == 0 && argc > 4) {
         ShotPanel(argv[2], atoi(argv[3]), atoi(argv[4]), argc > 5 ? atoi(argv[5]) : 0);
     } else if (strcmp(argv[1], "mace") == 0 && argc > 3) {

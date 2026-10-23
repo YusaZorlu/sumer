@@ -13,6 +13,20 @@ static const float HOMES[WAR_CAMP][2] = { { -4.5f, 2.5f }, { 3.5f, 3.0f }, { 5.0
 static const float CAMP_POS[CAMPS][2] = { { 34, 210 }, { 30, -240 }, { -360, -230 }, { -380, 250 } };
 static const int STASHES[CAMPS] = { STN_STASH, STN_STASH2, STN_STASH3, STN_STASH4 };
 
+// Two bands of bandits roam the eastern hills, two swordsmen and an archer each, far from the city, the
+// villages and the camps and away from the edge of the world. They walk from one spot to another at
+// random and now and then sit down a while, never on a road. They come after the camps in G.raiders.
+#define BAND       3
+#define BAND_FIRST (EAST_CAMPS * RAIDER_CAMP + (CAMPS - EAST_CAMPS) * WAR_CAMP)
+static const Rectangle BAND_ZONES[BANDS] = { { 200, -480, 280, 340 }, { 180, 150, 300, 330 } };
+// Where each band is headed, how long it still sits where it is, how long it has got nowhere.
+static Vector3 bandGoal[BANDS];
+static float bandRest[BANDS], bandStuck[BANDS];
+// Where the leader has walked, a metre apart, newest first: a way round anything the followers meet.
+#define TRAIL 16
+static Vector3 bandTrail[BANDS][TRAIL];
+static int bandTrailN[BANDS];
+
 Vector3 CampCenter(int camp)
 {
     float x = CAMP_POS[camp][0], z = CAMP_POS[camp][1];
@@ -28,7 +42,7 @@ int StashCamp(int station)
 
 static bool West(int camp)
 {
-    return camp >= EAST_CAMPS;
+    return camp >= EAST_CAMPS && camp < CAMPS;
 }
 
 static int CampSize(int camp)
@@ -41,9 +55,15 @@ static int CampFirst(int camp)
     return camp <= EAST_CAMPS ? camp * RAIDER_CAMP : EAST_CAMPS * RAIDER_CAMP + (camp - EAST_CAMPS) * WAR_CAMP;
 }
 
+bool RaiderBandit(int i)
+{
+    return i >= BAND_FIRST && i < MAX_RAIDERS;
+}
+
 bool RaiderBowman(int i)
 {
     if (i < 0 || i >= MAX_RAIDERS) return false;
+    if (RaiderBandit(i)) return (i - BAND_FIRST) % BAND == BAND - 1;
     int camp = G.raiders[i].camp;
     return West(camp) && i == CampFirst(camp) + WAR_CAMP - 1;
 }
@@ -172,10 +192,152 @@ static void BuildCamp(int camp)
     }
 }
 
+// Somewhere a band may go: well away from the city, the villages, the camps and the world's edge, on
+// dry open ground off the roads.
+static bool BandSpot(float x, float z)
+{
+    if (fabsf(x) > WORLD_LIMIT - 70 || fabsf(z) > WORLD_LIMIT - 70 || hypotf(x, z - CITY_Z) < 220.0f) return false;
+    for (int v = 0; v < VILLAGES; v++)
+        if (XZDist((Vector3){ x, 0, z }, VillageCenter(v)) < 120.0f) return false;
+    for (int c = 0; c < CAMPS; c++)
+        if (hypotf(x - CAMP_POS[c][0], z - CAMP_POS[c][1]) < 70.0f) return false;
+    return !InWater(x, z) && !SolidAt(x, z, 1.5f) && RoadDistance(x, z) > 14.0f;
+}
+
+// The band's next stop, 25 to 150 m on in its hills. While the world is built the pick comes from the
+// seed, not the shared random numbers, so the rest of the world comes out as before.
+static Vector3 BandPick(int b, Vector3 from, bool build)
+{
+    Rectangle z = BAND_ZONES[b];
+    for (int t = 0; t < 80; t++) {
+        float u = build ? Hash2(t, 901 + b) : RandF(0, 1), w = build ? Hash2(t, 911 + b) : RandF(0, 1);
+        float x = z.x + u * z.width, y = z.y + w * z.height, d = hypotf(x - from.x, y - from.z);
+        if ((build || (d > 25.0f && d < 150.0f)) && BandSpot(x, y)) return (Vector3){ x, Ground(x, y), y };
+    }
+    float x = z.x + z.width / 2, y = z.y + z.height / 2;
+    return (Vector3){ x, Ground(x, y), y };
+}
+
 void BuildRaiders(void)
 {
     for (int c = 0; c < CAMPS; c++) BuildCamp(c);
     G.stashDay = 0;
+    for (int b = 0; b < BANDS; b++) {
+        Vector3 at = BandPick(b, (Vector3){ 0, 0, 0 }, true);
+        bandGoal[b] = at;
+        bandRest[b] = 10.0f;
+        bandStuck[b] = 0;
+        bandTrailN[b] = 0;
+        for (int k = 0; k < BAND; k++) {
+            Raider *r = &G.raiders[BAND_FIRST + b * BAND + k];
+            *r = (Raider){ .camp = CAMPS + b, .speed = 1.3f, .face = (float)k * 2.1f };
+            r->home = (Vector3){ at.x + (float)(k - 1) * 1.6f, 0, at.z + (k == 1 ? 1.4f : 0.0f) };
+            r->home.y = Ground(r->home.x, r->home.z);
+            r->pos = r->home;
+        }
+    }
+}
+
+static bool Free(Vector3 at, float x, float z, int i)
+{
+    return !InWater(x, z) && !SolidAt(x, z, 0.35f) && !BodyAt((Vector3){ x, at.y, z }, 0.38f, OWNER_RAIDER + i);
+}
+
+// A step toward 'to', round a tree or a rock by ever wider side steps, all to the one side it keeps to
+// first, so it does not slide back and forth along a wide rock; false if every way is blocked.
+static signed char sideOf[MAX_RAIDERS];
+
+static bool Walk(Raider *r, int i, Vector3 to, float speed, float dt)
+{
+    static const float tries[9] = { 0.0f, 0.6f, 1.2f, 1.8f, 2.4f, -0.6f, -1.2f, -1.8f, -2.4f };
+    float dx = to.x - r->pos.x, dz = to.z - r->pos.z, d = sqrtf(dx * dx + dz * dz);
+    if (d < 0.05f) return true;
+    if (!sideOf[i]) sideOf[i] = (i & 1) ? 1 : -1;
+    float base = atan2f(dx, dz), step = fminf(speed * dt, d);
+    for (int k = 0; k < 9; k++) {
+        float a = base + tries[k] * (float)sideOf[i];
+        float nx = r->pos.x + sinf(a) * step, nz = r->pos.z + cosf(a) * step;
+        if (!Free(r->pos, nx, nz, i)) continue;
+        r->pos = (Vector3){ nx, Ground(nx, nz), nz };
+        r->face = a;
+        return true;
+    }
+    return false;
+}
+
+// The first of the band still on its feet leads; the others keep a step behind on either side. While
+// one of them fights the rest stand by, and they all sit down where they stopped when they rest.
+static void Roam(int b, float dt)
+{
+    Raider *lead = NULL;
+    int li = -1;
+    bool fighting = false;
+    for (int k = 0; k < BAND; k++) {
+        Raider *r = &G.raiders[BAND_FIRST + b * BAND + k];
+        if (r->vit.dead) continue;
+        fighting = fighting || r->vit.override;
+        if (!lead) {
+            lead = r;
+            li = BAND_FIRST + b * BAND + k;
+        }
+    }
+    if (!lead) return;
+    for (int k = 0; k < BAND; k++) {
+        Raider *r = &G.raiders[BAND_FIRST + b * BAND + k];
+        r->home = lead->pos;   // the fallen come back where the band is
+        r->moving = false;
+    }
+    if (fighting) return;
+    if (bandRest[b] > 0) {
+        bandRest[b] -= dt;
+        return;
+    }
+    if (XZDist(lead->pos, bandGoal[b]) < 1.5f || bandStuck[b] > 5.0f) {
+        if (bandStuck[b] > 5.0f) sideOf[li] = (signed char)-sideOf[li];
+        if (bandStuck[b] <= 5.0f && RandF(0, 1) < (G.night > 0.5f ? 0.8f : 0.5f)) bandRest[b] = RandF(20.0f, 75.0f);
+        bandStuck[b] = 0;
+        bandGoal[b] = BandPick(b, lead->pos, false);
+        return;
+    }
+    Vector3 was = lead->pos;
+    lead->moving = true;
+    Walk(lead, li, bandGoal[b], lead->speed, dt);
+    if (XZDist(was, lead->pos) < lead->speed * dt * 0.3f) bandStuck[b] += dt;
+    else bandStuck[b] = fmaxf(0.0f, bandStuck[b] - dt);
+    if (bandTrailN[b] == 0 || XZDist(lead->pos, bandTrail[b][0]) > 1.0f) {
+        memmove(&bandTrail[b][1], &bandTrail[b][0], sizeof(Vector3) * (TRAIL - 1));
+        bandTrail[b][0] = lead->pos;
+        if (bandTrailN[b] < TRAIL) bandTrailN[b]++;
+    }
+
+    float fx = sinf(lead->face), fz = cosf(lead->face), side = -1.0f;
+    for (int k = 0; k < BAND; k++) {
+        int i = BAND_FIRST + b * BAND + k;
+        Raider *r = &G.raiders[i];
+        if (r == lead || r->vit.dead) continue;
+        Vector3 at = { lead->pos.x - fx * 1.8f + fz * 1.4f * side, 0, lead->pos.z - fz * 1.8f - fx * 1.4f * side };
+        side = -side;
+        float d = XZDist(r->pos, at);
+        r->moving = true;
+        if (d > 3.0f && bandTrailN[b] > 1) {
+            // Fallen behind: along the leader's own way, from the nearest point of it to the next.
+            int k = 0;
+            for (int t = 1; t < bandTrailN[b]; t++)
+                if (XZDist(r->pos, bandTrail[b][t]) < XZDist(r->pos, bandTrail[b][k])) k = t;
+            Walk(r, i, bandTrail[b][k > 0 ? k - 1 : 0], lead->speed * 1.6f, dt);
+        } else if (d > 0.3f) {
+            Walk(r, i, at, lead->speed * 1.15f, dt);
+        } else {
+            r->face = lead->face;
+        }
+        // Left behind a while: round the other way. Far behind with no one about to see: back in its place.
+        r->timer = d > 4.0f ? r->timer + dt : 0.0f;
+        if (r->timer > 2.0f) {
+            sideOf[i] = (signed char)-sideOf[i];
+            r->timer = 0;
+        }
+        if (d > 20.0f && NearestAnyone(r->pos) > 100.0f && Free(r->pos, at.x, at.z, i)) r->pos = (Vector3){ at.x, Ground(at.x, at.z), at.z };
+    }
 }
 
 static void Idle(Raider *r, int i, float dt)
@@ -234,8 +396,9 @@ void UpdateRaiders(float dt)
             }
             continue;
         }
-        if (!r->vit.override) Idle(r, i, dt);
+        if (!r->vit.override && !RaiderBandit(i)) Idle(r, i, dt);
     }
+    for (int b = 0; b < BANDS; b++) Roam(b, dt);
 }
 
 void DrawRaiders(void)
@@ -246,24 +409,27 @@ void DrawRaiders(void)
         const Raider *r = &G.raiders[i];
         Vector3 p = r->vit.override ? r->vit.at : r->pos;
         float f = r->vit.override ? r->vit.face : r->face;
-        if (XZDist(p, G.cam.position) > 220.0f) continue;
+        if (XZDist(p, G.cam.position) > 220.0f || !InView(p, 2.0f)) continue;
 
         // Barbarians from the west wear dark red, wolf pelts and horned helmets and swing a bronze axe; the
         // raiders from the east, leather, a stone-grey cap and a stone axe.
-        bool west = West(r->camp);
-        Look look = PersonLook(west ? LOOK_BARBARIAN : LOOK_RAIDER, 800u + (unsigned)i, west ? (Color){ 112, 40, 34, 255 } : (Color){ 96, 72, 48, 255 });
-        look.trim = (i & 1) ? (Color){ 150, 102, 70, 255 } : (Color){ 58, 44, 38, 255 };
+        // Bandits: dark cloth and leather, a bronze sickle-sword or a bow.
+        bool west = West(r->camp), bandit = RaiderBandit(i);
+        Color cloth = bandit ? (Color){ 54, 50, 58, 255 } : west ? (Color){ 112, 40, 34, 255 } : (Color){ 96, 72, 48, 255 };
+        Look look = PersonLook(west ? LOOK_BARBARIAN : LOOK_RAIDER, 800u + (unsigned)i, cloth);
+        look.trim = bandit ? (Color){ 92, 64, 44, 255 } : (i & 1) ? (Color){ 150, 102, 70, 255 } : (Color){ 58, 44, 38, 255 };
         LightFor(p);
         if (r->vit.dead) {
             DrawPersonBody(p, f, look);
             continue;
         }
-        bool sitting = !r->vit.override && !r->moving && G.night > 0.5f;
+        bool sitting = !r->vit.override && !r->moving && (G.night > 0.5f || bandit);
         float stride = (r->vit.override || r->moving) && !r->vit.drawing ? time * (r->vit.override ? 8.0f : 4.0f) : 0.0f;
         if (RaiderBowman(i)) {
             // The bowman: a war bow in hand, no axe.
             float pull = r->vit.drawing ? Clamp(1.0f - r->vit.windup / BOW_DRAW_TIME, 0.0f, 1.0f) : 0.0f;
-            DrawHuman(p, f, stride, look, sitting, true, pull);
+            if (!r->vit.drawing) HoldBow(p, f, sitting);
+            DrawHuman(p, f, stride, look, sitting, r->vit.drawing, pull);
             continue;
         }
         float angle = BlowAngle(r->vit.windup, r->vit.swing, r->vit.override ? -40.0f : 30.0f);
@@ -272,7 +438,11 @@ void DrawRaiders(void)
         rlRotatef(f * RAD2DEG, 0, 1, 0);
         rlMultMatrixf(MatrixToFloat(BlowFrame(angle)));
         GripHere(HAND_WEAPON, 0, 0, 0.04f);
-        if (west) {
+        if (bandit) {
+            DrawShadedBox((Vector3){ 0, 0, 0.12f }, (Vector3){ 0.05f, 0.05f, 0.26f }, COL_WOOD);
+            DrawShadedBox((Vector3){ 0, 0, 0.52f }, (Vector3){ 0.03f, 0.07f, 0.56f }, COL_BRONZE);
+            DrawShadedBox((Vector3){ 0, 0.08f, 0.82f }, (Vector3){ 0.03f, 0.18f, 0.12f }, COL_BRONZE);
+        } else if (west) {
             DrawShadedBox((Vector3){ 0, 0, 0.5f }, (Vector3){ 0.06f, 0.06f, 1.0f }, COL_WOOD);
             DrawShadedBox((Vector3){ 0, 0.14f, 0.92f }, (Vector3){ 0.04f, 0.42f, 0.28f }, COL_BRONZE);
         } else {

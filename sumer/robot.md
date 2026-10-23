@@ -25,7 +25,7 @@ rebuild or update them unless asked. The native test harness still builds agains
   asked**; otherwise push the feature branch and offer to bring `main` up to date. Do not open pull requests
   unless asked.
 - Verify in the real browser before saying "works": the project has been bitten by bugs that only showed
-  there (see "Traps"). Report what you could not test (Firefox, real speakers, real gamepads) plainly.
+  there (see "Traps"). Report what you could not test (Safari, real speakers, real gamepads) plainly.
 - You cannot listen to the music or see the game on a real GPU. Say so; use the numeric checks below and
   ask the player to judge sound.
 
@@ -37,7 +37,7 @@ All from the repository root. `tools/out/` is for build products and is git-igno
 |---|---|
 | Build the browser version into `web/` (needs Emscripten on PATH: `source emsdk_env.sh`) | `sh build-web.sh` |
 | Play the browser version, alone or together | `python3 server.py` then open the address it prints |
-| Logic tests (native, about 150 checks, needs `xvfb` or a display) | `sh tools/harness/run.sh` |
+| Logic tests (native, about 190 checks, needs `xvfb` or a display) | `sh tools/harness/run.sh` |
 | Browser test build (with `tools/web/testhooks.c`) | `bash tools/web/build.sh` |
 | Serve the test build on :8123 | `sh tools/web/serve.sh &` |
 | Browser suites (host + guests in headless Chromium; needs Playwright, `PLAYWRIGHT=<module path>`) | `sh tools/web/run-suites.sh` |
@@ -54,6 +54,10 @@ All from the repository root. `tools/out/` is for build products and is git-igno
 | A line-up of people: players' choices with armor (0), townsfolk and other roles (1), poses (2), heads up close (3) | `tools/out/harness lineup out.png <0-3> [hour]` |
 | The "Your look" window on the player | `tools/out/harness ui out.png 7 <lang 0/1>` |
 | Every guard's post, alone and after PvP takes the ziggurat's away | `tools/out/harness guards` |
+| Things standing on the ground that hang above it as drawn (worst first, and how many) | `tools/out/harness floaters [min gap]` (0 or 1 expected) |
+| A screenshot standing on an upper floor (the ziggurat's middle terrace: 8) | `SHOT_FLOOR=8 tools/out/harness shotin out.png x z yaw pitch dist hour` |
+| The dev console, as panel 8 (runs help, where and give first) | `tools/out/harness ui out.png 8 <lang 0/1>` |
+| Run a dev console command from a browser test | `consoleCmd(page, "tp band1")` in `tools/web/lib.js` (hook `TestConsole` in `testhooks.c`) |
 | Free patches in the city (for placing a house) | `tools/out/harness spots x0 z0 x1 z1 step half [skip]`; also test a spot against what is built before the city houses (see the sixth house's history in `git log`) |
 
 The harness has more modes (`shot`, `citymap`, `textmap`, `wetways`, `canals`, `pvp`, `archers`, `aim`,
@@ -103,6 +107,19 @@ in `src/game.h`) holds the whole world.
   caravans, peers). `G.actor` is who is acting; `Say()` goes to the actor (a guest's message is sent to them), `SayTo`
   and `Announce` address others. Peers are in `G.peers[]` (slot 0 is the host); each machine's own slot is `G.self`.
   Guests ease positions toward `netPos`/`netAt`.
+- **Touch controls** (`src/touch.c`): the page's touch events (not pointer events: synthetic touches in headless Chrome
+  give pointer events at 0,0) are read once a frame in `TouchFrame` (called from `PageFrame`); each finger gets a role
+  where it came down: a button, the stick (left 40%, lower 65%) or looking. The game asks `TouchPressed/TouchDown/
+  TouchStick/TouchRun/TouchLook` next to its keys. raylib counts any finger as the left mouse button, so the mouse bow
+  draw uses `MouseHeld` and mouse strikes need the pointer captured. A tap on a touch button is not also a menu click
+  (`ForgetClick`). Shown where `OnPhone()`, else after the first touch. Tested by phone.js with real touch events.
+  On a phone (`OnPhone()`) the game never asks for pointer lock (`LockMouse`, `WantPointer`) and never pauses on
+  losing focus or the pointer: Firefox for Android granted the lock on a tap and its loss paused the game. The
+  title screen's name field opens `window.prompt` (`AskText`) on a touch screen, the only way to a phone keyboard.
+- **Chat** (T, online only; T fast-forwards only offline): `PANEL_CHAT` keeps the game keys off while the line is typed in
+  `DrawChat` (`ui.c`, which also keeps the last 8 lines). A guest sends `M_CHAT` to the host; `HostChat` (`mp.c`) tidies it
+  (`ChatTidy`: control characters out, 100 bytes, cut on a whole UTF-8 letter), allows two a second per slot, and sends
+  `EV_CHAT` (slot + text) to everyone. The browser test types real keys (mp.js); `TestInfo` has the last line as `chat`.
 - **People fight through `Fighter` structs** rebuilt every frame in `src/combat.c` from villagers, workers, traders,
   caravans and raiders (`FK_*` kinds). Leashes (`InReach`): city guards stay in the city lands and within 40 m of their
   post, caravan guards within 14 m, villagers 45 m. Village anger lasts 120 s, being wanted 120 s (city lands only).
@@ -110,8 +127,80 @@ in `src/game.h`) holds the whole world.
   `HurtPlayer(dmg, by)` / `HurtSlot` / `NetHurt` with a cause (`BY_GUARD`, ..., `BY_PLAYER + slot`); the cause is
   what the death message names.
 - **Archers** (`Archery()`, `Loose()` in `combat.c`; `LooseFor`/`FlyNpcArrow` in `wildlife.c`): stand still for
-  `BOW_DRAW_TIME`, lead the target, arrows with `owner = -1` hit only players.
-- **NPC walking** (`StepToward`, `AroundWater`, `JumpWater` in `combat.c`/`city.c`): people jump canals like the player,
+  `BOW_DRAW_TIME`, lead the target, arrows with `owner = -1` hit only players. Drawn with a bow always visible:
+  `HoldBow` (held low between shots), `SlungBow` (city guards with a spear in hand), the bow pose while drawing.
+- **Water** (`WadeSpeed` in `world.c`): the player wades through water boxes (`MoveHorizontal` skips them): 40% speed in
+  canals, ponds and the harbor, 15% in the river (by x between `RIVER_X0`/`RIVER_X1`), floating head-out over the deep
+  river bed (`MoveVertical`). Only below `WATER_LEVEL + 0.2` does water slow you, so bridges, piers and the (solid) harbor quays
+  are walked at full speed. Rain skips drops under any box whose bottom is 1.8 m over the ground (roofs, ceilings: `DrawRain`).
+  The camera stops at thin boxes overhead too (house roofs), so inside a roofed room it stays under the roof. The ferry was removed; `STN_FERRY_E/W` remain only as the landing stages' positions.
+- **Photo detail** (`assets/detail.png`, `LoadDetail()` in `gfx.c`, `det()` and `detailMap` in `shaders.c`): four grey
+  CC0 maps in one texture, R ground, G mud brick, B wood, A rock, mid grey = no change. The world shader samples them in
+  world space (triplanar, no UVs) where it used to draw noise, and multiplies the vertex color by them. Rebuild with
+  `python3 -I tools/assets/make_detail.py` (Pillow, network); the browser builds embed it (`--embed-file`). A missing file
+  falls back to flat grey. Only CC0 sources (Poly Haven, ambientCG, Kenney, Quaternius); list each in the README's credits.
+- **People's grain, roads, flames**: `assets/detail2.png` (R cloth, G fleece/fur, B leather, A road) is read
+  by the world shader for MAT_FIGURE where a color's alpha says what it is (`Tag()` in `figures.c`: 254 cloth,
+  253 fleece, 252 leather, 251 metal, which only shines; 255 the rest). People's vertices carry their position on
+  their own body in the 2nd-4th material bytes (`VVertex` in `gfx.c`), so the grain moves with them. Roads are
+  ground with alpha 254. Flames: `Flame()`/`DrawTorches()` call `GfxFlame()`, and `DrawFlames()` in `gfx.c` draws
+  them after the world as additive billboards from `assets/flame.png`; without shaders the old glow boxes stay.
+- **Trees and fields**: `assets/detail3.png` (R bark, G leaves, B tilled earth, A straw) on texture unit 9 (WebGL 2
+  promises only units 0-15). Any non-figure color with alpha 254 bark (`COL_BARK`), 253 leaves (`COL_TREE`,
+  `COL_PALM_LEAF`, the tree literals in `world.c`), 252 tilled earth (`COL_SOIL`), 251 straw (`TAG_CROP()`) gets it,
+  triplanar in world space (`det3()`), and is drawn opaque. Keep plain `COL_PALM_TRUNK` (255) for beams and
+  posts, and do not `Mix()` a tagged color with an untagged one (the alpha lands on a random tag).
+- **Finding a way** (`src/path.c`): fighters (guards, wardens, raiders, barbarians, bandits, caravan guards, villagers
+  in a fight) go straight while `PathClear` says the line is walkable (looked along every 0.5 s); when it is not,
+  `PathWay` follows corners from `FindPath`, A* on a 1 m grid that follows the ground's height (stairs, terraces,
+  bridges; a step up of `STEP_HEIGHT`, down of 1.3 m), crosses canals narrow enough to jump (wet cells cost a
+  little more; `JumpWater` does the jump) and not the river, harbor or ponds. At most 2 searches a frame
+  (`PathNewFrame` in `UpdateCombat`), 4000 cells each (about 2 ms); a goal beyond that gets the way to the
+  nearest place found, looked for again in 3 s. `TestPaths` has a U of walls the old steering never left.
+- **Speed** (measured with `harness stats` and a `-pg` build of the harness): `BoxesNear()` in `world.c` is an
+  8 m grid of the boxes; `GroundHeight`, `SolidAt`, the player's and NPCs' collisions, the camera and the aim ray
+  ask it instead of scanning every box (update went from 0.87 to 0.06 ms a frame). New boxes join it before
+  the next question and `BuildWorld` starts it over; boxes must never move sideways. `InView(p, size)` in
+  `render.c` skips people and animals behind the camera (with a margin for their shadows); call it in any new
+  loop that draws figures. Guests carry other players on at their last speed (`PeerMoved`, `vel`) and
+  animals along their heading (`Ease` in `mp.c`), so they glide between the host's ten pictures a second.
+  `TestFaster` checks all three.
+- **Music of places** (`UpdatePlaces` in `music.c`, files in `assets/music/` from `tools/assets/make_music.sh`): one
+  raylib music stream per place (city, village, open land, ziggurat), each with a 1 s buffer so slow frames do
+  not starve it; while one plays, the synthesizer's tracks are silent and not computed at all (`idle`). The
+  fight mood brings the synthesizer back. Only CC0 music; list it in the README's credits. `audio.js` checks
+  each place (`MusicPlace()` in the test info).
+- **Alehouse** (`BuildAlehouse`, `AlehouseFolk`, `InAlehouse` in `village.c`; the rule in `AlehouseRule` and
+  `SetEquip` in `player.c`): built before the city's houses so they keep clear of it. Its folk are appended
+  last (`Villager.talks`: they turn and gesture while drawn). No drink is sold there yet, by the owner's wish.
+- **Leaf crowns**: a blob in leaf color (alpha 253) is lumpy (`Lump()` in `render.c`, the same waves at every level of
+  detail) and gets no normal, so the shader lights it facet by facet. Trees add two hashed clumps (no `RandF`).
+- **Partridges** (`AN_PARTRIDGE`, item `IT_PARTRIDGE`): herds appended at the end of `HERDS` because saves keep the
+  killed-animals mask by index; they are fliers (`flies`), rising 3 m while they flee.
+- **The open land** (`BuildWilds()` in `world.c`): tamarisk, camelthorn, fallen wood and stones, none solid, kept off
+  roads, fields and walls by `InKeepOut`. It draws from the world's random numbers before the herbs, so moving it
+  moves everything placed after it (tests that pick "the first wolf east of the river" must not lean on luck).
+- **Player torch** (`UpdateTorch()` in `player.c`): `G.torchOn` is the wish (B), `G.torchHeld` what the hand holds,
+  1 s (`TORCH_TIME`) to change, reset by `SetEquip()`; dropped at once when the bow is drawn (the draw never waits). `TorchBurning()` sets `PF_TORCH`
+  in the peer flags, which gives the light (`UpdateLights`) and the wider notice for wolves and prey (`wildlife.c`).
+  Every torch burns while `TorchesLit()` (`G.torchGlow`, from 17:00, brightening to full by 20:00 or with the dark);
+  the world shader's `night` uniform is that glow, as it only scales torchlight there.
+  Bodies: `STYLE_WOMAN` (256) in the 16-bit style. First person: `ViewModel()` in `player.c`.
+- **Dev console** (`src/console.c`, panel `PANEL_CONSOLE` drawn in `ui.c`): only when `G.devTools` (the "Dev tools" rule
+  on the title screen, sent to guests as rules bit 4). `ConsoleRun(text)` parses and runs a command and writes its
+  answer to a 14-line scrollback. World commands check `Host()`. Add a command as one more `else if` in `ConsoleRun`, a line in `Help()`, a row in the README's
+  table, Turkish for its answers, and a check in `TestConsole()`.
+- **Ground as drawn** (`SettleOnGround` in `world.c`, after `BuildTerrain`): things are placed on `TerrainHeight`, but the
+  ground is drawn as 6 m triangles (`GroundSurface`/`MeshHeight`), which sag below it over hills. The pass extends
+  whatever stands on the land down to the drawn ground (boxes and cylinders grow down, blobs and cones sink). Anything
+  added after `BuildTerrain` must use `GroundSurface` itself.
+- **Bandits** (`raiders.c`, `BANDS`, `BAND_FIRST`): two roaming bands of three after the camps in `G.raiders` (camp index
+  `CAMPS + b`, `RaiderBandit(i)`), role `ROLE_BANDIT`, cause `BY_BANDIT`. `Roam()` leads the first living member to
+  random stops (`BandSpot`: far from city, villages, camps and edge, off roads), sits the band down at some of them, and
+  keeps followers on the leader's trail. Only the host moves them; guests see the snapshots.
+- **Wolves** (`wildlife.c`): `Step()` tries side steps round anything solid and eases ground animals apart; a wolf flees
+  a fight only when `Beaten()` (badly hurt and `Lone()`: no pack mate on its feet within 40 m).
+- **NPC walking** (`StepToward`, `AroundWater`, `JumpWater` in `combat.c`/`city.c`): people jump canals (they do not wade),
   or go round wide water by the bridges; townsfolk follow the street graph in `village.c`.
 - **Death** (`Collapse` in `game.c`): the player loses what they gathered that day (`G.safe[]` is the baseline kept
   by `TrackGoods`; storage deposits count as kept).
@@ -270,13 +359,17 @@ no sound files. Read the comment at the top of the file and the notation comment
 
 ## Ideas that were mentioned and not done
 
-- Firefox and Safari are untested (only Chromium here). Touch/gamepad input does not exist; the owner wants to decide
-  the phone controls after the graphics work is done (the UI already fits phones and takes taps on its buttons).
+- Firefox works (the owner tested it); Safari is untested. No gamepad input. Touch controls cover only the main keys
+  (the owner asked for move, attack, parry, use, crouch, look, first/third person, then jump and previous/next
+  weapon; Bag and Menu were added so the panels and the pause menu can be reached): no chat, torch or map keys on touch.
 - Graphics, later steps (the owner wants CC0-only art, a 25-50 MB download at most, and to weigh each effect's cost):
   buildings and props, then effects (wind on cloth and palms, light shafts, ambient occlusion, water reflections,
-  sharper far shadows, grass and reeds). Animals are still boxes and blobs. Free model sites (poly.pizza, kenney.nl,
-  quaternius.com, opengameart.org) were blocked from the cloud sandbox, so people were made in code instead.
-- A body choice (man or woman) for players: the townsfolk have it (`Look.woman`), the "Your look" window does not;
-  the owner asked for few options.
+  sharper far shadows, grass and reeds). Animals are still boxes and blobs. Free model and texture sites (poly.pizza,
+  kenney.nl, quaternius.com, opengameart.org, polyhaven.com, ambientcg.com) were still denied by the cloud sandbox's
+  network policy in October 2026 (403 from the proxy), so nothing has been downloaded; the owner must allow those
+  hosts in the environment's network settings first. Since then the owner opened them (poly.pizza still 403s); four
+  CC0 textures went in as surface detail (see "Photo detail", then "Trees and fields"). Next by what is seen most: palm
+  and tree models (Quaternius nature packs are CC0 low-poly with flat colors, which suits baking into the static
+  meshes), then a second ground (grass) map. There is no model loader yet.
 - More sound effects: footsteps, the bow, animals, ambience (blows, parries and arrows have theirs).
 - `web/` is rebuilt by hand; there is no CI. The desktop branch needs its own catching up if it is ever revived.

@@ -21,6 +21,7 @@
 #define WALL_TOP        6.5f
 #define CAMPS           4
 #define EAST_CAMPS      2
+#define BANDS           2
 #define RIVER_X0        (-150.0f)
 #define RIVER_X1        (-128.0f)
 #define FORD_Z0         (-518.0f)
@@ -32,19 +33,20 @@
 #define STARVE_DAYS     6.0f
 #define FEED_MAX        30.0f
 
-#define MAX_BOXES       20000
+#define MAX_BOXES       24000
 #define MAX_RES         512
-#define MAX_ANIMALS     96
+#define MAX_ANIMALS     112
 #define MAX_ARROWS      40
 #define MAX_PLOTS       15
 #define MAX_HENS        5
 #define MAX_COWS        3
 #define MAX_SHEEP       3
 #define MAX_FLOCK       8
-#define MAX_RAIDERS     18
+#define MAX_RAIDERS     24   // 18 in the four camps, then the two roaming bands of three
 #define MAX_LADDERS     8
-#define MAX_FIGHTERS    128
-#define MAX_VILLAGERS   64
+#define MAX_FIGHTERS    160
+#define MAX_VILLAGERS   96
+#define PATH_MAX        16          // corners kept of a way found round something (path.c)
 #define MAX_WORKERS     16
 #define MAX_CARAVANS    2
 #define CARAVAN_GUARDS  2
@@ -83,13 +85,16 @@
 #define COL_WATER       CLITERAL(Color){  58, 110, 128, 255 }
 #define COL_ROAD        CLITERAL(Color){ 168, 148, 110, 255 }
 #define COL_PALM_TRUNK  CLITERAL(Color){ 118,  88,  58, 255 }
-#define COL_PALM_LEAF   CLITERAL(Color){  62, 118,  52, 255 }
+// Alpha 254..251 asks the shaders for the grain in assets/detail3.png: bark, leaves, tilled earth, straw.
+#define COL_BARK        CLITERAL(Color){ 118,  88,  58, 254 }
+#define TAG_CROP(c)     ((Color){ (c).r, (c).g, (c).b, 251 })
+#define COL_PALM_LEAF   CLITERAL(Color){  62, 118,  52, 253 }
 #define COL_DATES       CLITERAL(Color){ 150,  72,  30, 255 }
 #define COL_REED        CLITERAL(Color){ 146, 160,  70, 255 }
 #define COL_STRAW       CLITERAL(Color){ 190, 168, 104, 255 }
 #define COL_GRASS       CLITERAL(Color){  92, 128,  54, 255 }
 #define COL_SHRUB       CLITERAL(Color){ 118, 122,  70, 255 }
-#define COL_TREE        CLITERAL(Color){  74, 108,  58, 255 }
+#define COL_TREE        CLITERAL(Color){  74, 108,  58, 253 }
 #define COL_WOOD        CLITERAL(Color){ 112,  80,  50, 255 }
 #define COL_LINEN       CLITERAL(Color){ 232, 226, 210, 255 }
 #define COL_BLANKET     CLITERAL(Color){ 150,  60,  44, 255 }
@@ -101,7 +106,7 @@
 #define COL_BRONZE      CLITERAL(Color){ 190, 130,  60, 255 }
 #define COL_POT         CLITERAL(Color){ 178, 104,  64, 255 }
 #define COL_BRICK       CLITERAL(Color){ 160, 112,  76, 255 }
-#define COL_SOIL        CLITERAL(Color){  98,  74,  50, 255 }
+#define COL_SOIL        CLITERAL(Color){  98,  74,  50, 252 }
 #define COL_WHEAT_GREEN CLITERAL(Color){ 110, 150,  60, 255 }
 #define COL_WHEAT_RIPE  CLITERAL(Color){ 222, 188,  92, 255 }
 #define COL_FIRE        CLITERAL(Color){ 255, 150,  50, 255 }
@@ -112,7 +117,7 @@ typedef enum {
     IT_NONE, IT_DATES, IT_REEDS, IT_SEEDS, IT_WHEAT, IT_FLOUR, IT_MILK, IT_DOUGH, IT_BREAD,
     IT_EGG, IT_ROAST, IT_ARROWS, IT_GAZELLE, IT_ONAGER, IT_BOAR, IT_GOOSE, IT_WOLF,
     IT_CLAY, IT_POT, IT_WOOD, IT_COPPER, IT_TIN, IT_BRONZE, IT_FISH, IT_GRILLED, IT_COWHIDE, IT_SHEEPSKIN,
-    IT_BUCKET, IT_WATER, IT_WASTE, IT_HEN, IT_HERB, IT_SHEEP, IT_COUNT
+    IT_BUCKET, IT_WATER, IT_WASTE, IT_HEN, IT_HERB, IT_SHEEP, IT_PARTRIDGE, IT_COUNT
 } ItemId;
 
 typedef struct { const char *name; int stack; int food; Color color; } ItemDef;
@@ -132,7 +137,7 @@ typedef struct { Vector3 pos, size; Color color; bool solid, water, glow; float 
 typedef enum { RES_PALM, RES_REEDS, RES_TREE, RES_CLAY, RES_ORE, RES_FISH, RES_HERB, RES_KINDS } ResKind;
 typedef struct { Vector3 pos; ResKind kind; float regrow, spin; bool farm; } Resource;
 
-typedef enum { AN_GAZELLE, AN_ONAGER, AN_BOAR, AN_GOOSE, AN_WOLF, AN_SNAKE, AN_TYPES } AnimalType;
+typedef enum { AN_GAZELLE, AN_ONAGER, AN_BOAR, AN_GOOSE, AN_WOLF, AN_SNAKE, AN_PARTRIDGE, AN_TYPES } AnimalType;
 // ST_HUNT: a wolf pack hunting, a wounded boar charging, a snake striking.
 typedef enum { ST_CALM, ST_ALERT, ST_FLEE, ST_DEAD, ST_HUNT } AnimalState;
 
@@ -163,7 +168,7 @@ typedef enum { PLOT_EMPTY, PLOT_WHEAT, PLOT_SAPLING, PLOT_PALM, PLOT_DEAD } Plot
 typedef struct { Vector3 pos; PlotState state; float growth, dry; } Plot;
 
 typedef struct { Vector3 pos; float heading, timer, speed; } Wanderer;
-typedef enum { ROLE_CIVILIAN, ROLE_WORKER, ROLE_CLERIC, ROLE_MERCHANT, ROLE_GUARD, ROLE_RAIDER, ROLE_BARBARIAN, ROLE_COUNT } Role;
+typedef enum { ROLE_CIVILIAN, ROLE_WORKER, ROLE_CLERIC, ROLE_MERCHANT, ROLE_GUARD, ROLE_RAIDER, ROLE_BARBARIAN, ROLE_BANDIT, ROLE_COUNT } Role;
 
 // Combat state shared by every person; while 'override' is set, 'at' replaces their scripted position.
 // 'target' is the player they are hostile to (meaningful while 'hostile' runs); 'netAt' is where the
@@ -180,6 +185,15 @@ typedef struct {
     Vector3 jumpFrom, jumpTo;
     // An archer drawing its bow ('windup' counts down to the shot).
     bool drawing;
+    // Going round something big: the side it keeps to (+1 or -1), how long since it got any nearer.
+    signed char detour;
+    float detourT, bestLeft;
+    // A way found round what blocks the straight line (path.c): its corners, the next one, when to look
+    // again, the goal it was found for; whether the straight line was clear when last looked along.
+    Vector3 path[PATH_MAX], pathGoal;
+    unsigned char pathN, pathAt;
+    float pathT, lineT;
+    bool lineClear;
 } Vitals;
 
 enum { MARK_NONE, MARK_WARN, MARK_PARRIED, MARK_HIT };
@@ -195,14 +209,16 @@ typedef struct {
     Color robe;
     NpcKind kind;
     float face, side;
-    bool moving, templePost;
+    bool moving, templePost, talks;   // talks: sits with others, turning to them and talking with the hands
     Vitals vit;
     int road;
     float netT, netSide;
     int from, to;
     float wait, stuck;
     int bow;   // 0: no bow; 1-3: the bow they shoot with (hunting, composite, war)
+    bool crouch;   // someone at work low down: grinding grain, mending a net, tending a fire
 } Villager;
+// 'camp' 0 to CAMPS-1 is the camp they live in; CAMPS + b is roaming band b.
 typedef struct { Vector3 home, pos, netPos; float face, timer, speed, respawnDay; bool moving; int camp; Vitals vit; } Raider;
 typedef struct { Vector3 wall, base, n; float top; } Ladder;
 
@@ -244,7 +260,7 @@ typedef enum {
     STN_BED, STN_STORAGE, STN_QUERN, STN_TROUGH, STN_OVEN, STN_KILN, STN_SMELTER, STN_BENCH, STN_ALTAR, STN_STASH, STN_STASH2,
     STN_STASH3, STN_STASH4, STN_WELL, STN_DITCH, STN_FERRY_E, STN_FERRY_W, STN_COUNT
 } StationId;
-typedef enum { PANEL_NONE, PANEL_BAG, PANEL_STORAGE, PANEL_TRADE, PANEL_PAUSE, PANEL_HELP, PANEL_COOP, PANEL_LOOK } Panel;
+typedef enum { PANEL_NONE, PANEL_BAG, PANEL_STORAGE, PANEL_TRADE, PANEL_PAUSE, PANEL_HELP, PANEL_COOP, PANEL_LOOK, PANEL_CONSOLE, PANEL_SETTINGS, PANEL_CHAT } Panel;
 typedef enum { TGT_NONE, TGT_CARCASS, TGT_RES, TGT_STATION, TGT_PLOT, TGT_COOP, TGT_TRADER, TGT_BODY, TGT_OFFER, TGT_LADDER, TGT_WATER } TargetKind;
 enum { SPRING, SUMMER, FALL, WINTER };
 typedef struct { TargetKind kind; int index; } Target;
@@ -289,7 +305,7 @@ typedef enum { NET_SOLO, NET_HOST, NET_CLIENT } NetRole;
 #define CONTACT_TIME PVP_WINDUP     // a swing's weapon meets its target this long after it starts, whatever it hits
 #define HITSTOP_TIME 0.07f          // a landed blow holds the swing still this long (the mace a little longer)
 #define FLINCH_TIME  0.45f
-enum { PF_CROUCH = 1, PF_RUN = 2, PF_MOVE = 4, PF_GROUND = 8, PF_AIM = 16, PF_SLEEP = 32, PF_CLIMB = 64, PF_PARRY = 128, PF_BED = 256 };
+enum { PF_CROUCH = 1, PF_RUN = 2, PF_MOVE = 4, PF_GROUND = 8, PF_AIM = 16, PF_SLEEP = 32, PF_CLIMB = 64, PF_PARRY = 128, PF_BED = 256, PF_TORCH = 512 };
 #define NAME_LEN 16
 #define SAFE_RADIUS 22.0f
 
@@ -298,10 +314,10 @@ enum { PF_CROUCH = 1, PF_RUN = 2, PF_MOVE = 4, PF_GROUND = 8, PF_AIM = 16, PF_SL
 typedef struct {
     bool active, alone;
     char name[NAME_LEN];
-    Vector3 pos, shown;
+    Vector3 pos, shown, vel;   // vel: how fast they were last seen moving, to carry them on between updates
     float facing, shownFacing, stride, draw, health, swingT, wanted, aggro, heard;
     int flags, equip, weapon, bow, armor, net;
-    unsigned char style;   // how they chose to look (PackStyle)
+    unsigned short style;   // how they chose to look (PackStyle, and STYLE_WOMAN)
     int kills, deaths;   // players brought down by this one, and times brought down by a player
     // The warning mark over this player's head while they swing at someone, then how it came out
     // (MARK_*, the host decides); and how long since this machine saw them hurt (a flinch).
@@ -338,7 +354,7 @@ enum {
 #define REQ_ARGS 12
 enum { WARN_WOLF, WARN_SNAKE, WARN_KINDS };
 // What hurt a player last, so whoever is brought down hears by whom: BY_PLAYER + slot for a player.
-enum { BY_NONE, BY_GUARD, BY_CARAVAN, BY_TOWNSFOLK, BY_VILLAGERS, BY_RAIDER, BY_BARBARIAN, BY_WOLF, BY_BOAR, BY_SNAKE, BY_PLAYER };
+enum { BY_NONE, BY_GUARD, BY_CARAVAN, BY_TOWNSFOLK, BY_VILLAGERS, BY_RAIDER, BY_BARBARIAN, BY_WOLF, BY_BOAR, BY_SNAKE, BY_BANDIT, BY_PLAYER };
 
 typedef struct {
     Box boxes[MAX_BOXES];
@@ -383,7 +399,7 @@ typedef struct {
     int torchCount;
     Vector3 dynLights[MAX_DYN_LIGHTS];
     int dynCount;
-    float night, drawTorch;
+    float night, torchGlow, drawTorch;   // torchGlow: how bright torches burn, from the evening on
     float tileTorch[GROUND_TILES][GROUND_TILES];
     Particle particles[MAX_PARTICLES];
     bool confirmNew, requestNew;
@@ -412,6 +428,10 @@ typedef struct {
     float followT, camBlend;
     Vector3 followPos, followDir;
     bool arrowCam;
+    // The player's torch: wanted (B), in hand and burning, and how far through the second it takes to take
+    // it up or put it away (it waits for that after a shot or a change of weapon too).
+    bool torchOn, torchHeld;
+    float torchT;
     float food, hungerNag;
     float health, hurtT, safeT;
     // How much of each thing in the baskets the player had when the day began (or took out of
@@ -433,6 +453,10 @@ typedef struct {
     int trader;
     Target target;
     bool cursorLocked, ignoreClick, quit, wasCaptured;
+    float escQuiet;   // a moment after the mouse was released by Esc, Esc does nothing
+    bool devTools;    // the host (or a player alone) turned on dev tools: the dev console can be opened
+    bool god;         // dev console: nothing hurts this player
+    float devSpeed;   // dev console: walking speed times this (0 means 1)
     float autosaveT;
 
     NetRole role;
@@ -462,6 +486,7 @@ float RandF(float lo, float hi);
 float Hash2(int a, int b);
 float XZDist(Vector3 a, Vector3 b);
 Color Mix(Color a, Color b, float t);
+bool InView(Vector3 p, float size);
 Color Lit(Color c, float shade);
 void DrawShadedBox(Vector3 c, Vector3 s, Color col);
 void DrawGlowBox(Vector3 c, Vector3 s, Color col);
@@ -477,12 +502,17 @@ void DrawHuman(Vector3 pos, float facing, float stride, Look look, bool crouch, 
 extern void (*ExtraFigures)(void);
 void GripHere(int hand, float x, float y, float z);
 void GripAt(int hand, float x, float y, float z);
-Look PlayerLook(int slot, unsigned char style, int armor);
+void HoldBow(Vector3 pos, float facing, bool crouch);
+void HoldBowFor(Vector3 pos, float facing, bool crouch, bool torch);
+void SlungBow(Vector3 pos, float facing);
+void DrawBow(Vector3 grip, Vector3 nock, float pull);
+Look PlayerLook(int slot, unsigned short style, int armor);
 Look PersonLook(int role, unsigned seed, Color robe);
-unsigned char PackStyle(int hair, int beard, int dress, int jewel);
-unsigned char ChosenStyle(void);
+#define STYLE_WOMAN 256   // a woman's body (slighter, no beard), above the four two-bit choices
+unsigned short PackStyle(int hair, int beard, int dress, int jewel);
+unsigned short ChosenStyle(void);
 bool StyleChosen(void);
-void ChooseStyle(unsigned char style);
+void ChooseStyle(unsigned short style);
 const char *HairName(int k);
 const char *BeardName(int k);
 const char *DressName(int k);
@@ -492,6 +522,7 @@ void AddTorch(float x, float y, float z, bool pole);
 void AddFireLight(float x, float y, float z);
 void BuildLights(void);
 void UpdateLights(void);
+bool TorchesLit(void);
 float TorchLightAt(Vector3 p);
 void LightFor(Vector3 p);
 float FogAt(Vector3 p);
@@ -557,6 +588,7 @@ void BuildVillages(void);
 Vector3 VillageCenter(int v);
 const char *VillageName(int v);
 int VillageAt(Vector3 p);
+bool InAlehouse(Vector3 p);
 Rectangle FoldArea(void);
 
 bool InsideWalls(float x, float z, float margin);
@@ -588,8 +620,14 @@ Vector2 PushOut(Vector2 p, float radius, const Box *b);
 float GroundHeight(float x, float z, float y);
 float CeilingHeight(float x, float z, float y);
 bool InWater(float x, float z);
+float WadeSpeed(float x, float z);
 bool PointInSolid(Vector3 p);
 bool SolidAt(float x, float z, float radius);
+void PathNewFrame(void);
+bool PathClear(Vector3 a, Vector3 b);
+int FindPath(Vector3 from, Vector3 to, Vector3 *out, int max);
+Vector3 PathWay(Vitals *v, Vector3 goal, float dt);
+const int *BoxesNear(float x0, float z0, float x1, float z1, int *n);
 void UpdateSky(void);
 void DrawSky(void);
 void DrawTerrain(void);
@@ -626,6 +664,7 @@ void Fmt(char *buf, int size, const char *fmt, ...) PRINTF_LIKE(3, 4);
 
 void UpdatePlayer(float dt, bool input);
 void SetEquip(int eq);
+void NextEquip(int step);
 void StartClimb(int ladder, bool up);
 const char *EquipName(int eq);
 void FollowCamera(float dt);
@@ -660,6 +699,7 @@ bool AnimalHidden(const Animal *a);
 bool AnyWolfHunting(void);
 bool AnyBeastAttacking(void);
 void CalmBeasts(int slot);
+int KillAnimalsNear(Vector3 p, float r);
 void ShootFor(int slot, Vector3 from, Vector3 vel, int damage);
 void LooseFor(Vector3 from, Vector3 to, float speed, int damage, int cause);
 enum { STRIKE_START, STRIKE_CONTACT };
@@ -703,17 +743,26 @@ int PeopleInArc(Vector3 chest, Vector3 fwd, float range, float minDot, int *out,
 bool FighterIsFoe(int i);
 int FighterCount(void);
 bool FighterInfo(int i, Vector3 *pos, float *hp, float *maxHp, const char **name, bool *hostile, bool *dead);
+void ConsoleRun(const char *text);
+float LandingHeight(float x, float z);
+void SaveGamePrefs(void);
+void LoadGamePrefs(void);
+int ConsoleLines(void);
+const char *ConsoleLine(int i);
+const char *ConsoleLast(void);
 int FighterMark(int i);
 bool BodyLootable(int i);
 void HitPlayer(int s, float dmg, Vector3 from, bool melee);
 int PlayerOnSegment(Vector3 a, Vector3 b, int skip);
 int PlayersInArc(Vector3 chest, Vector3 fwd, float range, float minDot, int skip, int *out, int max);
 void ForgetFights(int slot);
+void DawnPeople(void);
 void RespawnPeople(void);
 void BuildRaiders(void);
 void UpdateRaiders(float dt);
 void DrawRaiders(void);
 bool RaiderBowman(int i);
+bool RaiderBandit(int i);
 void StashPrompt(int camp, char *buf, int size, bool *ok);
 void TakeStash(int camp);
 bool ClaimStash(int camp, const int *want, int *res, Vector3 by);
@@ -764,10 +813,6 @@ void PourDitch(void);
 bool NearWater(Vector3 p);
 void FillBucket(void);
 void Exert(float food);
-void FerryPrompt(int s, char *e, char *f, int size, bool *okE, bool *okF);
-void TakeFerry(int s);
-void ChangeFare(void);
-void DrawFerries(void);
 void BlessPrompt(char *buf, int size, bool *ok);
 void SpringRespawn(void);
 int CityFarmCount(void);
@@ -807,6 +852,8 @@ Font GameFont(void);
 
 void SetPanel(Panel p);
 void DrawUI(void);
+void ChatAdd(int slot, const char *text);
+void ChatClear(void);
 
 void GameInit(void);
 void GameUpdate(void);
@@ -834,6 +881,21 @@ const char *PageParam(const char *key);
 void ServerAddress(char *buf, int size, const char *query);
 bool OnWeb(void);
 bool OnPhone(void);
+void ForgetClick(void);
+bool MouseHeld(int button);
+void LockMouse(bool lock);
+bool AskText(const char *title, const char *now, char *out, int size);
+
+// Touch controls (touch.c).
+enum { TB_ATTACK, TB_PARRY, TB_USE, TB_CROUCH, TB_VIEW, TB_BAG, TB_MENU, TB_JUMP, TB_PREV, TB_NEXT, TB_COUNT };
+bool TouchOn(void);
+void TouchFrame(void);
+bool TouchDown(int b);
+bool TouchPressed(int b);
+Vector2 TouchStick(void);
+bool TouchRun(void);
+Vector2 TouchLook(void);
+void DrawTouch(void);
 Vector2 PointerPosition(void);
 float PixelRatio(void);
 
@@ -862,6 +924,7 @@ void SayTo(int s, const char *fmt, ...) PRINTF_LIKE(2, 3);
 void Announce(const char *fmt, ...) PRINTF_LIKE(1, 2);
 void SayNear(Vector3 at, float r, const char *fmt, ...) PRINTF_LIKE(3, 4);
 void UpdatePeers(float dt);
+void PeerMoved(Peer *p, Vector3 pos);
 void DrawPeers(void);
 void DrawInBed(int s, Vector3 at, float facing, Look look);
 int PlayerCount(void);
@@ -876,6 +939,9 @@ const Arrow *NetArrows(void);
 void DrawNetArrows(void);
 void LocalSayV(const char *fmt, va_list ap);
 void NetSayV(int slot, const char *fmt, va_list ap);
+#define CHAT_MAX 100   // bytes in a line of chat
+int ChatTidy(const char *in, char *out, int size);
+void NetChat(const char *text);
 void NetHurt(int slot, float dmg, int by, const Vector3 *src);
 void NetStunned(int slot, float secs);
 void NetHitMark(int slot, bool arrow);
@@ -896,7 +962,7 @@ const char *NetFailure(void);
 const char *NetRoom(void);
 void NetLeave(void);
 void NetFrame(float dt);
-void NetRules(bool pvp, bool combat);
+void NetRules(bool pvp, bool combat, bool dev);
 const char *RulesText(void);
 const char *KillDeath(int s);
 
@@ -960,6 +1026,7 @@ int MusicLevel(void);              // 0 off, 1 low, 2 medium, 3 high
 void MusicSetLevel(int level);
 const char *MusicLevelName(void);
 const char *MusicTitle(int mood);
+int MusicPlace(void);
 int MusicMood(void);               // 0 morning, 1 the fight, 2 the night
 void MusicRender(int mood, float *out, int frames);
 float MusicPartBeats(int mood, int part);
@@ -996,6 +1063,8 @@ void GfxSetChoice(int choice);
 const char *GfxChoiceName(int choice);
 const char *GfxLabel(void);
 bool GfxOn(void);
+void GfxFlame(Vector3 p, float size);
+bool TorchBurning(void);
 bool DrawingAll(void);             // drawing the whole map once for the shaders' meshes: no culling
 void GfxWorldChanged(void);
 bool GfxDrawWorld(void);           // the 3D world through the shaders; false when the classic way must draw it

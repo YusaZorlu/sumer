@@ -90,9 +90,9 @@ static void BuildWaterways(void)
     Bridge(-114, -10, false, 14);
 
     // Brick quays round the harbor basin, down into the water.
-    AddBox(-66.5f, -1.4f, -26.5f, 18.0f, 1.75f, 1.0f, COL_BRICK, false);
-    AddBox(-66.5f, -1.4f, 2.5f, 18.0f, 1.75f, 1.0f, COL_BRICK, false);
-    AddBox(-57.5f, -1.4f, -12.0f, 1.0f, 1.75f, 29.0f, COL_BRICK, false);
+    AddBox(-66.5f, -3.0f, -26.5f, 18.0f, 3.35f, 1.0f, COL_BRICK, true);
+    AddBox(-66.5f, -3.0f, 2.5f, 18.0f, 3.35f, 1.0f, COL_BRICK, true);
+    AddBox(-57.5f, -3.0f, -12.0f, 1.0f, 3.35f, 29.0f, COL_BRICK, true);
     Boat(-70, -20, true);
     Boat(-64, -16, true);
     Boat(-71, -3, true);
@@ -179,12 +179,27 @@ static int fieldFirst[MAX_FIELDS], fieldLast[MAX_FIELDS], fieldCount;
 
 static void Field(float x0, float z0, float x1, float z1)
 {
-    AddBox((x0 + x1) / 2, 0, (z0 + z1) / 2, x1 - x0, 0.1f, z1 - z0, COL_SOIL, false);
+    const Color bank = { 112, 90, 64, 252 }, ditch = { 76, 60, 46, 252 };
+    float cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    AddBox(cx, 0, cz, x1 - x0, 0.1f, z1 - z0, COL_SOIL, false);
+    AddBox(cx, 0, z0 - 0.4f, x1 - x0 + 1.6f, 0.22f, 0.8f, bank, false);
+    AddBox(cx, 0, z1 + 0.4f, x1 - x0 + 1.6f, 0.22f, 0.8f, bank, false);
+    AddBox(x0 - 0.4f, 0, cz, 0.8f, 0.22f, z1 - z0, bank, false);
+    AddBox(x1 + 0.4f, 0, cz, 0.8f, 0.22f, z1 - z0, bank, false);
+    AddBox(cx, 0, z0 - 1.3f, x1 - x0 + 1.6f, 0.05f, 1.0f, ditch, false);
+    // the shaduf: a sweep on a post that lifts the ditch water in a skin bucket
+    AddBox(x0 + 1.0f, 0, z0 - 1.9f, 0.18f, 2.2f, 0.18f, COL_WOOD, false);
+    AddBox(x0 + 1.0f, 2.1f, z0 - 1.9f, 3.6f, 0.1f, 0.1f, COL_WOOD, false);
+    AddShape(x0 - 0.6f, 1.95f, z0 - 1.9f, 0.45f, 0.35f, 0.45f, (Color){ 118, 96, 74, 255 }, false, SHAPE_BLOB);
+    AddBox(x0 + 2.6f, 0.6f, z0 - 1.9f, 0.04f, 1.5f, 0.04f, (Color){ 150, 128, 92, 255 }, false);
+    AddShape(x0 + 2.6f, 0.3f, z0 - 1.9f, 0.4f, 0.35f, 0.4f, (Color){ 120, 84, 54, 255 }, false, SHAPE_CYL);
+    for (int k = 0; k < 3; k++)
+        AddShape(x1 + 1.4f + 0.9f * (float)k, 0, z1 + 1.3f, 0.7f, 1.1f, 0.7f, TAG_CROP(COL_STRAW), false, SHAPE_CONE);
     if (fieldCount < MAX_FIELDS) fieldFirst[fieldCount] = G.boxCount;
     for (float z = z0 + 0.7f; z < z1 - 0.4f; z += 1.6f)
-        AddBox((x0 + x1) / 2, 0.1f, z, x1 - x0 - 0.8f, 0.6f, 0.6f, COL_WHEAT_GREEN, false);
+        AddBox((x0 + x1) / 2, 0.1f, z, x1 - x0 - 0.8f, 0.6f, 0.6f, TAG_CROP(COL_WHEAT_GREEN), false);
     if (fieldCount < MAX_FIELDS) fieldLast[fieldCount++] = G.boxCount;
-    KeepOut(x0, z0, x1, z1);
+    KeepOut(x0 - 2.0f, z0 - 2.5f, x1 + 3.6f, z1 + 2.0f);
 }
 
 // Each field runs a little ahead of or behind its neighbour.
@@ -194,8 +209,8 @@ void UpdateFields(void)
         float growth;
         bool stubble, bare = !CropStage(0.06f * (float)(f % 3) - 0.06f, &growth, &stubble);
         float h = bare ? 0.03f : stubble ? 0.14f : 0.1f + 0.75f * growth;
-        Color c = bare ? (Color){ 84, 64, 44, 255 } : stubble ? COL_STRAW
-                : growth >= 1.0f ? COL_WHEAT_RIPE : Mix(COL_WHEAT_GREEN, COL_WHEAT_RIPE, growth * 0.4f);
+        Color c = bare ? (Color){ 84, 64, 44, 252 } : TAG_CROP(stubble ? COL_STRAW
+                : growth >= 1.0f ? COL_WHEAT_RIPE : Mix(COL_WHEAT_GREEN, COL_WHEAT_RIPE, growth * 0.4f));
         for (int i = fieldFirst[f]; i < fieldLast[f]; i++) {
             G.boxes[i].size.y = h;
             G.boxes[i].pos.y = 0.1f + h / 2;
@@ -216,7 +231,8 @@ bool FieldBox(int i)
 void DrawFields(void)
 {
     for (int f = 0; f < fieldCount; f++) {
-        if (fieldLast[f] <= fieldFirst[f] || XZDist(G.boxes[fieldFirst[f]].pos, G.cam.position) > 260.0f) continue;
+        if (fieldLast[f] <= fieldFirst[f] || XZDist(G.boxes[fieldFirst[f]].pos, G.cam.position) > 260.0f ||
+            !InView(G.boxes[(fieldFirst[f] + fieldLast[f]) / 2].pos, 36.0f)) continue;
         for (int i = fieldFirst[f]; i < fieldLast[f]; i++) DrawShadedBox(G.boxes[i].pos, G.boxes[i].size, G.boxes[i].color);
     }
 }
@@ -318,6 +334,27 @@ void BuildCityHouses(void)
                 float wx = (wside == 0) ? -w / 2 : (wside == 1) ? w / 2 : 0.0f;
                 float wz = (wside == 2) ? -d / 2 : (wside == 3) ? d / 2 : 0.0f;
                 AddBox(cx + wx, h - 1.3f, cz + wz, wx != 0 ? 0.1f : 0.55f, 0.4f, wz != 0 ? 0.1f : 0.55f, COL_DOORWAY, false);
+            }
+            // Life at the door and on the roof: a cloth awning, jars and baskets, a reed shade up top.
+            float ox = (float)((dx > 0) - (dx < 0)), oz = (float)((dz > 0) - (dz < 0));   // out of the door
+            if (Hash2(ix + 61, iz + 7) < 0.35f) {
+                static const Color cloths[4] = { { 222, 210, 180, 255 }, { 160, 70, 52, 255 }, { 70, 92, 130, 255 }, { 190, 150, 80, 255 } };
+                Color cl = cloths[(int)(Hash2(ix + 2, iz + 66) * 3.99f)];
+                AddBox(cx + dx + ox * 0.6f, 2.35f, cz + dz + oz * 0.6f, ox != 0 ? 1.2f : 2.0f, 0.05f, oz != 0 ? 1.2f : 2.0f, cl, false);
+                for (int k = -1; k <= 1; k += 2)
+                    AddBox(cx + dx + ox * 1.15f + oz * 0.95f * (float)k, 0, cz + dz + oz * 1.15f + ox * 0.95f * (float)k, 0.08f, 2.4f, 0.08f, COL_WOOD, false);
+            }
+            int jars = (int)(Hash2(ix + 33, iz + 12) * 3.99f) - 1;
+            for (int k = 0; k < jars; k++) {
+                float along = (k == 0 ? -1.0f : 1.0f) * (0.95f + 0.35f * (float)(k / 2)), out = 0.35f;
+                float px = cx + dx + ox * out + oz * along, pz = cz + dz + oz * out + ox * along;
+                if (Hash2(ix + k, iz + 44) < 0.6f) AddShape(px, -0.05f, pz, 0.48f, 0.62f, 0.48f, COL_POT, false, SHAPE_BLOB);
+                else AddShape(px, 0, pz, 0.55f, 0.42f, 0.55f, COL_STRAW, false, SHAPE_CYL);
+            }
+            if (!court && Hash2(ix + 71, iz + 19) < 0.3f) {
+                float sx = cx - (Hash2(ix, iz + 61) < 0.5f ? -1.0f : 1.0f) * w / 4, sz = cz + d / 4;
+                for (int k = 0; k < 4; k++) AddBox(sx + ((k & 1) ? 0.9f : -0.9f), h, sz + ((k & 2) ? 0.9f : -0.9f), 0.08f, 1.6f, 0.08f, COL_WOOD, false);
+                AddBox(sx, h + 1.6f, sz, 2.1f, 0.08f, 2.1f, COL_STRAW, false);
             }
             if (Hash2(ix + 5, iz + 91) < 0.16f) {
                 float nx = (dx > 0) - (dx < 0), nz = (dz > 0) - (dz < 0);

@@ -30,6 +30,8 @@ void GameInit(void)
     G.health = HEALTH_MAX;
     G.followArrow = -1;
     G.arrowCam = true;
+    G.torchOn = true;
+    LoadGamePrefs();
     G.day = 1;
     G.dawnDay = 1;
     G.hour = 7.0f;
@@ -84,7 +86,8 @@ void PassHours(float h)
 static void UpdateSleep(float dt)
 {
     if (G.waitBed && G.panel == PANEL_NONE &&
-        (KeyPressed(KEY_E) || KeyPressed(KEY_SPACE) || IsKeyDown(KEY_W) || IsKeyDown(KEY_A) || IsKeyDown(KEY_S) || IsKeyDown(KEY_D))) {
+        (KeyPressed(KEY_E) || KeyPressed(KEY_SPACE) || IsKeyDown(KEY_W) || IsKeyDown(KEY_A) || IsKeyDown(KEY_S) || IsKeyDown(KEY_D) ||
+         TouchPressed(TB_USE) || Vector2Length(TouchStick()) > 0)) {
         G.waitBed = false;
         Say("You get up.");
     }
@@ -183,6 +186,7 @@ static const char *BroughtDownInCity(int by)
     case BY_VILLAGERS: what = L("The villagers beat you down."); break;
     case BY_RAIDER: what = L("Raiders left you for dead."); break;
     case BY_BARBARIAN: what = L("Barbarians left you for dead."); break;
+    case BY_BANDIT: what = L("Bandits left you for dead."); break;
     case BY_WOLF: what = L("Wolves brought you down."); break;
     case BY_BOAR: what = L("A boar brought you down."); break;
     case BY_SNAKE: what = L("A snake's venom brought you down."); break;
@@ -205,6 +209,7 @@ static const char *BroughtDown(int by)
     case BY_VILLAGERS: return L("The villagers beat you down. A shepherd carried you home.");
     case BY_RAIDER: return L("Raiders left you for dead. A shepherd carried you home.");
     case BY_BARBARIAN: return L("Barbarians left you for dead. A shepherd carried you home.");
+    case BY_BANDIT: return L("Bandits left you for dead. A shepherd carried you home.");
     case BY_WOLF: return L("Wolves brought you down. A shepherd carried you home.");
     case BY_BOAR: return L("A boar brought you down. A shepherd carried you home.");
     case BY_SNAKE: return L("A snake's venom brought you down. A shepherd carried you home.");
@@ -227,7 +232,7 @@ static void Collapse(void)
     snprintf(how, sizeof(how), "%s", BroughtDown(G.hurtBy));
     TrackGoods();
     for (int i = 1; i < IT_COUNT; i++) {
-        bool carcass = i >= IT_GAZELLE && i <= IT_GOOSE;
+        bool carcass = (i >= IT_GAZELLE && i <= IT_GOOSE) || i == IT_PARTRIDGE;
         int gone = BagCount(i) - (carcass ? 0 : G.safe[i]);
         if (gone <= 0) continue;
         BagRemove(i, gone);
@@ -298,6 +303,29 @@ static void NoteHit(float dmg, const Vector3 *src)
     G.flinchZ = away.y;
 }
 
+// The game settings each player keeps for themselves (sumer.prefs): the arrow camera and the first-person view.
+void SaveGamePrefs(void)
+{
+    FILE *f = fopen(DataPath("sumer.prefs"), "w");
+    if (!f) return;
+    fprintf(f, "arrowcam %d\nfirstperson %d\n", G.arrowCam ? 1 : 0, G.firstPerson ? 1 : 0);
+    fclose(f);
+    SyncStorage();
+}
+
+void LoadGamePrefs(void)
+{
+    char key[32];
+    int v;
+    FILE *f = fopen(DataPath("sumer.prefs"), "r");
+    if (!f) return;
+    while (fscanf(f, "%31s %d", key, &v) == 2) {
+        if (strcmp(key, "arrowcam") == 0) G.arrowCam = v != 0;
+        else if (strcmp(key, "firstperson") == 0) G.firstPerson = v != 0;
+    }
+    fclose(f);
+}
+
 void HurtPlayer(float dmg, int by)
 {
     HurtPlayerFrom(dmg, by, NULL);
@@ -305,7 +333,7 @@ void HurtPlayer(float dmg, int by)
 
 void HurtPlayerFrom(float dmg, int by, const Vector3 *src)
 {
-    if (G.sleeping) return;
+    if (G.sleeping || G.god) return;
     // This happens to this machine's player, whoever struck: what it says is for them.
     int actor = G.actor;
     G.actor = G.self;
@@ -325,7 +353,7 @@ static void UpdateDawn(void)
 {
     if (G.hour >= 6.0f && G.hour < 12.0f && G.dawnDay != G.day) {
         G.dawnDay = G.day;
-        RespawnPeople();
+        DawnPeople();
         NewDay();
     }
 }
@@ -413,7 +441,8 @@ static bool HandleWindow(void)
     if (KeyPressed(KEY_F11) || (alt && KeyPressed(KEY_ENTER))) ToggleBorderlessWindowed();
 
     bool focused = IsWindowFocused(), paused = false;
-    if (!focused && G.wasFocused && G.panel == PANEL_NONE) {
+    // A phone does not pause by itself: a tap can move the focus, and leaving the browser stops the game anyway.
+    if (!focused && G.wasFocused && G.panel == PANEL_NONE && !OnPhone()) {
         SetPanel(PANEL_PAUSE);
         paused = true;
     }
@@ -421,9 +450,11 @@ static bool HandleWindow(void)
 
     if (!OnWeb()) return paused;
     bool captured = PointerCaptured();
-    if (G.wasCaptured && !captured && G.panel == PANEL_NONE) {
+    if (G.wasCaptured && !captured && G.panel == PANEL_NONE && !OnPhone()) {
         SetPanel(PANEL_PAUSE);
         paused = true;
+        // The Esc that released the mouse can reach the game a frame later; it must not close the menu again.
+        G.escQuiet = 0.3f;
     }
     G.wasCaptured = captured;
     // The click that takes the mouse back is not a shot.
@@ -434,13 +465,20 @@ static bool HandleWindow(void)
 // 'paused': the Esc that released the mouse already opened the pause menu; it does not close it again.
 static void HandleMenus(bool paused)
 {
-    if (KeyPressed(KEY_ESCAPE) && !paused) {
+    if (G.escQuiet > 0) G.escQuiet -= GetFrameTime();
+    if ((KeyPressed(KEY_ESCAPE) && !paused && G.escQuiet <= 0) || TouchPressed(TB_MENU)) {
         SetPanel(G.panel == PANEL_NONE ? PANEL_PAUSE : PANEL_NONE);
     } else if (KeyPressed(KEY_H) && (G.panel == PANEL_NONE || G.panel == PANEL_PAUSE || G.panel == PANEL_HELP)) {
         SetPanel(G.panel == PANEL_HELP ? PANEL_NONE : PANEL_HELP);
-    } else if (KeyPressed(KEY_TAB) || KeyPressed(KEY_I)) {
+    } else if (G.devTools && (KeyPressed(KEY_GRAVE) || KeyPressed(KEY_F2))) {
+        if (G.panel == PANEL_NONE || G.panel == PANEL_BAG) SetPanel(PANEL_CONSOLE);
+        else if (G.panel == PANEL_CONSOLE) SetPanel(PANEL_NONE);
+    } else if (KeyPressed(KEY_T) && Online() && G.panel == PANEL_NONE && !G.sleeping) {
+        SetPanel(PANEL_CHAT);
+        while (GetCharPressed() > 0) {}   // the T that opened it is not typed
+    } else if (KeyPressed(KEY_TAB) || TouchPressed(TB_BAG) || (KeyPressed(KEY_I) && G.panel != PANEL_CONSOLE && G.panel != PANEL_CHAT)) {
         if (G.panel == PANEL_NONE) SetPanel(PANEL_BAG);
-        else if (G.panel != PANEL_PAUSE && G.panel != PANEL_HELP) SetPanel(PANEL_NONE);
+        else if (G.panel != PANEL_PAUSE && G.panel != PANEL_HELP && G.panel != PANEL_SETTINGS) SetPanel(PANEL_NONE);
     }
     if (G.panel == PANEL_PAUSE && KeyPressed(KEY_Q)) G.quit = true;
     if (KeyPressed(KEY_F5) && !G.sleeping) SaveNow();
@@ -452,7 +490,7 @@ static void HandleMenus(bool paused)
         Say("The %s won't trade with you now.", L(G.traders[G.trader].name));
     }
     if (G.panel == PANEL_NONE && !G.cursorLocked && MousePressed(MOUSE_BUTTON_LEFT)) {
-        DisableCursor();
+        LockMouse(true);
         WantPointer(true);
         G.cursorLocked = true;
         G.ignoreClick = true;
@@ -516,7 +554,7 @@ void GameUpdate(void)
     G.requestSlot = 0;
     HandleMenus(HandleWindow());
     // Alone, the world waits while a menu is open; in company it goes on.
-    bool menu = G.panel == PANEL_PAUSE || G.panel == PANEL_HELP || G.panel == PANEL_LOOK;
+    bool menu = G.panel == PANEL_PAUSE || G.panel == PANEL_HELP || G.panel == PANEL_LOOK || G.panel == PANEL_SETTINGS;
     if (menu && !online) {
         if (G.panel == PANEL_LOOK) FollowCamera(dt);
         return;
@@ -549,13 +587,15 @@ void GameUpdate(void)
     FindTarget(play);
 
     if (play) {
-        if (KeyPressed(KEY_E)) Interact(false);
+        if (KeyPressed(KEY_E) || TouchPressed(TB_USE)) Interact(false);
         if (KeyPressed(KEY_F)) Interact(true);
         if (KeyPressed(KEY_R)) RefillQuiver();
         if (KeyPressed(KEY_ONE)) SetEquip(EQ_BOW);
         if (KeyPressed(KEY_TWO)) SetEquip(EQ_MELEE);
         if (KeyPressed(KEY_THREE)) SetEquip(EQ_MACE);
         if (KeyPressed(KEY_FOUR)) SetEquip(EQ_NONE);
+        if (TouchPressed(TB_PREV)) NextEquip(-1);
+        if (TouchPressed(TB_NEXT)) NextEquip(1);
         if (KeyPressed(KEY_M)) G.mapZoom = (G.mapZoom + 1) % 3;
         if (KeyPressed(KEY_N)) {
             static const char *const says[4] = { "Music off.", "Music low.", "Music medium.", "Music high." };
@@ -568,6 +608,7 @@ void GameUpdate(void)
         }
         if (KeyPressed(KEY_Z)) {
             G.arrowCam = !G.arrowCam;
+            SaveGamePrefs();
             Say(G.arrowCam ? "Arrow camera on: the view follows each shot (Z to turn off)." : "Arrow camera off.");
         }
     }
@@ -599,7 +640,6 @@ void GameDraw(void)
     DrawResources();
     DrawVillage();
     DrawWorkers();
-    DrawFerries();
     DrawCaravans();
     DrawRaiders();
     DrawWildlife();
