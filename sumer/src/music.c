@@ -1013,7 +1013,9 @@ static int PlaceNow(void)
     Vector3 p = G.player.pos;
     if (InTempleInterior(p)) return PLACE_TEMPLE;
     if (InsideWalls(p.x, p.z, 0.0f)) return PLACE_CITY;
-    return VillageAt(p) >= 0 ? PLACE_VILLAGE : PLACE_WILD;
+    if (VillageAt(p) >= 0) return PLACE_VILLAGE;
+    // The open land's tune is a tense one, for dusk to dawn; by day the made main theme plays out there.
+    return G.hour >= 17.0f || G.hour < 8.0f ? PLACE_WILD : -1;
 }
 
 static void LoadPlaces(void)

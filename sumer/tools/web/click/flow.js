@@ -42,14 +42,18 @@ const shot = (p, n) => p.screenshot({ path: `${dir}/${n}.png`, timeout: 90000 })
   await ann.keyboard.type('Ann', { delay: 60 });
   await sleep(300);
   await shot(ann, '1-ann-named');
-  await click(ann, lobby(ann, 40 + 125, 272 + 23), 'Host a game');
+  await click(ann, lobby(ann, 40 + 125, 210 + 22), 'Sumer Survival');
+  await sleep(600);
+  await click(ann, lobby(ann, 40 + 125, 264 + 22), 'Multiplayer (host)');
   await sleep(9000);
   await shot(ann, '2-ann-hosting');
 
   await click(bob, lobby(bob, 40 + 150 + 165, 120 + 19), 'the name field');
   await bob.keyboard.type('Bob', { delay: 60 });
   await sleep(300);
-  await click(bob, lobby(bob, 40 + 125, 374 + 23), "Join a game");
+  await click(bob, lobby(bob, 40 + 125, 210 + 22), 'Sumer Survival');
+  await sleep(600);
+  await click(bob, lobby(bob, 40 + 125, 372 + 22), "Join a game");
   await sleep(10000);
   await shot(bob, '3-bob-joined');
   await shot(ann, '4-ann-sees-bob');
@@ -64,7 +68,9 @@ const shot = (p, n) => p.screenshot({ path: `${dir}/${n}.png`, timeout: 90000 })
   for (const b of browsers.splice(0)) await b.close();
   const cem = await page(null, 1920, 1080, 'Cem');
   await sleep(7000);
-  await click(cem, lobby(cem, 40 + 125, 210 + 23), 'Play alone');
+  await click(cem, lobby(cem, 40 + 125, 210 + 22), 'Sumer Survival');
+  await sleep(600);
+  await click(cem, lobby(cem, 40 + 125, 210 + 22), 'Singleplayer');
   await sleep(10000);
   await shot(cem, '7-cem-alone');
   await cem.keyboard.press('Escape');

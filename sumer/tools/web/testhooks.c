@@ -55,7 +55,7 @@ EMSCRIPTEN_KEEPALIVE const char *TestInfo(void)
                       first ? "" : ",", s, name, p->pos.x, p->pos.z, p->flags, p->health, p->wanted, p->kills, p->deaths, p->mark);
         first = 0;
     }
-    n += snprintf(buf + n, sizeof(buf) - (size_t)n, "],\"aim\":%d,\"moving\":%d,\"stick\":[%.2f,%.2f],\"touch\":%d,\"fp\":%d,\"crouch\":%d,\"parry\":%.2f,\"buttons\":[", G.player.aiming, G.player.moving, TouchStick().x, TouchStick().y, TouchOn(), G.firstPerson,
+    n += snprintf(buf + n, sizeof(buf) - (size_t)n, "],\"fpsLimit\":%d,\"aim\":%d,\"moving\":%d,\"stick\":[%.2f,%.2f],\"touch\":%d,\"fp\":%d,\"crouch\":%d,\"parry\":%.2f,\"buttons\":[", FpsLimit(), G.player.aiming, G.player.moving, TouchStick().x, TouchStick().y, TouchOn(), G.firstPerson,
                   G.player.crouching, G.parryT + G.parryCool);
     for (int b = 0; b < TB_COUNT; b++) {
         Vector2 c;
@@ -82,7 +82,13 @@ EMSCRIPTEN_KEEPALIVE const char *TestInfo(void)
         n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%s[%.1f,%.1f,%.1f,%d]", first ? "" : ",", p.x, p.y, p.z, v->vit.dead ? 1 : 0);
         first = 0;
     }
-    n += snprintf(buf + n, sizeof(buf) - (size_t)n, "],\"villager0\":[%.2f,%.2f]}", VillagerPos(&G.villagers[0]).x, VillagerPos(&G.villagers[0]).z);
+    n += snprintf(buf + n, sizeof(buf) - (size_t)n, "],\"royale\":{\"on\":%d,\"phase\":%d,\"out\":%d,\"alive\":%d,\"winner\":%d,\"attack\":%.2f,\"storm\":%d,\"statues\":[",
+                  Royale(), RoyalePhase(), RoyaleOut(), RoyaleAlive(), RoyaleWinner(), RoyaleAttack(), InStorm(G.player.pos));
+    for (int i = 0; i < StatueCount(); i++) {
+        Vector3 sp = StatuePos(i);
+        n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%s[%.1f,%.1f,%d]", i ? "," : "", sp.x, sp.z, StatueClaimed(i));
+    }
+    n += snprintf(buf + n, sizeof(buf) - (size_t)n, "]},\"villager0\":[%.2f,%.2f]}", VillagerPos(&G.villagers[0]).x, VillagerPos(&G.villagers[0]).z);
     return buf;
 }
 
@@ -90,7 +96,7 @@ EMSCRIPTEN_KEEPALIVE const char *TestInfo(void)
 // the camera looks; 6 swing the weapon; 7 add b of item a to the baskets; 8 take an animal: put it
 // down dead at the player's feet (a = index); 9 set the hour to a; 10 shoot at the ground point (a, b)
 // at body height; 11 language a; 12 barter offer b of trader a; 13 hurt the player by a; 14 equip a;
-// 15 open panel a (PANEL_* in game.h).
+// 15 open panel a (PANEL_* in game.h); 20 start a battle royale round (the host); 21 skip the round's clock to a s.
 EMSCRIPTEN_KEEPALIVE void TestCommand(int cmd, float a, float b)
 {
     Player *p = &G.player;
@@ -132,7 +138,10 @@ EMSCRIPTEN_KEEPALIVE void TestCommand(int cmd, float a, float b)
     case 15: SetPanel((Panel)(int)a); break;
     case 16: SfxSetLevel((int)a); break;
     case 17: G.quit = true; break;
+    case 19: SetLeftHanded(a != 0); break;
     case 18: LobbyAgain(); break;
+    case 20: RoyaleStart(); break;
+    case 21: RoyaleSkipTo(a); break;
     default: break;
     }
 }

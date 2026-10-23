@@ -16,6 +16,8 @@ static const Offer SMITH[] = {
 
 #define EAST 30.0f
 #define FERRY_Z (-62.0f)    // the old landing stages, one on each bank
+#define DOCK_LAND_X (-126.0f)   // where the fishing dock west of the city meets the bank
+#define DOCK_LAND_Z (30.5f)
 
 static void AddWorker(JobKind job, float hx, float hz, float sx, float sz, float lx, float lz)
 {
@@ -189,7 +191,16 @@ static float ShiftT(const Worker *w)
 Vector3 WorkerScriptPos(const Worker *w)
 {
     Vector3 p = Vector3Lerp(w->hut, w->spot, ShiftT(w));
-    if (w->job != JOB_BOAT) p.y = GroundHeight(p.x, p.z, TerrainHeight(p.x, p.z) + 0.4f);
+    if (w->job == JOB_DOCK) {   // to the deck's land end first, then out along it: not over the water beside it
+        Vector3 end = { DOCK_LAND_X, 0, DOCK_LAND_Z };
+        float a = XZDist(w->hut, end), b = XZDist(end, w->spot), d = ShiftT(w) * (a + b);
+        p = d < a ? Vector3Lerp(w->hut, end, d / a) : Vector3Lerp(end, w->spot, (d - a) / b);
+    }
+    // Looked for from just over the ground, so a worker at a table stands beside it, not on it; the dock's
+    // fisherman from over its deck (0.3 m), which stands over the river bed: else he would stand under it.
+    float from = TerrainHeight(p.x, p.z);
+    if (w->job == JOB_DOCK) from = fmaxf(from, 0.3f);
+    if (w->job != JOB_BOAT) p.y = GroundHeight(p.x, p.z, from + 0.4f);
     return p;
 }
 

@@ -142,7 +142,7 @@ static void HandleBow(Player *p, float dt, bool input)
             return;
         }
         p->aiming = true;
-        p->draw = fminf(1.0f, p->draw + dt * Boost() / DRAW_TIME);
+        p->draw = fminf(1.0f, p->draw + dt * Boost() * RoyaleAttack() / DRAW_TIME);
         return;
     }
 
@@ -303,7 +303,7 @@ void UpdatePlayer(float dt, bool input)
     }
     if (input && armed && G.swingCool <= 0 && G.parryT <= 0 && (strike || KeyPressed(KEY_V))) {
         G.swingT = mace ? MACE_TIME : SWING_TIME;
-        G.swingCool = (mace ? MACE_COOL : SWING_COOL) / Boost();
+        G.swingCool = (mace ? MACE_COOL : SWING_COOL) / (Boost() * RoyaleAttack());
         G.strikePending = true;
         MeleeStrike(STRIKE_START);
     }
@@ -344,7 +344,7 @@ void UpdatePlayer(float dt, bool input)
 
     float speed = hungry ? HUNGRY_SPEED : WALK_SPEED;
     if (p->crouching) speed = CROUCH_SPEED;
-    else if (p->running) speed = RUN_SPEED * Boost();
+    else if (p->running) speed = RUN_SPEED * Boost() * RoyaleRun();
     if (G.devSpeed > 0) speed *= G.devSpeed;
 
     // Water is waded through, slowly.
@@ -470,6 +470,11 @@ void FollowCamera(float dt)
     if (G.panel == PANEL_LOOK) {
         LookCamera(dt);
         return;
+    }
+    // Out of a battle royale round: the camera follows a player still in it.
+    if (RoyaleOut()) {
+        UpdateLook(&G.player, dt, G.panel == PANEL_NONE);
+        if (RoyaleCamera()) return;
     }
     PlaceCamera(dt);
     // A landed blow kicks the view, more sharply for the mace.
@@ -745,6 +750,7 @@ void DrawPlayer(void)
     const Player *p = &G.player;
     Look look = PlayerLook(G.self, ChosenStyle(), UseArmor());
 
+    if (RoyaleOut()) return;
     // Riding behind an arrow, the eye has left the head: the hands in view would ride along with it, so
     // they are left out, and once the camera is clear of the head the body is drawn where it shot from.
     Vector3 head = { p->pos.x, p->pos.y + 1.5f, p->pos.z };

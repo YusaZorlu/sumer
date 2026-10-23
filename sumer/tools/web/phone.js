@@ -23,8 +23,12 @@ const BASE = process.env.BASE || 'http://localhost:8123/';
   await page.touchscreen.tap((uiW / 2 - 4) * k, 147 * k);
   await sleep(3000);
   console.log((asked ? 'PASS' : 'FAIL') + `: a tap on the name field asks for the name ("${asked}")`);
-  // "Play alone" sits at (390, 241) in the UI's units, which are shrunk to 390/540 of a screen pixel.
-  await page.touchscreen.tap(390 * k, 241 * k);
+  // "Sumer Survival", then "Singleplayer" in its place, sit at (390, 240) in the UI's units, which are shrunk to
+  // 390/540 of a screen pixel.
+  await page.touchscreen.tap(390 * k, 240 * k);
+  await sleep(3000);
+  await page.screenshot({ path: SHOTS + 'phone-survival.png', timeout: 180000 });
+  await page.touchscreen.tap(390 * k, 240 * k);
   const s = await waitFor(page, 'solo game after a tap', i => i.lobby === 0 && i.role === 0, 60000);
   console.log('tap on Play alone started the game:', JSON.stringify({ x: s.x, z: s.z, gfx: s.gfx }));
   await sleep(5000);
@@ -100,7 +104,12 @@ const BASE = process.env.BASE || 'http://localhost:8123/';
   const a = (await info(page)).buttons[ATTACK];
   await touch('touchStart', [[a[0], a[1], 3]]);
   await waitFor(page, 'the bow drawn', i => i.aim === 1, 20000).catch(e => null);
-  await sleep(2500);
+  const aimYaw = (await info(page)).yaw;
+  await touch('touchMove', [[a[0] - 40, a[1], 3]]);
+  await touch('touchMove', [[a[0] - 80, a[1], 3]]);
+  const aimed = await waitFor(page, 'aiming', i => Math.abs(i.yaw - aimYaw) > 0.1, 20000).catch(e => null);
+  check(!!aimed && aimed.aim === 1, `sliding the finger on Attack aims the drawn bow (yaw ${aimYaw.toFixed(2)} -> ${aimed ? aimed.yaw.toFixed(2) : '?'})`);
+  await sleep(1500);
   await touch('touchEnd', []);
   check(!!(await waitFor(page, 'a shot', i => i.quiver === q0 - 1, 20000).catch(e => null)), `holding Attack draws the bow and letting go shoots (quiver ${q0})`);
 
@@ -121,6 +130,22 @@ const BASE = process.env.BASE || 'http://localhost:8123/';
   check(!!(await waitFor(page, 'the baskets', i => i.panel === 1, 20000).catch(e => null)), 'Bag opens the baskets');
   await tap(MENU);
   await waitFor(page, 'closed', i => i.panel === 0, 20000).catch(e => null);
+  check((await info(page)).fpsLimit === 60, 'frames are limited to 60 a second unless the settings say otherwise');
+
+  // Left-handed: the thumb's buttons on the left, the stick on the right half.
+  await cmd(page, 19, 1);
+  await sleep(1000);
+  let lh = await info(page);
+  check(lh.buttons[ATTACK][0] < 422 && lh.buttons[JUMP][0] < 422 && lh.buttons[BAG][0] > 300, `left-handed, the buttons change sides (Attack at x ${lh.buttons[ATTACK][0]})`);
+  await touch('touchStart', [[720, 300, 5]]);
+  await touch('touchMove', [[720, 350, 5]]);
+  const lw = await waitFor(page, 'walking left-handed', i => Math.hypot(i.x - lh.x, i.z - lh.z) > 1, 60000).catch(e => null);
+  await touch('touchEnd', []);
+  check(!!lw, 'and the stick works on the right half');
+  await page.screenshot({ path: SHOTS + 'phone-touch-left.png', timeout: 180000 });
+  await cmd(page, 19, 0);
+  await sleep(1000);
+
   await touch('touchStart', [[120, 300, 4]]);
   await touch('touchMove', [[150, 270, 4]]);
   await sleep(1500);

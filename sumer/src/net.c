@@ -79,7 +79,8 @@ bool NetOpen(bool host, const char *room)
     NetShut();
     asHost = host;
     char query[96], url[256];
-    snprintf(query, sizeof(query), "role=%s&room=%s", host ? "host" : "join", room);
+    // A battle royale's rooms are apart from the usual game's, even under the same name (server.py).
+    snprintf(query, sizeof(query), "role=%s&room=%s%s", host ? "host" : "join", room, Royale() ? "&mode=br" : "");
     ServerAddress(url, sizeof(url), query);
 #if defined(__EMSCRIPTEN__)
     if (!emscripten_websocket_is_supported()) return false;

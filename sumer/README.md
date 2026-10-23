@@ -24,23 +24,25 @@ It prints the addresses to open: `http://localhost:8000/` on this computer, `htt
 address>:8000/` for the others on your network (`--port 9000` picks another port). The browser
 version is already built in `web/`; `sh build-web.sh` rebuilds it (needs Emscripten).
 
-The title screen asks for your name, then:
+The title screen asks for your name, then the way to play: **Sumer Survival**, **Sumer Royale** (the battle
+royale, below), and a third place kept for a way to play still to come. Sumer Survival offers:
 
-- **Play alone**: your own world. Its three save slots are kept in the browser.
-- **Host a game**: starts the shared world, or carries on the one you hosted before. The host's
+- **Singleplayer**: your own world. Its three save slots are kept in the browser.
+- **Multiplayer** (PvP off) and **Multiplayer PvP** (PvP on; Combat mode switches beside it): host the
+  shared world: starts it, or carries on the one you hosted before. The host's
   browser runs the world and keeps its save: the world and every player's things, saved every
   minute, when a night passes, when someone leaves, and on F5. Keep the host's tab open and in front
   while others play (browsers slow down hidden tabs). "New world" beside it (click twice) erases the
   hosted world so the next game starts fresh.
-- **Rules when you host**, the two switches under Host:
-  - **PvP** (on unless you switch it off): whether players can hurt each other with blows and
+- **The rules**, which whoever joins plays by:
+  - **PvP** (Multiplayer PvP): whether players can hurt each other with blows and
     arrows. A player who starts a fight inside the city's canals is wanted by the guards; hitting
     back, or hitting someone already wanted, is no crime. In a PvP game everyone starts somewhere
     else in the city (the spot is picked on open ground, away from the other players), and so does
     anyone brought down, instead of waking at home. The guards on the ziggurat's stairs and
     terrace are gone, so anyone can climb to the priest on top for the day's +20% speed boost: the
     welcome says so.
-  - **Combat mode** (off unless you switch it on, and only with PvP): everyone fights with the best
+  - **Combat mode** (off unless you switch it on, beside Multiplayer PvP): everyone fights with the best
     of everything (bronze sickle-sword, the war mace, the best bow with bronze arrowheads, bronze
     armor) and arrows never run out. The guards stay out of fights between players, and a player
     brought down comes to at home with full health (somewhere in the city in a PvP game, as always). Your own gear is untouched: it is what your
@@ -48,6 +50,32 @@ The title screen asks for your name, then:
   The rules show in everyone's Esc menu and when they join.
 - **Join a game**: joins the game hosted in the same room. Join again under the same name and your
   things and your house are waiting.
+
+### Sumer Royale (battle royale)
+
+**Sumer Royale** on the title screen, then **Host a battle royale** or **Join the battle royale** (the same
+server and address; `?mode=br` in the address opens straight on these). Up to twenty players; its rooms are
+its own, apart from Sumer Survival's even under the same name.
+
+- **The map**: the same land with no city guards, village guards, raiders, barbarians, bandits or caravans;
+  the townsfolk, villagers, traders and wild animals (partridges too) stay. About 150 more trees stand out in the land. Houses
+  are of no use: beds, storerooms, querns, troughs, workbenches and ovens do nothing. Nothing is saved.
+- **Rules**: PvP and combat mode are always on (the best gear, unlimited arrows).
+- **A round**: everyone gathers in the city; the host presses **Enter** (on a touch screen, **Use** with nothing at hand) to start a round. Each player is set
+  down somewhere out in the land, 240-420 m from the city and far from the others, with full health.
+- **The sandstorm**: a wall of dust that closes in on the city in stages. It waits a minute, closes to
+  380 m (4 minutes in), rests, to 190 m, rests, to 90 m, rests, and ends 25 m round the middle of the city
+  13 minutes in. Inside it you lose health every second (2 at first, up to 12 at the end; armor softens
+  it) and the screen turns dusty. The map shows its edge as an orange circle; the line at the top of the
+  screen counts down to its next move. The map shows no other players.
+- **Statues**: fifteen gypsum worshippers on brick plinths (five in the city, ten out in the land; gold
+  marks on the map, a burning light over each while its blessing is there). Press E to pray; the first one
+  there takes the blessing for the rest of the round: Ninurta's +5% attack speed (swings and drawing the
+  bow), Enlil's +5% running speed, or Gula's +10% healing. Blessings add up.
+- **Out**: whoever is brought down is out for the round and watches someone still in it (click or Space:
+  the next one). Someone who joins while a round is on watches too. The last one standing wins; the host
+  presses Enter for the next round.
+- The Esc menu lists everyone in two columns with their kills and who is out.
 
 Everyone who opens the same address plays in the same room; add `?room=any-name` to the address to run
 another game on the same server. To play over the internet, run `server.py` on a machine the others
@@ -121,7 +149,10 @@ see-through so the world shows behind them, cover the main keys:
 - **Your name** on the title screen: a tap on the field opens the browser's box, and with it the keyboard.
 
 On a phone the game never takes the pointer and never pauses by itself (so touching the screen, in Firefox too,
-cannot open the pause menu); Menu pauses.
+cannot open the pause menu); Menu pauses. A touch also puts the game in full screen, hiding the browser's bars
+(Android browsers; leave it with the back gesture, the next touch brings it back). With the bow drawn, sliding the
+finger that holds Attack aims. In Game settings, **Buttons: left hand** puts the thumb's buttons on the left and
+the stick on the right.
 
 The rest (torch, map, chat, music and graphics keys) needs a keyboard, or the buttons in the Esc menu and the bag.
 The controls show on a phone or tablet, and on any other screen once a finger touches the game.
@@ -146,7 +177,7 @@ The controls show on a phone or tablet, and on any other screen once a finger to
 | Tab | Baskets (inventory), equipment and armor; with dev tools on, its "Dev console" button opens the dev console |
 | ` or F2 | Dev console, when dev tools are on (see below) |
 | T (hold) | Fast-forward time (playing alone) |
-| T | Chat, in a shared game: type a line, Enter sends it to everyone, Esc puts it away |
+| T | Chat, in a shared game or a battle royale (the dead watching too): type a line, Enter sends it to everyone, Esc puts it away |
 | F5 | Save |
 | F11 or Alt+Enter | Borderless fullscreen on/off |
 | M | Map zoom (whole world, x2.5, x6 around you); the map shows the main roads, both villages and the camps |
@@ -185,7 +216,8 @@ In a joined game the world commands (marked host) are the host's.
 ## Game settings
 
 Esc, then "Game settings" (or S): language, graphics, music, sounds, the arrow camera (the view follows each
-arrow) and the view (first person or behind you). They are kept in this browser and change nothing about how
+arrow), the view (first person or behind you), the frame limit (60 a second at first; 30 keeps a phone cooler,
+"none" runs as fast as the screen shows frames) and, on a touch screen, which hand the buttons are for. They are kept in this browser and change nothing about how
 the game plays. The keys L, G, N, Z and P do the same while playing.
 
 ## Language
@@ -198,7 +230,8 @@ düğmesine (ya da L'ye) bas.
 
 **Music of places.** In the game, a recorded track plays for the part of the map you are in, faded across
 as you go from one to another: the city (hand drums), a village (a plucked melody), the open land (a sparse
-tune over the wind) and the halls of the ziggurat (a slow drone). They are CC0 (public domain) tracks from
+tune over the wind, a tense one, so it plays there only from dusk to the end of dawn, 17:00 to 08:00; by day the
+game's own main theme plays in the open land) and the halls of the ziggurat (a slow drone). They are CC0 (public domain) tracks from
 OpenGameArt, listed in the credits below, in `assets/music/` (4.7 MB). When a fight starts the game's own
 fight tune takes over, and the place's track comes back after it.
 

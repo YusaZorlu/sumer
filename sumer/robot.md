@@ -39,7 +39,7 @@ All from the repository root. `tools/out/` is for build products and is git-igno
 | Play the browser version, alone or together | `python3 server.py` then open the address it prints |
 | Logic tests (native, about 190 checks, needs `xvfb` or a display) | `sh tools/harness/run.sh` |
 | Browser test build (with `tools/web/testhooks.c`) | `bash tools/web/build.sh` |
-| Serve the test build on :8123 | `sh tools/web/serve.sh &` |
+| Serve the test build on :8123 (the battle royale's tests add `?mode=br`) | `sh tools/web/serve.sh &` |
 | Browser suites (host + guests in headless Chromium; needs Playwright, `PLAYWRIGHT=<module path>`) | `sh tools/web/run-suites.sh` |
 | Real-click tests of the production build (serve `web/` on :8124 first) | `node tools/web/click/click3.js`, `flow.js`, `tap.js`, `swing2.js` |
 | Strings without a Turkish entry | `python3 tools/trcheck.py src` (only non-text literals such as file names and "WASD" may remain) |
@@ -116,6 +116,10 @@ in `src/game.h`) holds the whole world.
   On a phone (`OnPhone()`) the game never asks for pointer lock (`LockMouse`, `WantPointer`) and never pauses on
   losing focus or the pointer: Firefox for Android granted the lock on a tap and its loss paused the game. The
   title screen's name field opens `window.prompt` (`AskText`) on a touch screen, the only way to a phone keyboard.
+  Full screen on a phone is asked for by the page (`shell.html`, on touchend). `LeftHanded()` mirrors the thumb's
+  buttons and the stick's half; the Attack finger also aims while the bow is drawn.
+- **Frame limit** (`FpsLimit`, game settings, kept in `sumer.prefs` with the arrow camera, view and hand; loaded at
+  start-up too): `Frame` in main.c lets the page's frame calls pass until 0.9/limit seconds have gone.
 - **Chat** (T, online only; T fast-forwards only offline): `PANEL_CHAT` keeps the game keys off while the line is typed in
   `DrawChat` (`ui.c`, which also keeps the last 8 lines). A guest sends `M_CHAT` to the host; `HostChat` (`mp.c`) tidies it
   (`ChatTidy`: control characters out, 100 bytes, cut on a whole UTF-8 letter), allows two a second per slot, and sends
@@ -246,6 +250,17 @@ in `src/game.h`) holds the whole world.
   transform (or `GripAt` with a point on the body); the next `DrawHuman` reaches that hand there (two-bone `Reach`).
   The player's and other players' weapons go through `HoldWeapon`/`DrawWeaponPart` (player.c), whose frames
   (`SwordFrame`, `ArmFrame`, `BlowFrame` for people's tools and axes) the swing trail also uses: change them together.
+- **Battle royale** (`src/royale.c`, Sumer Royale on the title screen; merged into main): `Royale()` is set by the title
+  menu (`SetRoyale`: Sumer Survival clears it, Sumer Royale sets it) or `?mode=br` in the address. The game connects with
+  `&mode=br`, which gives it rooms apart from the usual game's and up to 19 guests (server.py, one port for both). `MAX_PLAYERS` is 20; `PlayerLimit()` is 6 outside it; there are `MAX_HOUSES` 6 houses (`HouseOf(slot)`). The
+  world is built with `BuildRoyale()` (statues, more trees; same on every machine) and `ShapeRoyale()` after `GameInit`
+  builds it (no guards or wardens, caravans away; raiders and the bandit bands are skipped in their own functions). The host runs the round
+  (`rnd`: phase `RP_WAIT/RUN/OVER`, its clock, the claimed statues as a bit mask, the winner), sent in every snapshot
+  (`WriteRoyale`/`ReadRoyale`); `EV_ROUND` sets a guest down for a new round; `RQ_STATUE` claims a statue. A fallen player
+  sets `PF_OUT` in their own flags (`RoyaleFall` from `Collapse`); out players are not bodies, targets or drawn, and their
+  camera follows another (`RoyaleCamera`). The storm hurts through `HurtSlotFrom(.., BY_STORM, ..)` on the host. Tests:
+  `TestRoyale` (harness), `tools/web/royale.js` (`?mode=br` on serve.sh's port 8123), `harness royale out.png x z
+  yaw t [statue]` for pictures.
 - **Music** (`src/music.c`): see its own section below.
 - **Drawing**: see "Graphics: how drawing works" below.
 - **Web specifics:** `src/web.c` (storage in IndexedDB: call `SyncStorage()` after writing a file), `src/shell.html`

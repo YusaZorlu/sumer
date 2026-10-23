@@ -419,7 +419,20 @@ static void DrawNetPausePanel(void)
     CenterText("Paused", r.x + r.width / 2, r.y + 20, 30, C_GOLD);
     CenterText("The world goes on while this menu is open. H: controls.", r.x + r.width / 2, r.y + 64, 16, C_TEXT);
     CenterText(TextFormat(L("Room \"%s\". The host's browser keeps the game and everyone's things."), NetRoom()), r.x + r.width / 2, r.y + 92, 15, C_DIM);
-    for (int s = 0; s < MAX_PLAYERS; s++) {
+    // A battle royale's crowd goes in two narrow columns, with each player's kills and whether they are out.
+    if (PlayerCount() > 6) {
+        int row = 0;
+        for (int s = 0; s < MAX_PLAYERS; s++) {
+            const Peer *p = &G.peers[s];
+            if (!p->active) continue;
+            float cx = bx + (float)(row / 10) * 265.0f, cy = y + (float)(row % 10) * 14.0f;
+            DrawRectangle((int)cx, (int)cy + 2, 10, 10, PlayerColor(s));
+            DrawTextEx(GameFont(), p->name, (Vector2){ cx + 16, cy }, 13, 1, s == G.self ? C_GOLD : (p->flags & PF_OUT) ? C_DIM : C_TEXT);
+            Text(TextFormat(L("%d kills%s"), p->kills, (p->flags & PF_OUT) ? L(", out") : ""), cx + 150, cy, 12, C_DIM);
+            row++;
+        }
+    }
+    for (int s = 0; s < MAX_PLAYERS && PlayerCount() <= 6; s++) {
         const Peer *p = &G.peers[s];
         if (!p->active) continue;
         DrawRectangle((int)bx, (int)y + 2, 16, 16, PlayerColor(s));
@@ -490,7 +503,7 @@ static void DrawPausePanel(void)
 // The settings that only change how the game looks and sounds to this player, not how it plays.
 static void DrawSettingsPanel(void)
 {
-    Rectangle r = PanelRect(560, 440);
+    Rectangle r = PanelRect(560, 482);
     float bx = r.x + 50, bw = r.width - 100, y = r.y + 96;
 
     CenterText("Game settings", r.x + r.width / 2, r.y + 20, 30, C_GOLD);
@@ -517,6 +530,13 @@ static void DrawSettingsPanel(void)
         G.firstPerson = !G.firstPerson;
         SaveGamePrefs();
     }
+    y += 42;
+    // The frame limit (a phone runs cooler at 30), and on a touch screen which side the buttons are on.
+    float fw = TouchOn() ? (bw - 8) / 2 : bw;
+    const char *fps = FpsLimit() ? TextFormat(L("Frame limit: %d a second"), FpsLimit()) : L("Frame limit: none");
+    if (Button((Rectangle){ bx, y, fw, 34 }, fps, true, 0)) NextFpsLimit();
+    if (TouchOn() && Button((Rectangle){ bx + fw + 8, y, fw, 34 }, LeftHanded() ? "Buttons: left hand" : "Buttons: right hand", true, 0))
+        SetLeftHanded(!LeftHanded());
     if (Button((Rectangle){ bx, r.y + r.height - 58, bw, 40 }, "Back", true, KEY_BACKSPACE)) SetPanel(PANEL_PAUSE);
 }
 
@@ -862,7 +882,7 @@ static void DrawMinimap(int ox, int oy, int size)
             DrawRectangle((int)(mx + G.ladders[i].base.x * s) - 2, (int)(mz + G.ladders[i].base.z * s) - 2, 4, 4, COL_WOOD);
     }
     // Raider camps as red crosses; the barbarians' across the river darker and larger.
-    for (int c = 0; c < CAMPS; c++) {
+    for (int c = 0; c < (Royale() ? 0 : CAMPS); c++) {
         Vector3 cc = CampCenter(c);
         Vector2 camp = { mx + cc.x * s, mz + cc.z * s };
         float k = c >= EAST_CAMPS ? 5.0f : 4.0f;
@@ -870,8 +890,11 @@ static void DrawMinimap(int ox, int oy, int size)
         DrawLineEx((Vector2){ camp.x - k, camp.y - k }, (Vector2){ camp.x + k, camp.y + k }, 2.5f, col);
         DrawLineEx((Vector2){ camp.x - k, camp.y + k }, (Vector2){ camp.x + k, camp.y - k }, 2.5f, col);
     }
+    DrawRoyaleMap(mx, mz, s);
+    // In a battle royale the map gives no one away, except to those already out.
     for (int k = 0; k < MAX_PLAYERS; k++) {
-        if (k == G.self || !G.peers[k].active) continue;
+        if (k == G.self || !G.peers[k].active || (G.peers[k].flags & PF_OUT)) continue;
+        if (Royale() && !RoyaleOut()) continue;
         Vector2 q = { mx + G.peers[k].shown.x * s, mz + G.peers[k].shown.z * s };
         DrawCircleV(q, 4.5f, Fade(BLACK, 0.8f));
         DrawCircleV(q, 3.5f, PlayerColor(k));
@@ -891,7 +914,7 @@ static void DrawPeerTags(void)
 
     for (int s = 0; s < MAX_PLAYERS; s++) {
         const Peer *p = &G.peers[s];
-        if (!p->active || s == G.self) continue;
+        if (!p->active || s == G.self || (p->flags & PF_OUT)) continue;
         Vector3 head = { p->shown.x, p->shown.y + ((p->flags & PF_BED) ? 1.0f : 2.4f), p->shown.z };
         float dist = Vector3Distance(head, G.cam.position);
         if (dist > 90.0f || Vector3DotProduct(Vector3Subtract(head, G.cam.position), fwd) < 0 || FogAt(head) > 0.7f) continue;
@@ -1162,6 +1185,7 @@ void DrawUI(void)
     if (OnWeb() && G.panel == PANEL_NONE && !PointerCaptured() && !TouchOn())
         CenterText("Click the game to look around with the mouse", (float)sw / 2, (float)sh / 2 + 70, 20, C_GOLD);
 
+    DrawRoyaleHUD((float)sw, (float)sh);
     if (G.msgT > 0) DrawMessage(sw);
 
     DrawChat(sh);

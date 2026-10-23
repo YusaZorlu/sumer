@@ -1,6 +1,6 @@
 // Touch controls for phones and tablets: a stick under the left thumb (anywhere on the left half; pushed to
 // its edge, a run), a drag anywhere else on the screen to look around, and see-through buttons for the main
-// keys: attack (held to draw the bow), parry, jump, use (E), crouch, the previous and next weapon, first
+// keys: attack (held to draw the bow, and sliding it aims), parry, jump, use (E), crouch, the previous and next weapon, first
 // person or behind you, the baskets and the menu (which, with a panel open, closes it). Shown on a phone from
 // the start, anywhere else once a finger touches the game.
 #include "game.h"
@@ -40,7 +40,8 @@ static bool Place(int b, Vector2 *c, float *r)
     };
     if (G.panel != PANEL_NONE && b != TB_MENU) return false;
     const float *s = spot[b];
-    *c = s[0] == AT_THUMB ? (Vector2){ sw - s[1], sh - s[2] } : s[0] == AT_TOP ? (Vector2){ sw / 2 + s[1], s[2] } : (Vector2){ sw - s[1], s[2] };
+    // Left-handed, the thumb's buttons and the stick change sides.
+    *c = s[0] == AT_THUMB ? (Vector2){ LeftHanded() ? s[1] : sw - s[1], sh - s[2] } : s[0] == AT_TOP ? (Vector2){ sw / 2 + s[1], s[2] } : (Vector2){ sw - s[1], s[2] };
     *r = s[3];
     return true;
 }
@@ -56,7 +57,8 @@ static int Assign(Vector2 p)
     if (G.panel != PANEL_NONE) return R_NONE;
     for (int i = 0; i < fingerCount; i++)
         if (fingers[i].role == R_STICK) return R_LOOK;
-    return p.x < UiWidth() * 0.5f && p.y > UiHeight() * 0.3f ? R_STICK : R_LOOK;
+    bool stickSide = LeftHanded() ? p.x > UiWidth() * 0.5f : p.x < UiWidth() * 0.5f;
+    return stickSide && p.y > UiHeight() * 0.3f ? R_STICK : R_LOOK;
 }
 #endif
 
@@ -145,7 +147,9 @@ void TouchFrame(void)
             }
         }
         if (!f) continue;
-        if (f->role == R_LOOK) look = Vector2Add(look, Vector2Subtract(p, f->at));
+        // The finger holding Attack with the bow drawn aims as it slides, like a looking finger.
+        bool aims = f->role == R_BUTTON && f->button == TB_ATTACK && G.equip == EQ_BOW;
+        if (f->role == R_LOOK || aims) look = Vector2Add(look, Vector2Subtract(p, f->at));
         f->at = p;
         f->seen = !gone;
         if (f->role == R_BUTTON && !gone) down[f->button] = true;
@@ -230,7 +234,7 @@ void DrawTouch(void)
     }
     if (G.panel != PANEL_NONE) return;
     // The stick: where the thumb came down, or where it usually does.
-    Vector2 base = { 160, UiHeight() - 150 }, knob = base;
+    Vector2 base = { LeftHanded() ? UiWidth() - 160 : 160, UiHeight() - 150 }, knob = base;
     for (int i = 0; i < fingerCount; i++)
         if (fingers[i].role == R_STICK) {
             base = fingers[i].start;

@@ -87,6 +87,9 @@ static void BuildPrompts(void)
     case TGT_COOP:
         CoopPrompt(G.promptE, G.promptF, n, &G.okE, &G.okF);
         break;
+    case TGT_STATUE:
+        StatuePrompt(i, G.promptE, n, &G.okE);
+        break;
     case TGT_TRADER:
         G.okE = true;
         Fmt(G.promptE, n, "[E] Barter with the %s", L(G.traders[i].name));
@@ -117,6 +120,12 @@ static void BuildPrompts(void)
     }
 }
 
+// In a battle royale the houses are of no use (no beds, storerooms or kitchens), nor are the raiders' stashes.
+static bool UselessStation(int i)
+{
+    return i == STN_BED || i == STN_STORAGE || i == STN_QUERN || i == STN_TROUGH || i == STN_BENCH || i == STN_OVEN || StashCamp(i) >= 0;
+}
+
 void FindTarget(bool play)
 {
     Target best = { TGT_NONE, -1 };
@@ -129,7 +138,8 @@ void FindTarget(bool play)
         for (int i = 0; i < G.resCount; i++)
             Consider(&best, &score, TGT_RES, i, G.res[i].pos, 2.4f);
         for (int i = 0; i < STN_COUNT; i++)
-            if (i != STN_FERRY_E && i != STN_FERRY_W) Consider(&best, &score, TGT_STATION, i, G.stations[i], 1.9f);
+            if (i != STN_FERRY_E && i != STN_FERRY_W && !(Royale() && UselessStation(i))) Consider(&best, &score, TGT_STATION, i, G.stations[i], 1.9f);
+        for (int i = 0; i < StatueCount(); i++) Consider(&best, &score, TGT_STATUE, i, StatuePos(i), 2.8f);
         for (int i = 0; i < MAX_PLOTS; i++)
             if (G.plots[i].state != PLOT_PALM) Consider(&best, &score, TGT_PLOT, i, G.plots[i].pos, 2.1f);
         Consider(&best, &score, TGT_COOP, 0, G.coop, 4.2f);
@@ -327,6 +337,11 @@ bool ServeRequest(int slot, int kind, const int *args, int n, int *res, int *nre
         }
         CalmFor(slot);
         return true;
+    case RQ_STATUE:
+        res[0] = ClaimStatue(a, by, slot);
+        res[1] = a;
+        *nres = 2;
+        return res[0] >= 0;
     default:
         return false;
     }
@@ -338,6 +353,10 @@ void ApplyReply(int kind, const int *args, int n, bool ok, const int *res, int n
     int a = n > 0 ? args[0] : 0, b = n > 1 ? args[1] : 0;
 
     switch (kind) {
+    case RQ_STATUE:
+        if (ok && nres >= 2) GrantBoon(res[1], res[0]);
+        else Say("Someone reached the statue first: its blessing is gone.");
+        break;
     case RQ_CARCASS:
         if (!ok || nres < 2) {
             Say("Someone else took it first.");
@@ -440,6 +459,7 @@ void Interact(bool alt)
         }
         break;
     case TGT_WATER:   if (!alt) FillBucket(); break;
+    case TGT_STATUE:  if (!alt && G.okE) Act(RQ_STATUE, &i, 1); break;
     case TGT_TRADER:
         if (!alt) {
             G.trader = i;

@@ -246,6 +246,7 @@ void DrawEffects(void)
 {
     G.drawTorch = G.drawFog = 0;
     DrawSwingTrails();
+    DrawStorm();
     DrawArrowTrails(G.arrows);
     if (IsClient()) DrawArrowTrails(NetArrows());
     for (int i = 0; i < MAX_PARTICLES; i++) {

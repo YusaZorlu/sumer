@@ -115,7 +115,8 @@ void CollectFighters(void)
             Add(&cv->vit[1 + g], ROLE_GUARD, p, f, CARAVAN_OWNER(c, 3 + g), LOOT_GUARD, 0, "Caravan guard", FK_CARAVAN);
         }
     }
-    for (int i = 0; i < MAX_RAIDERS; i++) {
+    // A battle royale has no raiders or barbarians.
+    for (int i = 0; i < (Royale() ? 0 : MAX_RAIDERS); i++) {
         Raider *r = &G.raiders[i];
         bool bandit = RaiderBandit(i), west = !bandit && r->camp >= EAST_CAMPS, bow = RaiderBowman(i);
         Add(&r->vit, bandit ? ROLE_BANDIT : west ? ROLE_BARBARIAN : ROLE_RAIDER, r->pos, r->face, OWNER_RAIDER + i,

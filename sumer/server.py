@@ -2,8 +2,11 @@
 """Sumer multiplayer server.
 
 Serves the browser build of the game (the web/ folder next to this file) and relays messages between
-the player who hosts a game and up to five guests. The host's browser runs the world; this server only
+the player who hosts a game and its guests. The host's browser runs the world; this server only
 forwards messages and never looks inside them. Needs nothing but Python 3.8 or newer.
+
+The usual game (together or PvP, up to six players) and the battle royale (up to twenty) are both
+chosen on the game's title screen; each keeps rooms of its own.
 
     python3 server.py              # http://localhost:8000
     python3 server.py --port 9000
@@ -21,7 +24,7 @@ import struct
 import urllib.parse
 
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
-MAX_GUESTS = 5
+MAX_GUESTS = {"game": 5, "br": 19}
 MAX_MESSAGE = 4 << 20
 SEND_BACKLOG = 400
 
@@ -169,12 +172,12 @@ async def serve_host(conn, name):
         print("room '%s': host left, game over" % name)
 
 
-async def serve_guest(conn, name):
+async def serve_guest(conn, name, mode):
     room = rooms.get(name)
     if room is None or room.host is None:
         conn.send(bytes([S_NOHOST]))
         return
-    free = [i for i in range(1, MAX_GUESTS + 1) if i not in room.guests]
+    free = [i for i in range(1, MAX_GUESTS[mode] + 1) if i not in room.guests]
     if not free:
         conn.send(bytes([S_FULL]))
         return
@@ -234,12 +237,14 @@ async def handle(reader, writer):
             await writer.drain()
             query = urllib.parse.parse_qs(url.query)
             role = query.get("role", ["join"])[0]
-            room = query.get("room", ["sumer"])[0][:32] or "sumer"
+            # The battle royale keeps rooms apart from the usual game's, even when they share a name.
+            mode = "br" if query.get("mode", [""])[0] == "br" else "game"
+            room = mode + ":" + (query.get("room", ["sumer"])[0][:32] or "sumer")
             conn = Conn(reader, writer)
             if role == "host":
                 await serve_host(conn, room)
             else:
-                await serve_guest(conn, room)
+                await serve_guest(conn, room, mode)
             conn.close()
             await conn.task
             return
@@ -298,7 +303,7 @@ async def main():
     print("  On this computer:  http://localhost:%d/" % args.port)
     for address in addresses():
         print("  On your network:   http://%s:%d/" % (address, args.port))
-    print("One player presses 'Host a game', the others 'Join a game'. Ctrl+C stops the server.")
+    print("Pick Sumer Survival or Sumer Royale on the title screen; one player hosts, the others join. Ctrl+C stops the server.")
     async with server:
         await server.serve_forever()
 

@@ -839,6 +839,7 @@ static void CatchMoving(void)
     DrawWildlife();
     DrawPeers();
     DrawPlayer();
+    DrawRoyale();
     if (ExtraFigures) ExtraFigures();
     SetMaterial(MAT_THING);
     DrawArrows();
