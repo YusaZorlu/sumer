@@ -50,7 +50,9 @@
 #define MAX_WORKERS     16
 #define MAX_CARAVANS    2
 #define CARAVAN_GUARDS  2
-#define MAX_PLAYERS     6
+#define MAX_PLAYERS     20          // a battle royale's limit; other games take six (PlayerLimit)
+#define MAX_HOUSES      6
+#define STATUES         15
 #define HOUSE_STN       6
 #define MAX_STARS       90
 #define MAX_TORCHES     176
@@ -261,7 +263,7 @@ typedef enum {
     STN_STASH3, STN_STASH4, STN_WELL, STN_DITCH, STN_FERRY_E, STN_FERRY_W, STN_COUNT
 } StationId;
 typedef enum { PANEL_NONE, PANEL_BAG, PANEL_STORAGE, PANEL_TRADE, PANEL_PAUSE, PANEL_HELP, PANEL_COOP, PANEL_LOOK, PANEL_CONSOLE, PANEL_SETTINGS, PANEL_CHAT } Panel;
-typedef enum { TGT_NONE, TGT_CARCASS, TGT_RES, TGT_STATION, TGT_PLOT, TGT_COOP, TGT_TRADER, TGT_BODY, TGT_OFFER, TGT_LADDER, TGT_WATER } TargetKind;
+typedef enum { TGT_NONE, TGT_CARCASS, TGT_RES, TGT_STATION, TGT_PLOT, TGT_COOP, TGT_TRADER, TGT_BODY, TGT_OFFER, TGT_LADDER, TGT_WATER, TGT_STATUE } TargetKind;
 enum { SPRING, SUMMER, FALL, WINTER };
 typedef struct { TargetKind kind; int index; } Target;
 
@@ -305,7 +307,8 @@ typedef enum { NET_SOLO, NET_HOST, NET_CLIENT } NetRole;
 #define CONTACT_TIME PVP_WINDUP     // a swing's weapon meets its target this long after it starts, whatever it hits
 #define HITSTOP_TIME 0.07f          // a landed blow holds the swing still this long (the mace a little longer)
 #define FLINCH_TIME  0.45f
-enum { PF_CROUCH = 1, PF_RUN = 2, PF_MOVE = 4, PF_GROUND = 8, PF_AIM = 16, PF_SLEEP = 32, PF_CLIMB = 64, PF_PARRY = 128, PF_BED = 256, PF_TORCH = 512 };
+enum { PF_CROUCH = 1, PF_RUN = 2, PF_MOVE = 4, PF_GROUND = 8, PF_AIM = 16, PF_SLEEP = 32, PF_CLIMB = 64, PF_PARRY = 128, PF_BED = 256, PF_OUT = 512,
+       PF_TORCH = 1024 };   // PF_OUT: brought down in a battle royale round, watching
 #define NAME_LEN 16
 #define SAFE_RADIUS 22.0f
 
@@ -349,12 +352,12 @@ typedef struct { int kind, from; const unsigned char *data; int len; } NetMessag
 // What a guest asks the host before it changes the shared world (shots and blows need no answer).
 enum {
     RQ_SHOOT = 1, RQ_STRIKE, RQ_CARCASS, RQ_GATHER, RQ_STASH, RQ_PLOT, RQ_DITCH, RQ_COOPWATER, RQ_EGGS, RQ_FEED,
-    RQ_SLAUGHTER, RQ_HEN, RQ_LOOT, RQ_COLLAPSE
+    RQ_SLAUGHTER, RQ_HEN, RQ_LOOT, RQ_COLLAPSE, RQ_STATUE
 };
 #define REQ_ARGS 12
 enum { WARN_WOLF, WARN_SNAKE, WARN_KINDS };
 // What hurt a player last, so whoever is brought down hears by whom: BY_PLAYER + slot for a player.
-enum { BY_NONE, BY_GUARD, BY_CARAVAN, BY_TOWNSFOLK, BY_VILLAGERS, BY_RAIDER, BY_BARBARIAN, BY_WOLF, BY_BOAR, BY_SNAKE, BY_BANDIT, BY_PLAYER };
+enum { BY_NONE, BY_GUARD, BY_CARAVAN, BY_TOWNSFOLK, BY_VILLAGERS, BY_RAIDER, BY_BARBARIAN, BY_WOLF, BY_BOAR, BY_SNAKE, BY_STORM, BY_BANDIT, BY_PLAYER };
 
 typedef struct {
     Box boxes[MAX_BOXES];
@@ -392,7 +395,7 @@ typedef struct {
     Caravan caravans[MAX_CARAVANS];
     Trader traders[TR_COUNT];
     Vector3 stations[STN_COUNT];
-    House houses[MAX_PLAYERS];
+    House houses[MAX_HOUSES];
     Vector3 home, coop, pen;
     Vector3 stars[MAX_STARS];
     Vector3 torches[MAX_TORCHES];
@@ -1079,5 +1082,44 @@ void VEnd(void);
 void VColor(Color c);
 void VNormal(float x, float y, float z);
 void VVertex(float x, float y, float z);
+
+
+// Battle royale (royale.c)
+enum { RP_OFF, RP_WAIT, RP_RUN, RP_OVER };
+bool Royale(void);
+void SetRoyale(bool on);
+int PlayerLimit(void);
+int RoyalePhase(void);
+bool RoyaleOut(void);
+int RoyaleWinner(void);
+void RoyaleSkipTo(float t);
+int RoyaleAlive(void);
+float StormRadius(float t);
+bool InStorm(Vector3 p);
+void BuildRoyale(void);
+void ShapeRoyale(void);
+int StatueCount(void);
+Vector3 StatuePos(int i);
+bool StatueClaimed(int i);
+void StatuePrompt(int i, char *e, int size, bool *ok);
+int ClaimStatue(int i, Vector3 by, int slot);
+void GrantBoon(int statue, int kind);
+float RoyaleAttack(void);
+float RoyaleRun(void);
+float RoyaleHeal(void);
+void RoyaleBegin(float x, float z);
+void RoyaleStart(void);
+bool RoyaleFall(void);
+void RoyaleJoinLate(bool running);
+void RoyaleUpdate(float dt);
+void WriteRoyale(Writer *w);
+void ReadRoyale(Reader *r);
+bool RoyaleCamera(void);
+void DrawRoyale(void);
+void DrawStorm(void);
+void DrawRoyaleHUD(float sw, float sh);
+void DrawRoyaleMap(float mx, float mz, float s);
+void NetRound(int slot, float x, float z);
+int HouseOf(int slot);
 
 #endif

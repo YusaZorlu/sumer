@@ -23,8 +23,12 @@ const BASE = process.env.BASE || 'http://localhost:8123/';
   await page.touchscreen.tap((uiW / 2 - 4) * k, 147 * k);
   await sleep(3000);
   console.log((asked ? 'PASS' : 'FAIL') + `: a tap on the name field asks for the name ("${asked}")`);
-  // "Play alone" sits at (390, 241) in the UI's units, which are shrunk to 390/540 of a screen pixel.
-  await page.touchscreen.tap(390 * k, 241 * k);
+  // "Sumer Survival", then "Singleplayer" in its place, sit at (390, 240) in the UI's units, which are shrunk to
+  // 390/540 of a screen pixel.
+  await page.touchscreen.tap(390 * k, 240 * k);
+  await sleep(3000);
+  await page.screenshot({ path: SHOTS + 'phone-survival.png', timeout: 180000 });
+  await page.touchscreen.tap(390 * k, 240 * k);
   const s = await waitFor(page, 'solo game after a tap', i => i.lobby === 0 && i.role === 0, 60000);
   console.log('tap on Play alone started the game:', JSON.stringify({ x: s.x, z: s.z, gfx: s.gfx }));
   await sleep(5000);

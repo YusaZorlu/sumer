@@ -119,6 +119,7 @@ static bool Halted(const Caravan *c)
 
 void UpdateCaravans(float dt)
 {
+    if (Royale()) return;   // no caravans (and their guards) in a battle royale
     for (int i = 0; i < MAX_CARAVANS; i++) {
         Caravan *c = &G.caravans[i];
         Trader *t = &G.traders[c->trader];
@@ -284,6 +285,7 @@ static void DrawSpear(Vector3 g, float f, float swing, float windup)
 
 void DrawCaravans(void)
 {
+    if (Royale()) return;
     float time = (float)GetTime();
 
     for (int i = 0; i < MAX_CARAVANS; i++) {

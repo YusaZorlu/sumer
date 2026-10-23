@@ -220,6 +220,7 @@ static Vector3 BandPick(int b, Vector3 from, bool build)
 
 void BuildRaiders(void)
 {
+    if (Royale()) return;
     for (int c = 0; c < CAMPS; c++) BuildCamp(c);
     G.stashDay = 0;
     for (int b = 0; b < BANDS; b++) {
@@ -380,6 +381,7 @@ static void Idle(Raider *r, int i, float dt)
 
 void UpdateRaiders(float dt)
 {
+    if (Royale()) return;
     if (G.hour >= 6.0f && G.stashDay != G.day) {
         G.stashDay = G.day;
         for (int c = 0; c < CAMPS; c++) Restock(c);
@@ -403,6 +405,7 @@ void UpdateRaiders(float dt)
 
 void DrawRaiders(void)
 {
+    if (Royale()) return;
     float time = (float)GetTime();
 
     for (int i = 0; i < MAX_RAIDERS; i++) {

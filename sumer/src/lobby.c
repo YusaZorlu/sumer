@@ -1,4 +1,5 @@
-// The browser's title screen: the player's name, then play alone, host a game or join one. The room
+// The browser's title screen: the player's name, then the way to play (Sumer Survival: alone, hosting a game
+// with or without PvP, or joining one; Sumer Royale: hosting or joining a battle royale). The room
 // comes from the page address (?room=...), so friends on one server can run separate games. For tests
 // and links, ?auto=solo|host|join&name=... starts at once.
 #include "game.h"
@@ -8,6 +9,8 @@
 #define NAME_FILE "sumer.name"
 
 static enum { LOBBY_MENU, LOBBY_CONNECT } stage;
+// The title's pages: the ways to play, then Sumer Survival's (alone, together, PvP) or Sumer Royale's.
+static enum { PAGE_MODES, PAGE_SURVIVAL, PAGE_ROYALE } page;
 static bool open, loaded, autoDone, confirmNew, pvp = true, combat, dev;
 static char name[NAME_LEN], room[32], note[200];
 static float connectT;
@@ -64,6 +67,7 @@ void OpenLobby(const char *why)
         if (strcmp(PageParam("pvp"), "0") == 0) pvp = false;
         if (strcmp(PageParam("combat"), "1") == 0) combat = true;
         if (strcmp(PageParam("dev"), "1") == 0) dev = true;
+        if (Royale()) page = PAGE_ROYALE;   // ?mode=br: straight to the battle royale
     }
     open = true;
     stage = LOBBY_MENU;
@@ -205,7 +209,8 @@ void LobbyFrame(void)
     DrawRectangleRec(panel, (Color){ 30, 24, 20, 238 });
     DrawRectangleLinesEx(panel, 2, (Color){ 150, 120, 80, 255 });
     Centered("SUMER", cx, panel.y + 18, 50, gold);
-    Centered("Ur, c. 2100 BC", cx, panel.y + 74, 20, text);
+    Centered(page == PAGE_ROYALE ? "Sumer Royale" : page == PAGE_SURVIVAL ? "Sumer Survival" : "Ur, c. 2100 BC",
+             cx, panel.y + 74, 20, page == PAGE_ROYALE ? gold : text);
 
     float x = panel.x + 40, y = panel.y + 120;
     Label("Your name", x, y + 8, 20, text);
@@ -232,37 +237,78 @@ void LobbyFrame(void)
     y += 40;
 
     bool menu = stage == LOBBY_MENU, named = name[0] != '\0';
-    if (Choice((Rectangle){ x, y, 250, 46 }, "Play alone", menu)) PlayAlone();
-    Label("Kept in this browser, in three save slots.", x + 270, y + 14, 15, dim);
-    y += 62;
-    if (Choice((Rectangle){ x, y, 250, 46 }, "Host a game", menu && named)) Connect(true);
-    int day;
-    float hour;
-    Label("Up to five friends join from this same address.", x + 270, y + 4, 15, dim);
-    if (NetSaveSummary(&day, &hour)) {
-        // The hosted world carries on until its host starts a new one (two clicks).
-        Label(TextFormat(L("Your hosted world: day %d."), day), x + 270, y + 26, 15, dim);
-        if (Choice((Rectangle){ panel.x + panel.width - 160, y + 22, 120, 24 }, confirmNew ? "Erase it?" : "New world", menu)) {
-            if (confirmNew) {
-                DeleteNetGame();
-                snprintf(note, sizeof(note), "%s", L("The hosted world is erased. Host a game to begin a new one."));
-            }
-            confirmNew = !confirmNew;
+    Rectangle row = { x, y, 250, 44 };
+    if (page == PAGE_MODES) {
+        // The ways to play. The third place is kept for one to come.
+        if (Choice(row, "Sumer Survival", menu)) {
+            SetRoyale(false);
+            page = PAGE_SURVIVAL;
         }
+        Label("Alone or with friends: farm, hunt, trade", x + 270, y + 4, 15, dim);
+        Label("and get through the seasons in Ur.", x + 270, y + 24, 15, dim);
+        y += 58;
+        if (Choice((Rectangle){ x, y, 250, 44 }, "Sumer Royale", menu)) {
+            SetRoyale(true);
+            page = PAGE_ROYALE;
+        }
+        Label("Battle royale for up to twenty players:", x + 270, y + 4, 15, dim);
+        Label("the last one standing wins.", x + 270, y + 24, 15, dim);
+        y += 58;
+        Choice((Rectangle){ x, y, 250, 44 }, "Coming soon", false);
+        Label("Another way to play is on its way.", x + 270, y + 14, 15, dim);
+        y += 70;
+    } else if (page == PAGE_SURVIVAL) {
+        if (Choice(row, "Singleplayer", menu)) PlayAlone();
+        Label("Kept in this browser, in three save slots.", x + 270, y + 14, 15, dim);
+        y += 54;
+        if (Choice((Rectangle){ x, y, 250, 44 }, "Multiplayer", menu && named)) {
+            pvp = false;
+            Connect(true);
+        }
+        int day;
+        float hour;
+        Label("Host: up to five friends join from this address.", x + 270, y + 4, 15, dim);
+        if (NetSaveSummary(&day, &hour)) {
+            // The hosted world carries on until its host starts a new one (two clicks).
+            Label(TextFormat(L("Your hosted world: day %d."), day), x + 270, y + 24, 15, dim);
+            if (Choice((Rectangle){ panel.x + panel.width - 160, y + 20, 120, 24 }, confirmNew ? "Erase it?" : "New world", menu)) {
+                if (confirmNew) {
+                    DeleteNetGame();
+                    snprintf(note, sizeof(note), "%s", L("The hosted world is erased. Host a game to begin a new one."));
+                }
+                confirmNew = !confirmNew;
+            }
+        }
+        y += 54;
+        if (Choice((Rectangle){ x, y, 250, 44 }, "Multiplayer PvP", menu && named)) {
+            pvp = true;
+            Connect(true);
+        }
+        Label("Host, with players able to fight each other.", x + 270, y + 4, 15, dim);
+        if (Choice((Rectangle){ x + 270, y + 22, 200, 22 }, combat ? "Combat mode: on" : "Combat mode: off", menu)) combat = !combat;
+        y += 54;
+        if (Choice((Rectangle){ x, y, 250, 44 }, "Join a game", menu && named)) Connect(false);
+        Label("Joins the game hosted in this room, by its rules.", x + 270, y + 14, 15, dim);
+        y += 52;
+        // Dev tools go for playing alone too: the dev console (Tab, then its button, or `).
+        if (Choice((Rectangle){ x, y, 120, 26 }, "Back", menu)) page = PAGE_MODES;
+        if (Choice((Rectangle){ x + 140, y, 190, 26 }, dev ? "Dev tools: on" : "Dev tools: off", menu)) dev = !dev;
+        Label("The dev console, alone or hosting.", x + 345, y + 6, 13, dim);
+        y += 38;
+    } else {
+        // A battle royale: no saves, no rules to pick. The host starts each round when everyone is in.
+        if (Choice(row, "Host a battle royale", menu && named)) Connect(true);
+        Label("Up to nineteen friends join from this same address.", x + 270, y + 4, 15, dim);
+        Label("No guards or raiders; a sandstorm closes in.", x + 270, y + 24, 15, dim);
+        y += 58;
+        if (Choice((Rectangle){ x, y, 250, 44 }, "Join the battle royale", menu && named)) Connect(false);
+        Label("Joins the battle royale hosted in this room.", x + 270, y + 14, 15, dim);
+        y += 58;
+        if (Choice((Rectangle){ x, y, 120, 26 }, "Back", menu)) page = PAGE_MODES;
+        if (Choice((Rectangle){ x + 140, y, 190, 26 }, dev ? "Dev tools: on" : "Dev tools: off", menu)) dev = !dev;
+        Label("The dev console, when you host.", x + 345, y + 6, 13, dim);
+        y += 50;
     }
-    y += 62;
-    // The rules of the game this player hosts; whoever joins plays by them.
-    Label("Rules when you host:", x, y + 6, 15, dim);
-    if (Choice((Rectangle){ x + 200, y, 190, 28 }, pvp ? "PvP: on" : "PvP: off", menu)) pvp = !pvp;
-    if (Choice((Rectangle){ x + 400, y, 240, 28 }, pvp && combat ? "Combat mode: on" : "Combat mode: off", menu && pvp)) combat = !combat;
-    y += 34;
-    // Dev tools go for playing alone too: the dev console (Tab, then its button, or `).
-    if (Choice((Rectangle){ x + 200, y, 190, 28 }, dev ? "Dev tools: on" : "Dev tools: off", menu)) dev = !dev;
-    Label("The dev console, alone or hosting.", x + 400, y + 6, 13, dim);
-    y += 40;
-    if (Choice((Rectangle){ x, y, 250, 46 }, "Join a game", menu && named)) Connect(false);
-    Label("Joins the game hosted in this room.", x + 270, y + 14, 15, dim);
-    y += 70;
 
     if (stage == LOBBY_CONNECT) {
         Centered(connectT < 8.0f ? "Connecting..." : "Still connecting. Is server.py running?", cx, y, 20, gold);

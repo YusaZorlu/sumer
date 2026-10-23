@@ -2107,19 +2107,77 @@ static void TestHitLights(void)
     G.flinchT = 0;
 }
 
+// A battle royale: twenty players, no guards or raiders, houses of no use, fifteen statues, a round set
+// down far out in the land, blessings that stick, a sandstorm closing in, and the fallen out to watch.
+static void TestRoyale(void)
+{
+    SetRoyale(true);
+    GameInit();
+    int guards = 0;
+    for (int i = 0; i < G.villagerCount; i++) guards += G.villagers[i].kind == NPC_GUARD || G.villagers[i].kind == NPC_WARDEN;
+    Check(PlayerLimit() == 20 && guards == 0 && FighterCount() > 0, "battle royale: twenty players, no guards or wardens (%d), people still about", guards);
+    CollectFighters();
+    int raiders = 0;
+    for (int i = 0; i < FighterCount(); i++) {
+        Vector3 pos;
+        float hp, maxHp;
+        const char *name;
+        bool hostile, dead;
+        if (FighterInfo(i, &pos, &hp, &maxHp, &name, &hostile, &dead) && (strstr(name, "Raider") || strstr(name, "arbarian") || strstr(name, "aravan"))) raiders++;
+    }
+    Check(raiders == 0, "no raiders, barbarians or caravan guards (%d)", raiders);
+    int dry = 0, outside = 0;
+    for (int i = 0; i < StatueCount(); i++) {
+        Vector3 p = StatuePos(i);
+        dry += !InWater(p.x, p.z);
+        outside += !InsideWalls(p.x, p.z, 0.0f);
+    }
+    Check(StatueCount() == 15 && dry == 15 && outside >= 10, "15 statues on dry ground, %d of them out in the land", outside);
+    Check(StormRadius(0) > 760.0f && StormRadius(2000) < 30.0f && StormRadius(300) < StormRadius(200), "the storm starts beyond the map's corners and closes to the city (%.0f m at the end)", StormRadius(2000));
+
+    // A round begun alone: set down far out, a blessing from a statue, then the fall.
+    G.role = NET_SOLO;
+    G.player.pos = G.stations[STN_STORAGE];
+    FindTarget(true);
+    Check(!(G.target.kind == TGT_STATION && G.target.index == STN_STORAGE), "a house's storeroom is of no use");
+    RoyaleStart();
+    Vector3 at = G.player.pos;
+    float far = XZDist(at, (Vector3){ 0, 0, CITY_Z });
+    Check(RoyalePhase() == RP_RUN && far > 200.0f && !InWater(at.x, at.z), "the round begins %.0f m out from the city, on dry land", far);
+    int s = 0;
+    for (int i = 0; i < StatueCount(); i++)
+        if (i % 3 == 0) s = i;
+    G.player.pos = StatuePos(s);
+    SyncSelf();
+    int res[4], nres = 0, idx = s;
+    bool ok = ServeRequest(0, RQ_STATUE, &idx, 1, res, &nres);
+    if (ok) GrantBoon(res[1], res[0]);
+    bool again = ServeRequest(0, RQ_STATUE, &idx, 1, res, &nres);
+    Check(ok && !again && fabsf(RoyaleAttack() - 1.05f) < 0.001f && StatueClaimed(s), "Ninurta's statue gives +5%% attack speed once (now x%.2f); the second prayer gets nothing", RoyaleAttack());
+    G.player.pos = (Vector3){ 500, TerrainHeight(500, 500), 500 };
+    Check(!InStorm(G.player.pos), "a minute in, the storm has not reached the map's edge yet");
+    HurtPlayerFrom(500, BY_STORM, NULL);
+    SyncSelf();
+    RoyaleUpdate(0.016f);
+    Check(RoyaleOut() && (G.peers[0].flags & PF_OUT) && RoyalePhase() == RP_OVER, "brought down, the player is out and watches; alone, the round is over");
+
+    SetRoyale(false);
+    GameInit();
+}
+
 // Six players, six houses; in PvP the start is anywhere in the city and the ziggurat is unguarded.
 static void TestSixPlayers(void)
 {
-    Check(MAX_PLAYERS == 6, "six players");
+    Check(PlayerLimit() == 6 && MAX_HOUSES == 6, "six players outside a battle royale, six houses");
     int sound = 0;
     bool distinct = true;
-    for (int h = 0; h < MAX_PLAYERS; h++) {
+    for (int h = 0; h < MAX_HOUSES; h++) {
         const House *hs = &G.houses[h];
         sound += InsideWalls(hs->center.x, hs->center.z, 4.0f) && !SolidAt(hs->door.x, hs->door.z, 0.4f);
         for (int o = 0; o < h; o++)
             distinct &= XZDist(hs->center, G.houses[o].center) > 9.0f && (PlayerColor(h).r != PlayerColor(o).r || PlayerColor(h).g != PlayerColor(o).g || PlayerColor(h).b != PlayerColor(o).b);
     }
-    Check(sound == MAX_PLAYERS && distinct, "all six houses stand inside the walls with a clear doorstep, apart, each in its own color (%d of 6)", sound);
+    Check(sound == MAX_HOUSES && distinct, "all six houses stand inside the walls with a clear doorstep, apart, each in its own color (%d of 6)", sound);
     const House *six = &G.houses[5];
     Check(XZDist(six->stations[STN_BED], six->center) < 6.0f && XZDist(six->stations[STN_STORAGE], six->center) < 6.0f, "the sixth house has its bed and storeroom");
 
@@ -2224,5 +2282,6 @@ static void RunTests(void)
     TestPlayerMarks();
     TestHitLights();
     TestSixPlayers();
+    TestRoyale();
     printf("%d passed, %d failed\n", passes, fails);
 }

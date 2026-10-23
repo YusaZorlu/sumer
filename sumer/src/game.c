@@ -44,6 +44,7 @@ void GameInit(void)
 
     BuildWorld();
     BuildCaravans();
+    ShapeRoyale();
     // The world comes from a fixed seed; animals and weather differ every game.
     SetRandomSeed((unsigned int)time(NULL));
     InitWildlife();
@@ -190,6 +191,7 @@ static const char *BroughtDownInCity(int by)
     case BY_WOLF: what = L("Wolves brought you down."); break;
     case BY_BOAR: what = L("A boar brought you down."); break;
     case BY_SNAKE: what = L("A snake's venom brought you down."); break;
+    case BY_STORM: what = L("The sandstorm brought you down."); break;
     default:
         if (by >= BY_PLAYER && by < BY_PLAYER + MAX_PLAYERS && G.peers[by - BY_PLAYER].name[0])
             what = TextFormat(L("%s beat you down."), G.peers[by - BY_PLAYER].name);
@@ -244,6 +246,16 @@ static void Collapse(void)
     int by = G.hurtBy;
     G.hurtBy = BY_NONE;
     Act(RQ_COLLAPSE, &by, 1);
+    // In a battle royale round, the fallen are out: they watch the others until the next round.
+    if (RoyaleFall()) {
+        char who[220];
+        snprintf(who, sizeof(who), "%s", how);
+        char *cut = strstr(who, L("You came to somewhere else in the city."));
+        if (cut) *cut = '\0';
+        Say("%s%s", who, L("You are out of this round: watch the others."));
+        G.msgT = 6.0f;
+        return;
+    }
     if (!Online()) {
         CalmBeasts(-1);
         for (int i = 0; i < MAX_RAIDERS; i++) G.raiders[i].vit.hostile = 0;
@@ -422,7 +434,7 @@ static void UpdateBody(float dt, float h)
     }
 
     G.safeT += dt;
-    if (G.safeT > 5.0f && G.food >= REGEN_FOOD) G.health = fminf(HEALTH_MAX, G.health + 1.5f * dt);
+    if (G.safeT > 5.0f && G.food >= REGEN_FOOD) G.health = fminf(HEALTH_MAX, G.health + 1.5f * RoyaleHeal() * dt);
     // Chewed herbs keep healing for a while, even in a fight and on an empty stomach.
     if (G.herbT > 0) {
         G.herbT = fmaxf(0.0f, G.herbT - dt);
@@ -589,13 +601,14 @@ void GameUpdate(void)
         return;
     }
 
-    bool play = G.panel == PANEL_NONE && !G.sleeping && !G.waitBed;
+    bool play = G.panel == PANEL_NONE && !G.sleeping && !G.waitBed && !RoyaleOut();
     CollectBodies();
     UpdatePlayer(dt, play && !menu);
     TrackGoods();
     SyncSelf();
     FollowCamera(dt);
     UpdateWorld(dt);
+    RoyaleUpdate(dt);
     UpdateClock(dt);
     UpdateSleep(dt);
     if (IsClient()) {
@@ -676,6 +689,7 @@ void GameDraw(void)
     DrawNetArrows();
     DrawPeers();
     DrawPlayer();
+    DrawRoyale();
     if (ExtraFigures) ExtraFigures();
     DrawEffects();
     DrawRain();

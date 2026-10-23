@@ -24,7 +24,8 @@ void SyncSelf(void)
     p->swingT = G.swingT;
     p->flags = (pl->crouching ? PF_CROUCH : 0) | (pl->running ? PF_RUN : 0) | (pl->moving ? PF_MOVE : 0) |
                (pl->grounded ? PF_GROUND : 0) | (pl->aiming ? PF_AIM : 0) | (G.sleeping || G.waitBed ? PF_SLEEP : 0) |
-               (G.climb ? PF_CLIMB : 0) | (G.parryT > 0 ? PF_PARRY : 0) | (G.waitBed ? PF_BED : 0) | (TorchBurning() ? PF_TORCH : 0);
+               (G.climb ? PF_CLIMB : 0) | (G.parryT > 0 ? PF_PARRY : 0) | (G.waitBed ? PF_BED : 0) | (RoyaleOut() ? PF_OUT : 0) |
+               (TorchBurning() ? PF_TORCH : 0);
     p->equip = G.equip;
     p->weapon = UseWeapon();
     p->bow = UseBow();
@@ -40,7 +41,7 @@ bool PlayerIn(int s)
 
 bool PlayerAwake(int s)
 {
-    return PlayerIn(s) && !(G.peers[s].flags & PF_SLEEP);
+    return PlayerIn(s) && !(G.peers[s].flags & (PF_SLEEP | PF_OUT));
 }
 
 Vector3 PlayerAt(int s)
@@ -252,7 +253,7 @@ Look Flushed(Look look, float k)
 // A player waiting for the night lies on their own bed, head on the pillow, if they are beside it.
 void DrawInBed(int s, Vector3 at, float facing, Look look)
 {
-    const House *h = &G.houses[s >= 0 && s < MAX_PLAYERS ? s : 0];
+    const House *h = &G.houses[HouseOf(s)];
     Vector3 bed = h->stations[0];
     if (XZDist(bed, at) < 3.0f) {
         float f = h->bedFacing;
@@ -267,7 +268,7 @@ void DrawPeers(void)
 {
     for (int s = 0; s < MAX_PLAYERS; s++) {
         const Peer *p = &G.peers[s];
-        if (!p->active || s == G.self || XZDist(p->shown, G.cam.position) > 240.0f || !InView(p->shown, 2.0f)) continue;
+        if (!p->active || s == G.self || (p->flags & PF_OUT) || XZDist(p->shown, G.cam.position) > 240.0f || !InView(p->shown, 2.0f)) continue;
         Look look = PlayerLook(s, p->style, p->armor);
         LightFor(p->shown);
         if (p->flags & PF_BED) {

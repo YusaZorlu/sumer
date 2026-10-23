@@ -493,6 +493,7 @@ int main(int argc, char **argv)
 {
     if (argc < 2) return 1;
     SetTraceLogLevel(LOG_WARNING);
+    if (getenv("SUMER_ROYALE")) SetRoyale(true);
     InitWindow(1280, 720, "harness");
     rlSetClipPlanes(0.1, 1200.0);
     GameInit();
@@ -579,6 +580,20 @@ int main(int argc, char **argv)
             }
             EndDrawing();
         }
+    } else if (strcmp(argv[1], "royale") == 0 && argc > 6) {
+        // A battle royale round alone, t seconds in, seen from (x, z): royale <out.png> <x> <z> <yaw> <t> [statue]
+        SetRoyale(true);
+        GameInit();
+        G.role = NET_SOLO;
+        RoyaleStart();
+        RoyaleSkipTo((float)atof(argv[6]));
+        float x = (float)atof(argv[3]), z = (float)atof(argv[4]);
+        if (argc > 7) {
+            Vector3 p = StatuePos(atoi(argv[7]));
+            x = p.x + 4.0f;
+            z = p.z + 4.0f;
+        }
+        Shot(argv[2], x, z, (float)atof(argv[5]), 0.25f, 7.0f, 11.0f, 4, false);
     } else if (strcmp(argv[1], "sfx") == 0 && argc > 2) {
         // Every sound effect as a .wav file: sfx <dir>
         SfxExport(argv[2]);
