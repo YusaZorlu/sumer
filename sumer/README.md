@@ -136,13 +136,18 @@ The browser version needs WebGL 2 (any current Chrome, Edge, Firefox; Safari 15 
 drawn with the screen's own pixels, so the letters stay sharp; taps work on every button. Touch controls,
 see-through so the world shows behind them, cover the main keys:
 
-- **Moving**: the stick under the left thumb (it starts wherever the thumb comes down on the left side); pushed
-  to its edge you run.
+- **Moving**: the stick under the left thumb (it starts wherever the thumb comes down on the left half of the
+  screen); pushed to its edge you run.
 - **Looking around**: drag a finger anywhere else (aiming the bow too, while the other thumb holds Attack).
-- **Attack** (strike; hold to draw the bow, let go to shoot), **Parry**, **Use** (E), **Crouch**, **View** (first
-  person or behind you).
-- **Bag** (baskets and equipment, where you also change weapons) and **Menu** at the top; with a panel open the
-  Menu button reads **Close** and puts it away.
+- **Attack** (strike; hold to draw the bow, let go to shoot), **Parry**, **Jump**, **Use** (E) and **Crouch** under
+  the right thumb. Only Attack strikes: a tap anywhere else is looking, never a blow.
+- **< Weapon >** beside the map: the previous or next of hands free, bow, melee weapon and war mace.
+- **Bag**, **View** (first person or behind you) and **Menu** at the top; with a panel open the Menu button reads
+  **Close** and puts it away.
+- **Your name** on the title screen: a tap on the field opens the browser's box, and with it the keyboard.
+
+On a phone the game never takes the pointer and never pauses by itself (so touching the screen, in Firefox too,
+cannot open the pause menu); Menu pauses.
 
 The rest (torch, map, chat, music and graphics keys) needs a keyboard, or the buttons in the Esc menu and the bag.
 The controls show on a phone or tablet, and on any other screen once a finger touches the game.

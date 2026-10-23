@@ -114,6 +114,15 @@ void SetEquip(int eq)
     else Say("%s in hand.", EquipName(eq));
 }
 
+// The previous or next of hands free, bow, melee weapon and war mace (if there is one).
+void NextEquip(int step)
+{
+    int eq = G.equip;
+    do eq = (eq + step + 4) % 4;
+    while (eq == EQ_MACE && !UseMace());
+    SetEquip(eq);
+}
+
 static void HandleBow(Player *p, float dt, bool input)
 {
     bool held = input && G.equip == EQ_BOW && G.cursorLocked && MouseHeld(MOUSE_BUTTON_LEFT);
@@ -316,7 +325,7 @@ void UpdatePlayer(float dt, bool input)
         move = Vector3Add(move, Vector3Add(Vector3Scale(fwd, st.y), Vector3Scale(right, st.x)));
 
         if (KeyPressed(KEY_C) || TouchPressed(TB_CROUCH)) p->crouching = !p->crouching;
-        if (KeyPressed(KEY_SPACE) && !p->aiming) {
+        if ((KeyPressed(KEY_SPACE) || TouchPressed(TB_JUMP)) && !p->aiming) {
             if (p->crouching) p->crouching = false;
             else if (p->grounded) {
                 p->vy = JUMP_SPEED;

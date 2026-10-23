@@ -16,8 +16,14 @@ const BASE = process.env.BASE || 'http://localhost:8123/';
   await page.goto(BASE + '?name=Ann&gfx=auto');
   await sleep(4000);
   await page.screenshot({ path: SHOTS + 'phone-lobby.png', timeout: 180000 });
+  // A tap on the name field opens the browser's text box (and with it the phone's keyboard).
+  let asked = '';
+  page.on('dialog', d => { asked = d.message(); d.accept('Zed'); });
+  const uiW = 844 * 540 / 390, k = 390 / 540;
+  await page.touchscreen.tap((uiW / 2 - 4) * k, 147 * k);
+  await sleep(3000);
+  console.log((asked ? 'PASS' : 'FAIL') + `: a tap on the name field asks for the name ("${asked}")`);
   // "Play alone" sits at (390, 241) in the UI's units, which are shrunk to 390/540 of a screen pixel.
-  const k = 390 / 540;
   await page.touchscreen.tap(390 * k, 241 * k);
   const s = await waitFor(page, 'solo game after a tap', i => i.lobby === 0 && i.role === 0, 60000);
   console.log('tap on Play alone started the game:', JSON.stringify({ x: s.x, z: s.z, gfx: s.gfx }));
@@ -30,7 +36,9 @@ const BASE = process.env.BASE || 'http://localhost:8123/';
   const cdp = await ctx.newCDPSession(page);
   const touch = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map(([x, y, id]) => ({ x, y, id })) });
   const tap = async (b) => { const i = await info(page); await page.touchscreen.tap(i.buttons[b][0], i.buttons[b][1]); };
-  const ATTACK = 0, PARRY = 1, USE = 2, CROUCH = 3, VIEW = 4, BAG = 5, MENU = 6;
+  const ATTACK = 0, PARRY = 1, USE = 2, CROUCH = 3, VIEW = 4, BAG = 5, MENU = 6, JUMP = 7, PREV = 8, NEXT = 9;
+  if (!asked) fails++;
+  check((await info(page)).peers.some(p => p.name === 'Zed'), 'the name typed in the box is the player\'s');
   // A new game opens "Your look" first: Close puts it away.
   await tap(MENU);
   let i0 = await waitFor(page, 'the look panel closed', i => i.panel === 0, 30000).catch(e => null) || await info(page);
@@ -50,6 +58,7 @@ const BASE = process.env.BASE || 'http://localhost:8123/';
   const i2 = await info(page);
   await touch('touchEnd', []);
   check(!!i1, 'the stick walks');
+  check(i2.panel === 0 && i2.captured === 0, `a phone never takes the pointer, so touching never pauses (panel ${i2.panel}, captured ${i2.captured})`);
   check(Math.abs(i2.yaw - yaw0) > 0.2, `a drag on the right turns the view while walking (yaw ${yaw0.toFixed(2)} -> ${i2.yaw.toFixed(2)})`);
 
   const fp = (await info(page)).fp;
@@ -61,8 +70,23 @@ const BASE = process.env.BASE || 'http://localhost:8123/';
   await tap(CROUCH);
   await waitFor(page, 'standing', i => i.crouch === 0, 20000).catch(e => null);
 
+  const y0 = (await info(page)).y;
+  await tap(JUMP);
+  check(!!(await waitFor(page, 'a jump', i => i.y > y0 + 0.2, 20000).catch(e => null)), 'Jump jumps');
+
+  await cmd(page, 14, 1);
+  await sleep(500);
+  await tap(NEXT);
+  check(!!(await waitFor(page, 'the next weapon', i => i.equip === 2, 20000).catch(e => null)), 'the next weapon after the bow is the melee weapon');
+  await tap(PREV);
+  check(!!(await waitFor(page, 'the previous weapon', i => i.equip === 1, 20000).catch(e => null)), 'and the previous one the bow again');
+
   await cmd(page, 14, 2);
   await sleep(1000);
+  await page.touchscreen.tap(560, 150);   // a tap where there is no button: looking, never a blow
+  await sleep(2000);
+  const stray = await info(page);
+  check(stray.swing <= 0 && stray.cool <= 0, `a tap off the buttons does not strike (swing ${stray.swing}, cool ${stray.cool})`);
   await tap(ATTACK);
   check(!!(await waitFor(page, 'a blow', i => i.swing > 0 || i.cool > 0, 20000).catch(e => null)), 'Attack strikes with the melee weapon');
   await waitFor(page, 'the blow over', i => i.swing <= 0, 20000).catch(e => null);
@@ -75,6 +99,7 @@ const BASE = process.env.BASE || 'http://localhost:8123/';
   const q0 = (await info(page)).quiver;
   const a = (await info(page)).buttons[ATTACK];
   await touch('touchStart', [[a[0], a[1], 3]]);
+  await waitFor(page, 'the bow drawn', i => i.aim === 1, 20000).catch(e => null);
   await sleep(2500);
   await touch('touchEnd', []);
   check(!!(await waitFor(page, 'a shot', i => i.quiver === q0 - 1, 20000).catch(e => null)), `holding Attack draws the bow and letting go shoots (quiver ${q0})`);

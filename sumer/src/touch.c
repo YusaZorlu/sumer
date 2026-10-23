@@ -1,14 +1,15 @@
-// Touch controls for phones and tablets: a stick under the left thumb (pushed to its edge, a run), a drag
-// anywhere else on the screen to look around, and see-through buttons for the main keys: attack (held to
-// draw the bow), parry, use (E), crouch, first person or behind you, the baskets and the menu (which, with a
-// panel open, closes it). Shown on a phone from the start, anywhere else once a finger touches the game.
+// Touch controls for phones and tablets: a stick under the left thumb (anywhere on the left half; pushed to
+// its edge, a run), a drag anywhere else on the screen to look around, and see-through buttons for the main
+// keys: attack (held to draw the bow), parry, jump, use (E), crouch, the previous and next weapon, first
+// person or behind you, the baskets and the menu (which, with a panel open, closes it). Shown on a phone from
+// the start, anywhere else once a finger touches the game.
 #include "game.h"
 #if defined(__EMSCRIPTEN__)
 #include <emscripten/emscripten.h>
 #endif
 
 #define FINGERS  10
-#define STICK_R  62.0f
+#define STICK_R  80.0f
 
 enum { R_NONE, R_STICK, R_LOOK, R_BUTTON };
 typedef struct { int id, role, button; Vector2 start, at; bool seen; } Finger;
@@ -16,7 +17,7 @@ static Finger fingers[FINGERS];
 static int fingerCount;
 static bool down[TB_COUNT], pressed[TB_COUNT], seenTouch;
 static Vector2 stick, look;
-static const char *const labels[TB_COUNT] = { "Attack", "Parry", "Use", "Crouch", "View", "Bag", "Menu" };
+static const char *const labels[TB_COUNT] = { "Attack", "Parry", "Use", "Crouch", "View", "Bag", "Menu", "Jump", "<", ">" };
 
 bool TouchOn(void)
 {
@@ -25,18 +26,22 @@ bool TouchOn(void)
     return phone || seenTouch;
 }
 
-// Where each button sits, in the UI's units, and how big it is: the main ones under the right thumb, the
-// view switch below the map, the baskets and the menu at the top in the middle.
+// Where each button sits, in the UI's units, and how big it is: the main ones under the right thumb (x and y
+// from the bottom right corner), the baskets, the view and the menu at the top in the middle (x from the
+// middle), the weapons at the top left of the map (x from the right).
+enum { AT_THUMB, AT_TOP, AT_MAP };
 static bool Place(int b, Vector2 *c, float *r)
 {
     float sw = UiWidth(), sh = UiHeight();
-    static const float spot[TB_COUNT][3] = {
-        { -100, -110, 50 }, { -225, -78, 36 }, { -205, -196, 36 }, { -86, -232, 32 }, { -40, 260, 28 }, { -48, 36, 24 }, { 48, 36, 24 },
+    static const float spot[TB_COUNT][4] = {
+        { AT_THUMB, 105, 115, 52 }, { AT_THUMB, 240, 178, 36 }, { AT_THUMB, 145, 245, 34 }, { AT_THUMB, 46, 236, 34 },
+        { AT_TOP, 0, 36, 24 }, { AT_TOP, -80, 36, 24 }, { AT_TOP, 80, 36, 24 },
+        { AT_THUMB, 235, 62, 36 }, { AT_MAP, 280, 50, 26 }, { AT_MAP, 225, 50, 26 },
     };
     if (G.panel != PANEL_NONE && b != TB_MENU) return false;
-    c->x = b >= TB_BAG ? sw / 2 + spot[b][0] : sw + spot[b][0];
-    c->y = spot[b][1] < 0 ? sh + spot[b][1] : spot[b][1];
-    *r = spot[b][2];
+    const float *s = spot[b];
+    *c = s[0] == AT_THUMB ? (Vector2){ sw - s[1], sh - s[2] } : s[0] == AT_TOP ? (Vector2){ sw / 2 + s[1], s[2] } : (Vector2){ sw - s[1], s[2] };
+    *r = s[3];
     return true;
 }
 
@@ -51,7 +56,7 @@ static int Assign(Vector2 p)
     if (G.panel != PANEL_NONE) return R_NONE;
     for (int i = 0; i < fingerCount; i++)
         if (fingers[i].role == R_STICK) return R_LOOK;
-    return p.x < UiWidth() * 0.4f && p.y > UiHeight() * 0.35f ? R_STICK : R_LOOK;
+    return p.x < UiWidth() * 0.5f && p.y > UiHeight() * 0.3f ? R_STICK : R_LOOK;
 }
 #endif
 
@@ -217,10 +222,15 @@ void DrawTouch(void)
         int size = r < 30 ? 14 : 16;
         Vector2 w = MeasureTextEx(GameFont(), s, (float)size, gap);
         DrawTextEx(GameFont(), s, (Vector2){ (float)(int)(c.x - w.x / 2), (float)(int)(c.y - w.y / 2) }, (float)size, gap, Fade(WHITE, 0.75f));
+        if (b == TB_NEXT) {   // the two weapon buttons share a caption below them
+            s = L("Weapon");
+            w = MeasureTextEx(GameFont(), s, 14, gap);
+            DrawTextEx(GameFont(), s, (Vector2){ (float)(int)(c.x - 27 - w.x / 2), c.y + r + 4 }, 14, gap, Fade(WHITE, 0.75f));
+        }
     }
     if (G.panel != PANEL_NONE) return;
     // The stick: where the thumb came down, or where it usually does.
-    Vector2 base = { 130, UiHeight() - 130 }, knob = base;
+    Vector2 base = { 160, UiHeight() - 150 }, knob = base;
     for (int i = 0; i < fingerCount; i++)
         if (fingers[i].role == R_STICK) {
             base = fingers[i].start;
@@ -228,5 +238,5 @@ void DrawTouch(void)
         }
     DrawCircleV(base, STICK_R, Fade(BLACK, 0.14f));
     DrawRing(base, STICK_R - 2, STICK_R, 0, 360, 48, Fade(WHITE, 0.35f));
-    DrawCircleV(knob, 26, Fade(WHITE, 0.25f));
+    DrawCircleV(knob, 32, Fade(WHITE, 0.25f));
 }
