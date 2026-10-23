@@ -71,10 +71,17 @@ function check(ok, what) { console.log((ok ? 'PASS: ' : 'FAIL: ') + what); if (!
   s = await waitFor(page, 'village music', x => x.place === 1, 10000).catch(() => info(page));
   await sleep(4000); m = await rms();
   check(s.place === 1 && m.rms > 0.003, `in the herders' village its track plays (place ${s.place}, rms ${m.rms.toFixed(4)})`);
+  // Out on the plain by day the main theme plays; the open land's tense track only from dusk to dawn.
+  await cmd(page, 9, 12);
   await cmd(page, 1, 300, -100);
+  s = await waitFor(page, 'the main theme on the plain by day', x => x.place === -1 && x.mood === 0, 10000).catch(() => info(page));
+  await sleep(4000); m = await rms();
+  check(s.place === -1 && s.mood === 0 && m.rms > 0.003, `out on the plain at noon the main theme plays (place ${s.place}, mood ${s.mood}, rms ${m.rms.toFixed(4)})`);
+  await cmd(page, 9, 18);
   s = await waitFor(page, 'open land music', x => x.place === 2, 10000).catch(() => info(page));
   await sleep(4000); m = await rms();
-  check(s.place === 2 && m.rms > 0.003, `out on the plain the open land's track plays (place ${s.place}, rms ${m.rms.toFixed(4)})`);
+  check(s.place === 2 && m.rms > 0.003, `out on the plain at dusk the open land's track plays (place ${s.place}, rms ${m.rms.toFixed(4)})`);
+  await cmd(page, 9, 12);
   await cmd(page, 1, 20, 26);
 
   await cmd(page, 9, 23.5);

@@ -1125,6 +1125,26 @@ static void TestPaths(void)
 
 // The alehouse by the potters' quarter: townsfolk sit talking at its tables; weapons go away at the door
 // and come back on the way out.
+// The dock's fisherman walks out along the deck and stands on it at his spot, not on the river bed below.
+static void TestDockFisher(void)
+{
+    float hour = G.hour, lowest = 1e9f;
+    const Worker *w = NULL;
+    for (int i = 0; i < G.workerCount; i++)
+        if (G.workers[i].job == JOB_DOCK) w = &G.workers[i];
+    if (!w) {
+        Check(false, "a fisherman on the dock");
+        return;
+    }
+    for (float h = 6.0f; h <= 12.0f; h += 0.05f) {   // the walk out in the morning, then the day at the spot
+        G.hour = h;
+        Vector3 p = WorkerScriptPos(w);
+        if (p.x < -127.5f) lowest = fminf(lowest, p.y);
+    }
+    G.hour = hour;
+    Check(lowest > 0.25f, "the dock's fisherman stays on the deck (lowest %.2f m)", lowest);
+}
+
 static void TestAlehouse(void)
 {
     int talkers = 0;
@@ -2189,6 +2209,7 @@ static void RunTests(void)
     TestPartridges();
     TestFaster();
     TestAlehouse();
+    TestDockFisher();
     TestPaths();
     TestDawn();
     TestChat();

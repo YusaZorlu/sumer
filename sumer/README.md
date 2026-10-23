@@ -121,7 +121,10 @@ see-through so the world shows behind them, cover the main keys:
 - **Your name** on the title screen: a tap on the field opens the browser's box, and with it the keyboard.
 
 On a phone the game never takes the pointer and never pauses by itself (so touching the screen, in Firefox too,
-cannot open the pause menu); Menu pauses.
+cannot open the pause menu); Menu pauses. A touch also puts the game in full screen, hiding the browser's bars
+(Android browsers; leave it with the back gesture, the next touch brings it back). With the bow drawn, sliding the
+finger that holds Attack aims. In Game settings, **Buttons: left hand** puts the thumb's buttons on the left and
+the stick on the right.
 
 The rest (torch, map, chat, music and graphics keys) needs a keyboard, or the buttons in the Esc menu and the bag.
 The controls show on a phone or tablet, and on any other screen once a finger touches the game.
@@ -185,7 +188,8 @@ In a joined game the world commands (marked host) are the host's.
 ## Game settings
 
 Esc, then "Game settings" (or S): language, graphics, music, sounds, the arrow camera (the view follows each
-arrow) and the view (first person or behind you). They are kept in this browser and change nothing about how
+arrow), the view (first person or behind you), the frame limit (60 a second at first; 30 keeps a phone cooler,
+"none" runs as fast as the screen shows frames) and, on a touch screen, which hand the buttons are for. They are kept in this browser and change nothing about how
 the game plays. The keys L, G, N, Z and P do the same while playing.
 
 ## Language
@@ -198,7 +202,8 @@ düğmesine (ya da L'ye) bas.
 
 **Music of places.** In the game, a recorded track plays for the part of the map you are in, faded across
 as you go from one to another: the city (hand drums), a village (a plucked melody), the open land (a sparse
-tune over the wind) and the halls of the ziggurat (a slow drone). They are CC0 (public domain) tracks from
+tune over the wind, a tense one, so it plays there only from dusk to the end of dawn, 17:00 to 08:00; by day the
+game's own main theme plays in the open land) and the halls of the ziggurat (a slow drone). They are CC0 (public domain) tracks from
 OpenGameArt, listed in the credits below, in `assets/music/` (4.7 MB). When a fight starts the game's own
 fight tune takes over, and the place's track comes back after it.
 

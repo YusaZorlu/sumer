@@ -55,7 +55,7 @@ EMSCRIPTEN_KEEPALIVE const char *TestInfo(void)
                       first ? "" : ",", s, name, p->pos.x, p->pos.z, p->flags, p->health, p->wanted, p->kills, p->deaths, p->mark);
         first = 0;
     }
-    n += snprintf(buf + n, sizeof(buf) - (size_t)n, "],\"aim\":%d,\"moving\":%d,\"stick\":[%.2f,%.2f],\"touch\":%d,\"fp\":%d,\"crouch\":%d,\"parry\":%.2f,\"buttons\":[", G.player.aiming, G.player.moving, TouchStick().x, TouchStick().y, TouchOn(), G.firstPerson,
+    n += snprintf(buf + n, sizeof(buf) - (size_t)n, "],\"fpsLimit\":%d,\"aim\":%d,\"moving\":%d,\"stick\":[%.2f,%.2f],\"touch\":%d,\"fp\":%d,\"crouch\":%d,\"parry\":%.2f,\"buttons\":[", FpsLimit(), G.player.aiming, G.player.moving, TouchStick().x, TouchStick().y, TouchOn(), G.firstPerson,
                   G.player.crouching, G.parryT + G.parryCool);
     for (int b = 0; b < TB_COUNT; b++) {
         Vector2 c;
@@ -132,6 +132,7 @@ EMSCRIPTEN_KEEPALIVE void TestCommand(int cmd, float a, float b)
     case 15: SetPanel((Panel)(int)a); break;
     case 16: SfxSetLevel((int)a); break;
     case 17: G.quit = true; break;
+    case 19: SetLeftHanded(a != 0); break;
     case 18: LobbyAgain(); break;
     default: break;
     }

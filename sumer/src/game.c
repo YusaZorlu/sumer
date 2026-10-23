@@ -304,11 +304,38 @@ static void NoteHit(float dmg, const Vector3 *src)
 }
 
 // The game settings each player keeps for themselves (sumer.prefs): the arrow camera and the first-person view.
+// Kept apart from G, which a new game clears: they hold from the title screen on.
+static int fpsLimit = 60;
+static bool leftHanded;
+
+int FpsLimit(void)
+{
+    return fpsLimit;
+}
+
+// 30, 60, then no limit (as fast as the screen shows frames), and round again.
+void NextFpsLimit(void)
+{
+    fpsLimit = fpsLimit == 30 ? 60 : fpsLimit == 60 ? 0 : 30;
+    SaveGamePrefs();
+}
+
+bool LeftHanded(void)
+{
+    return leftHanded;
+}
+
+void SetLeftHanded(bool on)
+{
+    leftHanded = on;
+    SaveGamePrefs();
+}
+
 void SaveGamePrefs(void)
 {
     FILE *f = fopen(DataPath("sumer.prefs"), "w");
     if (!f) return;
-    fprintf(f, "arrowcam %d\nfirstperson %d\n", G.arrowCam ? 1 : 0, G.firstPerson ? 1 : 0);
+    fprintf(f, "arrowcam %d\nfirstperson %d\nfps %d\nlefthand %d\n", G.arrowCam ? 1 : 0, G.firstPerson ? 1 : 0, fpsLimit, leftHanded ? 1 : 0);
     fclose(f);
     SyncStorage();
 }
@@ -322,6 +349,8 @@ void LoadGamePrefs(void)
     while (fscanf(f, "%31s %d", key, &v) == 2) {
         if (strcmp(key, "arrowcam") == 0) G.arrowCam = v != 0;
         else if (strcmp(key, "firstperson") == 0) G.firstPerson = v != 0;
+        else if (strcmp(key, "fps") == 0) fpsLimit = v == 30 || v == 60 ? v : 0;
+        else if (strcmp(key, "lefthand") == 0) leftHanded = v != 0;
     }
     fclose(f);
 }

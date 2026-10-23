@@ -12,7 +12,13 @@
 static void Frame(void)
 {
     static bool ready;
+    static double last;
 
+    // The page calls for a frame as often as the screen shows one (120 a second on some phones, which
+    // heats them): with a limit set, the calls in between are let pass.
+    double now = emscripten_get_now() / 1000.0;
+    if (ready && FpsLimit() > 0 && now - last < 0.9 / FpsLimit()) return;
+    last = now;
     PageFrame();
     if (!ready) {
         if (!StorageReady()) {
@@ -25,6 +31,7 @@ static void Frame(void)
         ready = true;
         LoadLanguage();
         GfxLoadSetting();
+        LoadGamePrefs();
         SfxLoadSetting();
         MusicInit();
         OpenLobby("");

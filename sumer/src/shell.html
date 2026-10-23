@@ -43,6 +43,21 @@
     }
   });
   canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  // On a phone the game takes the whole screen, the browser's bars hidden, at a touch: a browser allows it
+  // only during one. Left (the back gesture), the next touch brings it back.
+  var phone = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '') ||
+              (window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+  canvas.addEventListener('touchend', function () {
+    var d = document.documentElement;
+    if (!phone || document.fullscreenElement || document.webkitFullscreenElement) return;
+    var landscape = function () {
+      if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(function () {});
+    };
+    try {
+      if (d.requestFullscreen) d.requestFullscreen({ navigationUI: 'hide' }).then(landscape).catch(function () {});
+      else if (d.webkitRequestFullscreen) d.webkitRequestFullscreen();
+    } catch (e) {}
+  });
   // F5 saves the game here instead of reloading the page.
   window.addEventListener('keydown', function (e) {
     if (e.key === 'F5' || e.key === 'F1') e.preventDefault();

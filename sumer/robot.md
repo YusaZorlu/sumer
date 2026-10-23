@@ -116,6 +116,10 @@ in `src/game.h`) holds the whole world.
   On a phone (`OnPhone()`) the game never asks for pointer lock (`LockMouse`, `WantPointer`) and never pauses on
   losing focus or the pointer: Firefox for Android granted the lock on a tap and its loss paused the game. The
   title screen's name field opens `window.prompt` (`AskText`) on a touch screen, the only way to a phone keyboard.
+  Full screen on a phone is asked for by the page (`shell.html`, on touchend). `LeftHanded()` mirrors the thumb's
+  buttons and the stick's half; the Attack finger also aims while the bow is drawn.
+- **Frame limit** (`FpsLimit`, game settings, kept in `sumer.prefs` with the arrow camera, view and hand; loaded at
+  start-up too): `Frame` in main.c lets the page's frame calls pass until 0.9/limit seconds have gone.
 - **Chat** (T, online only; T fast-forwards only offline): `PANEL_CHAT` keeps the game keys off while the line is typed in
   `DrawChat` (`ui.c`, which also keeps the last 8 lines). A guest sends `M_CHAT` to the host; `HostChat` (`mp.c`) tidies it
   (`ChatTidy`: control characters out, 100 bytes, cut on a whole UTF-8 letter), allows two a second per slot, and sends

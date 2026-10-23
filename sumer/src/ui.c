@@ -490,7 +490,7 @@ static void DrawPausePanel(void)
 // The settings that only change how the game looks and sounds to this player, not how it plays.
 static void DrawSettingsPanel(void)
 {
-    Rectangle r = PanelRect(560, 440);
+    Rectangle r = PanelRect(560, 482);
     float bx = r.x + 50, bw = r.width - 100, y = r.y + 96;
 
     CenterText("Game settings", r.x + r.width / 2, r.y + 20, 30, C_GOLD);
@@ -517,6 +517,13 @@ static void DrawSettingsPanel(void)
         G.firstPerson = !G.firstPerson;
         SaveGamePrefs();
     }
+    y += 42;
+    // The frame limit (a phone runs cooler at 30), and on a touch screen which side the buttons are on.
+    float fw = TouchOn() ? (bw - 8) / 2 : bw;
+    const char *fps = FpsLimit() ? TextFormat(L("Frame limit: %d a second"), FpsLimit()) : L("Frame limit: none");
+    if (Button((Rectangle){ bx, y, fw, 34 }, fps, true, 0)) NextFpsLimit();
+    if (TouchOn() && Button((Rectangle){ bx + fw + 8, y, fw, 34 }, LeftHanded() ? "Buttons: left hand" : "Buttons: right hand", true, 0))
+        SetLeftHanded(!LeftHanded());
     if (Button((Rectangle){ bx, r.y + r.height - 58, bw, 40 }, "Back", true, KEY_BACKSPACE)) SetPanel(PANEL_PAUSE);
 }
 
