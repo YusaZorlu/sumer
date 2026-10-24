@@ -54,7 +54,7 @@ async function game(kind) {
   // 1. A PvP server.
   let g = await game('pvp');
   let a = await info(g.ann), b = await info(g.bob);
-  check(a.pvp === 1 && a.combat === 0 && b.pvp === 1 && b.combat === 0, `on a PvP server PvP is on for both, with their own gear ("${b.msg}")`);
+  check(a.pvp === 1 && a.combat === 1 && b.pvp === 1 && b.combat === 1, `on a PvP server PvP is on for both, with the best gear ("${b.msg}")`);
   check(/ziggurat/.test(b.msg) && /boost/.test(b.msg), 'the welcome in a PvP game says the top of the ziggurat gives a boost');
   const people = { pvp: a.villagers };
   check(a.villagers === b.villagers && a.villagers > 20, `both have the same people in a PvP game (${a.villagers} and ${b.villagers})`);
@@ -98,7 +98,8 @@ async function game(kind) {
   await cmd(g.bob, 1, 250, 61.5);
   await cmd(g.ann, 4, Math.PI, 0.3);
   await sleep(1500);
-  await cmd(g.bob, 13, Math.max(0, (await info(g.bob)).health - 3));
+  // Bob nearly down first (his armor softens every hurt, so again until it is so).
+  for (let k = 0; k < 8 && (await info(g.bob)).health > 5; k++) { await cmd(g.bob, 13, Math.max(1, (await info(g.bob)).health - 3)); await sleep(300); }
   await sleep(300);
   await cmd(g.ann, 6);
   const down = await waitFor(g.bob, 'Bob brought down', i => /beat you down/.test(i.msg), 20000).catch(e => null);

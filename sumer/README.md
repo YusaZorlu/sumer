@@ -61,7 +61,9 @@ a way to play still to come. Sumer Survival offers:
   listed with what it is and who is on it (or "nobody here; joining opens it": an empty server sleeps
   until someone joins). Up to six players each.
   - **Survival 1, Survival 2**: PvP off: players cannot hurt each other.
-  - **PvP 1, PvP 2**: players can hurt each other with blows and arrows. Arrows never run out there, and the
+  - **PvP 1, PvP 2**: players can hurt each other with blows and arrows. Everyone fights with the best of
+    everything (bronze sickle-sword, the war mace, the best bow with bronze arrowheads, bronze armor; your own
+    things are untouched and kept), arrows never run out, someone brought down comes to with full health, and the
     guards stay out of fights between players (attacking townsfolk or guards still angers them). Everyone starts somewhere in the city (on open ground, away from the other players), and so does
     anyone brought down, instead of waking at home. The guards on the ziggurat's stairs and terrace are gone,
     so anyone can climb to the priest on top for the day's +20% speed boost: the welcome says so.
