@@ -100,22 +100,51 @@ static bool ReadProfile(const char *text)
     return true;
 }
 
-// The singleplayer saves the server keeps for the account replace this browser's: each slot as a length
-// (4 bytes) and the save itself, an empty one for a slot with nothing in it.
+// The singleplayer saves the server keeps for the account (each slot as a length, 4 bytes, and the save
+// itself; empty for a slot with nothing in it) replace this browser's. An account with none takes up this
+// browser's own instead, made before accounts (or by it): they go to the server. The browser remembers whose
+// its saves are (sumer.owner), so another account never takes them.
+#define OWNER_FILE "sumer.owner"
+
 static void TakeSaves(const unsigned char *d, int n)
 {
-    int at = 0;
-    for (int s = 0; s < SAVE_SLOTS && at + 4 <= n; s++) {
+    char owner[NAME_LEN + 2] = "";
+    FILE *f = fopen(DataPath(OWNER_FILE), "r");
+    if (f) {
+        if (!fgets(owner, sizeof(owner), f)) owner[0] = '\0';
+        fclose(f);
+        owner[strcspn(owner, "\r\n")] = '\0';
+    }
+    int at = 0, slots = 0, kept = 0, from[SAVE_SLOTS], size[SAVE_SLOTS];
+    while (slots < SAVE_SLOTS && at + 4 <= n) {
         int len = (int)(d[at] | d[at + 1] << 8 | d[at + 2] << 16 | (unsigned)d[at + 3] << 24);
         at += 4;
         if (len < 0 || len > n - at || len > SAVE_BYTES) break;
-        if (len > 0) {
-            Writer w = { (unsigned char *)d + at, len, len, false };
-            WriteFile(SaveFileName(s), &w);
-        } else {
-            remove(DataPath(SaveFileName(s)));
-        }
+        from[slots] = at;
+        size[slots++] = len;
+        kept += len > 0;
         at += len;
+    }
+    if (!kept && (!owner[0] || SameName(owner, name))) {
+        static unsigned char own[SAVE_BYTES];
+        for (int s = 0; s < SAVE_SLOTS; s++) {
+            int len = ReadFile(SaveFileName(s), own, SAVE_BYTES);
+            if (len > 0) AccountSaved(s, own, len);
+        }
+    } else {
+        for (int s = 0; s < slots; s++) {
+            if (size[s] > 0) {
+                Writer w = { (unsigned char *)d + from[s], size[s], size[s], false };
+                WriteFile(SaveFileName(s), &w);
+            } else {
+                remove(DataPath(SaveFileName(s)));
+            }
+        }
+    }
+    f = fopen(DataPath(OWNER_FILE), "w");
+    if (f) {
+        fprintf(f, "%s\n", name);
+        fclose(f);
     }
     SyncStorage();
 }

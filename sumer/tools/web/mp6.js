@@ -22,7 +22,8 @@ async function open(browser, name, url) {
   for (let k = 0; k < 6; k++) {
     const p = await open(browser, NAMES[k], `${BASE}?auto=join&room=${ROOM}`);
     pages.push(p);
-    await waitFor(p, NAMES[k] + ' joining', i => i.lobby === 0 && i.role === 2, 120000);
+    // Every page already open slows the next one down on the test machine: the sixth takes minutes.
+    await waitFor(p, NAMES[k] + ' joining', i => i.lobby === 0 && i.role === 2, 300000);
   }
   const all = await waitHost(ROOM, 'six players', i => i.players === 6, 60000).catch(() => null);
   check(!!all, `the server has six players (${all ? all.players : '?'})`);

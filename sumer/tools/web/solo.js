@@ -1,12 +1,13 @@
 // Singleplayer: it starts once logged in; a beast brought down is worth experience, which goes to the account;
 // a save goes to the account too, so the same account in another browser plays on from it. The developer
 // tools are gone.
-const { BASE, RUN, launch, open, info, cmd, waitFor, sleep } = require('./lib.js');
+const { BASE, RUN, launch, login, open, info, cmd, waitFor, sleep } = require('./lib.js');
 const SHOTS = __dirname + '/shots/';
 const NAME = 'Solo' + RUN;
 let failed = 0;
 const check = (ok, what) => { console.log((ok ? 'PASS: ' : 'FAIL: ') + what); if (!ok) failed++; };
 const me = async page => (await page.evaluate(() => fetch('/api/me').then(r => r.text()))).trim().split('\t');
+const savedBytes = page => page.evaluate(() => fetch('/api/saves').then(r => r.arrayBuffer()).then(b => b.byteLength));
 
 (async () => {
   const browser = await launch();
@@ -55,12 +56,32 @@ const me = async page => (await page.evaluate(() => fetch('/api/me').then(r => r
   await cmd(page, 9, 15.5);
   await page.keyboard.press('F5');
   await sleep(4000);
-  const saves = await page.evaluate(() => fetch('/api/saves').then(r => r.arrayBuffer()).then(b => b.byteLength));
+  const saves = await savedBytes(page);
   check(saves > 200, `the save is kept with the account (${saves} bytes for the three slots)`);
   const day = (await info(page)).day;
   const other = await open(browser, NAME, BASE + '?auto=solo');
   s = await waitFor(other, 'the other browser playing', i => i.lobby === 0 && i.role === 0 && i.day > 0, 120000).catch(e => null);
   check(!!s && s.day === day && /Welcome back/.test(s.msg) && Math.abs(s.hour - 15.5) < 0.5, `another browser plays on from the account's save: day ${s ? s.day : '?'}, ${s ? s.hour.toFixed(1) : '?'} h: "${s ? s.msg : ''}"`);
+
+  // Saves made in a browser before accounts are taken up by the first account to log in there, which has none
+  // yet; another account after it does not get them.
+  await cmd(other, 23);
+  await sleep(1000);
+  const ctx = other.context();
+  await other.evaluate(() => fetch('/api/logout', { method: 'POST' }));
+  await login(ctx, 'New' + RUN);
+  await other.goto(BASE);
+  await waitFor(other, 'the new account in', i => i.accState === 3, 60000);
+  await sleep(6000);
+  const adopted = await savedBytes(other);
+  check(adopted > 200, `a new account takes up the saves this browser made before accounts (${adopted} bytes)`);
+  await other.evaluate(() => fetch('/api/logout', { method: 'POST' }));
+  await login(ctx, 'Third' + RUN);
+  await other.goto(BASE);
+  await waitFor(other, 'the third account in', i => i.accState === 3, 60000);
+  await sleep(6000);
+  const third = await savedBytes(other);
+  check(third === 12, `another account after it starts with no saves of its own (${third} bytes)`);
 
   console.log(failed ? failed + ' FAILED' : 'ALL PASSED');
   await browser.close();

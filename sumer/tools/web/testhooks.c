@@ -107,7 +107,8 @@ static float LandingHeight(float x, float z)
 // the camera looks; 6 swing the weapon; 7 add b of item a to the baskets; 8 take an animal: put it
 // down dead at the player's feet (a = index); 9 set the hour to a; 10 shoot at the ground point (a, b)
 // at body height; 11 language a; 12 barter offer b of trader a; 13 hurt the player by a; 14 equip a;
-// 15 open panel a (PANEL_* in game.h); 20 start a battle royale round (the host); 21 skip the round's clock to a s.
+// 15 open panel a (PANEL_* in game.h); 20 start a battle royale round (the host); 21 skip the round's clock to a s;
+// 23 forget whose this browser's saves are, as if made before accounts.
 EMSCRIPTEN_KEEPALIVE void TestCommand(int cmd, float a, float b)
 {
     Player *p = &G.player;
@@ -153,6 +154,7 @@ EMSCRIPTEN_KEEPALIVE void TestCommand(int cmd, float a, float b)
     case 18: LobbyAgain(); break;
     case 20: RoyaleStart(); break;
     case 21: RoyaleSkipTo(a); break;
+    case 23: remove(DataPath("sumer.owner")); SyncStorage(); break;   // this browser's saves as if made before accounts
     default: break;
     }
 }
