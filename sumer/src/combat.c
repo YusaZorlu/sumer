@@ -721,6 +721,7 @@ void DamagePerson(int i, float dmg)
         v->hostile = 0;
         v->foeT = 0;
         Say("%s killed. Search the body with E.", L(f->name));
+        AwardXp(G.actor, KillXp(f->role), 0, 0);
     }
 }
 
@@ -911,7 +912,7 @@ static void StartBlow(int a, int s, float dmg)
 }
 
 // The blow's damage reaches player s, from player a. Whoever starts a fight in the city's lands is wanted
-// by the guards, unless the game is in combat mode; hitting back, or hitting someone wanted, is no crime.
+// by the guards, unless it is a battle royale; hitting back, or hitting someone wanted, is no crime.
 static void Hurt(int a, int s, float dmg, bool opened, bool melee)
 {
     Vector3 sp = G.peers[s].pos;

@@ -361,7 +361,8 @@ static void BuildHerders(void)
 
     for (int i = 0; i < MAX_FLOCK; i++) {
         float x = RandF(f.x + 1, f.x + f.width - 1), z = RandF(f.y + 1, f.y + f.height - 1);
-        G.flock[i] = (Wanderer){ { x, Ground(x, z), z }, RandF(-PI, PI), RandF(1, 3), 0 };
+        float heading = RandF(-PI, PI), timer = RandF(1, 3);
+        G.flock[i] = (Wanderer){ { x, Ground(x, z), z }, heading, timer, 0 };
     }
 
     const Color brown = { 140, 110, 80, 255 }, pale = { 200, 186, 150, 255 };

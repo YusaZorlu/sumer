@@ -1,5 +1,5 @@
 // Music in the browser: the Web Audio output carries sound, the mood follows the game, N changes the volume.
-const { chromium } = require('./lib.js');
+const { chromium, login, RUN } = require('./lib.js');
 const { info, cmd, waitFor, sleep } = require('./lib.js');
 let fails = 0;
 function check(ok, what) { console.log((ok ? 'PASS: ' : 'FAIL: ') + what); if (!ok) fails++; }
@@ -7,6 +7,7 @@ function check(ok, what) { console.log((ok ? 'PASS: ' : 'FAIL: ') + what); if (!
 (async () => {
   const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-webgl', '--autoplay-policy=user-gesture-required'] });
   const ctx = await browser.newContext({ viewport: { width: 960, height: 540 } });
+  await login(ctx, 'Aud' + RUN);
   const page = await ctx.newPage();
   page.name = 'solo';
   page.on('pageerror', e => { console.log('PAGE ERROR ' + e); fails++; });

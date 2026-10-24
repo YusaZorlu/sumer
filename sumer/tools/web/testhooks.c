@@ -39,8 +39,11 @@ EMSCRIPTEN_KEEPALIVE const char *TestInfo(void)
     Esc(msg, sizeof(msg), G.msgT > 0 ? G.msg : "");
     Esc(chat, sizeof(chat), ChatLast());
     Esc(failure, sizeof(failure), NetFailure());
-    int n = snprintf(buf, sizeof(buf),
-        "{\"lobby\":%d,\"role\":%d,\"self\":%d,\"players\":%d,\"day\":%d,\"hour\":%.3f,\"x\":%.2f,\"y\":%.2f,\"z\":%.2f,"
+    char note[300];
+    Esc(note, sizeof(note), AccountNote());
+    int n = snprintf(buf, sizeof(buf), "{\"xp\":%ld,\"account\":\"%s\",\"accState\":%d,\"note\":\"%s\",", AccountXp(), AccountName(), AccountState(), note);
+    n += snprintf(buf + n, sizeof(buf) - (size_t)n,
+        "\"lobby\":%d,\"role\":%d,\"self\":%d,\"players\":%d,\"day\":%d,\"hour\":%.3f,\"x\":%.2f,\"y\":%.2f,\"z\":%.2f,"
         "\"yaw\":%.3f,\"pitch\":%.3f,\"captured\":%d,\"lang\":%d,\"health\":%.1f,\"food\":%.1f,\"quiver\":%d,\"henCount\":%d,\"eggs\":%d,\"waitBed\":%d,\"sleeping\":%d,\"panel\":%d,\"swing\":%.2f,\"cool\":%.2f,\"equip\":%d,\"pvp\":%d,\"combat\":%d,\"mood\":%d,\"place\":%d,\"musicLevel\":%d,\"hitLight\":[%.2f,%.2f,%.2f,%.2f],\"flinch\":%.2f,\"villagers\":%d,\"gfx\":%d,\"ui\":%.3f,\"shake\":%.2f,"
         "\"target\":%d,\"targetIndex\":%d,\"promptE\":\"%s\",\"msg\":\"%s\",\"chat\":\"%s\",\"failure\":\"%s\",\"peers\":[",
         InLobby(), G.role, G.self, PlayerCount(), G.day, G.hour, G.player.pos.x, G.player.pos.y, G.player.pos.z,
@@ -83,14 +86,21 @@ EMSCRIPTEN_KEEPALIVE const char *TestInfo(void)
         n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%s[%.1f,%.1f,%.1f,%d]", first ? "" : ",", p.x, p.y, p.z, v->vit.dead ? 1 : 0);
         first = 0;
     }
-    n += snprintf(buf + n, sizeof(buf) - (size_t)n, "],\"royale\":{\"on\":%d,\"phase\":%d,\"out\":%d,\"alive\":%d,\"winner\":%d,\"attack\":%.2f,\"storm\":%d,\"statues\":[",
-                  Royale(), RoyalePhase(), RoyaleOut(), RoyaleAlive(), RoyaleWinner(), RoyaleAttack(), InStorm(G.player.pos));
+    n += snprintf(buf + n, sizeof(buf) - (size_t)n, "],\"royale\":{\"on\":%d,\"phase\":%d,\"out\":%d,\"alive\":%d,\"winner\":%d,\"started\":%d,\"countdown\":%.1f,\"attack\":%.2f,\"storm\":%d,\"statues\":[",
+                  Royale(), RoyalePhase(), RoyaleOut(), RoyaleAlive(), RoyaleWinner(), RoyaleStarted(), RoyaleCountdown(), RoyaleAttack(), InStorm(G.player.pos));
     for (int i = 0; i < StatueCount(); i++) {
         Vector3 sp = StatuePos(i);
         n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%s[%.1f,%.1f,%d]", i ? "," : "", sp.x, sp.z, StatueClaimed(i));
     }
     n += snprintf(buf + n, sizeof(buf) - (size_t)n, "]},\"villager0\":[%.2f,%.2f]}", VillagerPos(&G.villagers[0]).x, VillagerPos(&G.villagers[0]).z);
     return buf;
+}
+
+// Where a player set down at (x, z) stands: on the ground, or on a roof that covers it.
+static float LandingHeight(float x, float z)
+{
+    float y = GroundHeight(x, z, TerrainHeight(x, z) + 1.0f);
+    return PointInSolid((Vector3){ x, y + 1.0f, z }) ? GroundHeight(x, z, 50.0f) : y;
 }
 
 // 1 teleport to (a, b); 2 press E; 3 press F; 4 look (yaw a, pitch b); 5 shoot a full-drawn arrow where

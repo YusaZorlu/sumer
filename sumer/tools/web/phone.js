@@ -2,7 +2,7 @@
 // screen, a tap must land on the button under it, and the graphics must pick the phone setting.
 // Screenshots go to tools/web/shots/phone-*.png.
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
-const { info, cmd, waitFor, sleep } = require('./lib.js');
+const { RUN, info, cmd, waitFor, sleep } = require('./lib.js');
 const SHOTS = __dirname + '/shots/';
 const BASE = process.env.BASE || 'http://localhost:8123/';
 (async () => {
@@ -13,22 +13,33 @@ const BASE = process.env.BASE || 'http://localhost:8123/';
   });
   const page = await ctx.newPage();
   page.on('pageerror', e => console.log('PAGE ERROR', String(e)));
-  await page.goto(BASE + '?name=Ann&gfx=auto');
-  await sleep(4000);
+  await page.goto(BASE + '?gfx=auto');
+  await waitFor(page, 'the account page', i => i.accState === 1, 60000);
   await page.screenshot({ path: SHOTS + 'phone-lobby.png', timeout: 180000 });
-  // A tap on the name field opens the browser's text box (and with it the phone's keyboard).
-  let asked = '';
-  page.on('dialog', d => { asked = d.message(); d.accept('Zed'); });
-  const uiW = 844 * 540 / 390, k = 390 / 540;
-  await page.touchscreen.tap((uiW / 2 - 4) * k, 147 * k);
-  await sleep(3000);
-  console.log((asked ? 'PASS' : 'FAIL') + `: a tap on the name field asks for the name ("${asked}")`);
-  // "Sumer Survival", then "Singleplayer" in its place, sit at (390, 240) in the UI's units, which are shrunk to
-  // 390/540 of a screen pixel.
-  await page.touchscreen.tap(390 * k, 240 * k);
+  // The UI's units are shrunk to 390/540 of a screen pixel here, and the title's panel is centered: its
+  // Create account tab, the account fields and the button in screen pixels.
+  const k = 390 / 540, cx = 844 / k / 2;
+  const at = (x, y) => [x * k, y * k];
+  await page.touchscreen.tap(...at(cx + 105, 144));
+  await sleep(2000);
+  // A tap on a field gives it the phone's keyboard: what is typed goes in the field, not the game.
+  const name = 'Zed' + RUN;
+  await page.touchscreen.tap(...at(cx + 100, 199));
+  await page.keyboard.type(name, { delay: 60 });
+  await page.touchscreen.tap(...at(cx + 100, 247));
+  await page.keyboard.type('phone-pass', { delay: 60 });
+  await page.touchscreen.tap(...at(cx + 100, 295));
+  await page.keyboard.type('phone-pass', { delay: 60 });
+  const typed = await page.inputValue('#acctName');
+  await page.screenshot({ path: SHOTS + 'phone-account.png', timeout: 180000 });
+  await page.touchscreen.tap(...at(cx, 354));
+  const acc = await waitFor(page, 'the account made', i => i.accState === 3, 60000).catch(e => null);
+  console.log((typed === name && acc ? 'PASS' : 'FAIL') + `: the account is made by taps and typing on the phone ("${typed}", ${acc ? acc.account : '?'})`);
+  // "Sumer Survival", then "Singleplayer" in its place.
+  await page.touchscreen.tap(...at(cx - 195, 150));
   await sleep(3000);
   await page.screenshot({ path: SHOTS + 'phone-survival.png', timeout: 180000 });
-  await page.touchscreen.tap(390 * k, 240 * k);
+  await page.touchscreen.tap(...at(cx - 195, 150));
   const s = await waitFor(page, 'solo game after a tap', i => i.lobby === 0 && i.role === 0, 60000);
   console.log('tap on Play alone started the game:', JSON.stringify({ x: s.x, z: s.z, gfx: s.gfx }));
   await sleep(5000);
@@ -41,8 +52,8 @@ const BASE = process.env.BASE || 'http://localhost:8123/';
   const touch = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map(([x, y, id]) => ({ x, y, id })) });
   const tap = async (b) => { const i = await info(page); await page.touchscreen.tap(i.buttons[b][0], i.buttons[b][1]); };
   const ATTACK = 0, PARRY = 1, USE = 2, CROUCH = 3, VIEW = 4, BAG = 5, MENU = 6, JUMP = 7, PREV = 8, NEXT = 9;
-  if (!asked) fails++;
-  check((await info(page)).peers.some(p => p.name === 'Zed'), 'the name typed in the box is the player\'s');
+  if (typed !== name || !acc) fails++;
+  check((await info(page)).peers.some(p => p.name === name), 'the account\'s name is the player\'s');
   // A new game opens "Your look" first: Close puts it away.
   await tap(MENU);
   let i0 = await waitFor(page, 'the look panel closed', i => i.panel === 0, 30000).catch(e => null) || await info(page);

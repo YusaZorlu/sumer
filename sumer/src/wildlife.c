@@ -883,6 +883,7 @@ static void HitAnimal(Animal *a, int damage)
     SpawnBurst(Center(a), (Color){ 170, 30, 30, 255 }, 12, 2.4f);
     if (a->hp <= 0) {
         Kill(a);
+        AwardXp(s, XP_KILL, 0, 0);
         if (a->type == AN_SNAKE) Say("You killed the snake.");
         else Say("%s down! Walk up to it and press E to take the carcass.", AnimalName(a->type));
     } else if (a->type == AN_BOAR && (float)a->hp >= BOAR_SPENT * (float)DEFS[AN_BOAR].hp) {

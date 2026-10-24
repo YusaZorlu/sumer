@@ -466,7 +466,7 @@ void SaveNow(void)
         else Say("Could not save the game in this browser.");
     } else if (G.role == NET_CLIENT) {
         NetSendRecord();
-        Say("The host keeps your things; they are sent along every few seconds.");
+        Say("Your things are kept with your account on the server; they are sent along every few seconds.");
     } else if (SaveGame()) {
         Say("Game saved to %s.", SaveFileName(SaveSlot()));
     } else {
@@ -652,6 +652,7 @@ void GameUpdate(void)
         }
     }
     if (G.msgT > 0) G.msgT -= dt;
+    if (G.xpGainT > 0) G.xpGainT -= dt;
     if (G.hurtT > 0) G.hurtT -= dt;
     if (G.flinchT > 0) G.flinchT -= dt;
     for (int k = 0; k < 4; k++) G.hitLight[k] = fmaxf(0.0f, G.hitLight[k] - dt * 1.1f);
@@ -664,6 +665,23 @@ void GameUpdate(void)
             SaveGame();
         }
     }
+}
+
+// The game's server program (host/main.c): the world goes on by 'dt' seconds, with no player of its own.
+void ServerTick(float dt)
+{
+    CollectBodies();
+    UpdateWorld(dt);
+    RoyaleUpdate(dt);
+    UpdateTime(dt / HOUR_SECONDS);
+    UpdateDawn();
+    UpdateWeather();
+    UpdateBeds(dt);
+    UpdateFields();
+    UpdateSky();
+    UpdateLights();
+    NetFrame(dt);
+    UpdatePeers(dt);
 }
 
 void GameDraw(void)

@@ -42,6 +42,7 @@ static void Frame(void)
         return;
     }
     GameUpdate();
+    AccountFrame();
     if (InLobby()) return;
     BeginDrawing();
     GameDraw();

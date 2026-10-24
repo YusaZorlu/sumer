@@ -328,3 +328,162 @@ bool OnWeb(void)
     return false;
 #endif
 }
+
+// ---- Requests to server.py (/api) and the account fields ----
+
+// A request to server.py; its answer is taken with ApiDone. Its number, or -1 natively.
+int ApiStart(const char *method, const char *path, const void *body, int len)
+{
+#if defined(__EMSCRIPTEN__)
+    return EM_ASM_INT({
+        var id = Module.sumerApiNext = (Module.sumerApiNext | 0) + 1;
+        Module.sumerApi = Module.sumerApi || {};
+        var opts = ({ method: UTF8ToString($0), credentials: 'same-origin', cache: 'no-store' });
+        if ($3 > 0) opts.body = HEAPU8.slice($2, $2 + $3);
+        fetch(UTF8ToString($1), opts).then(function (r) {
+            return r.arrayBuffer().then(function (b) { Module.sumerApi[id] = ({ status: r.status, data: new Uint8Array(b) }); });
+        }).catch(function () { Module.sumerApi[id] = ({ status: -1, data: new Uint8Array(0) }); });
+        return id;
+    }, method, path, body, len);
+#else
+    (void)method; (void)path; (void)body; (void)len;
+    return -1;
+#endif
+}
+
+// 0 while request 'id' runs; then its status (-1: the server could not be reached), with the answer in buf
+// (at most size - 1 bytes, a 0 after them) and its length in *len.
+int ApiDone(int id, unsigned char *buf, int size, int *len)
+{
+    *len = 0;
+    if (size > 0) buf[0] = 0;
+#if defined(__EMSCRIPTEN__)
+    return EM_ASM_INT({
+        var r = Module.sumerApi && Module.sumerApi[$0];
+        if (!r) return 0;
+        delete Module.sumerApi[$0];
+        var n = Math.min(r.data.length, $2 - 1);
+        HEAPU8.set(r.data.subarray(0, n), $1);
+        HEAPU8[$1 + n] = 0;
+        HEAP32[$3 >> 2] = n;
+        return r.status || -1;
+    }, id, buf, size, len);
+#else
+    (void)id;
+    return -1;
+#endif
+}
+
+// The account fields (shell.html) laid over the title screen at these places (in the UI's units), or hidden.
+void AccountForm(bool show, bool create, Rectangle name, Rectangle pass, Rectangle pass2)
+{
+#if defined(__EMSCRIPTEN__)
+    static float last[13];
+    float k = UiScale() / PixelRatio();
+    float now[13] = { show ? 1.0f : 0.0f, create ? 1.0f : 0.0f, k, name.x, name.y, name.width, name.height, pass.x, pass.y, pass2.x, pass2.y, pass.width, pass.height };
+    if (memcmp(now, last, sizeof(now)) == 0) return;
+    memcpy(last, now, sizeof(now));
+    EM_ASM({
+        var k = $2;
+        var place = function (id, x, y, w, h, on) {
+            var e = document.getElementById(id);
+            if (!e) return;
+            e.style.display = on ? 'block' : 'none';
+            e.style.left = (x * k) + 'px';
+            e.style.top = (y * k) + 'px';
+            e.style.width = (w * k) + 'px';
+            e.style.height = (h * k) + 'px';
+            e.style.fontSize = Math.max(12, h * k * 0.5) + 'px';
+        };
+        place('acctName', $3, $4, $5, $6, $0);
+        place('acctPass', $7, $8, $5, $6, $0);
+        place('acctPass2', $9, $10, $5, $6, $0 && $1);
+        var p = document.getElementById('acctPass');
+        if (p) p.setAttribute('autocomplete', $1 ? 'new-password' : 'current-password');
+        if (!$0 && document.activeElement && document.activeElement.classList.contains('acct')) document.activeElement.blur();
+    }, show, create, k, name.x, name.y, name.width, name.height, pass.x, pass.y, pass2.x, pass2.y);
+#else
+    (void)show; (void)create; (void)name; (void)pass; (void)pass2;
+#endif
+}
+
+// Enter was pressed in one of the account fields since the last time this asked.
+bool AccountEnter(void)
+{
+#if defined(__EMSCRIPTEN__)
+    return EM_ASM_INT({
+        var e = Module.sumerAcctEnter | 0;
+        Module.sumerAcctEnter = 0;
+        return e;
+    }) != 0;
+#else
+    return false;
+#endif
+}
+
+// The account name typed (not secret, unlike the password, which stays in the page).
+void AccountFieldName(char *out, int size)
+{
+    out[0] = '\0';
+#if defined(__EMSCRIPTEN__)
+    char *got = (char *)EM_ASM_PTR({
+        var e = document.getElementById('acctName');
+        return stringToNewUTF8(e ? e.value.trim().substring(0, 40) : "");
+    });
+    if (got) {
+        snprintf(out, (size_t)size, "%s", got);
+        free(got);
+    }
+#else
+    (void)size;
+#endif
+}
+
+// 0 when the password will do; 1 when it is too short; 2 when a new account's two passwords differ.
+int AccountFieldCheck(bool create)
+{
+#if defined(__EMSCRIPTEN__)
+    return EM_ASM_INT({
+        var p = document.getElementById('acctPass');
+        var q = document.getElementById('acctPass2');
+        if (!p || p.value.length < 6) return 1;
+        return $0 && (!q || q.value !== p.value) ? 2 : 0;
+    }, create);
+#else
+    (void)create;
+    return 1;
+#endif
+}
+
+// The page sends the name and password typed (and for a new account, the work done for it) to server.py.
+// The request's number, for ApiDone.
+int AccountSend(bool create, const char *challengeHex, unsigned nonce)
+{
+#if defined(__EMSCRIPTEN__)
+    return EM_ASM_INT({
+        var id = Module.sumerApiNext = (Module.sumerApiNext | 0) + 1;
+        Module.sumerApi = Module.sumerApi || {};
+        var get = function (n) { var e = document.getElementById(n); return e ? e.value : ""; };
+        var body = ({ name: get('acctName').trim(), password: get('acctPass') });
+        if ($0) { body.challenge = UTF8ToString($1); body.nonce = $2 >>> 0; }
+        fetch($0 ? '/api/create' : '/api/login', { method: 'POST', credentials: 'same-origin', cache: 'no-store',
+                                                   headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(function (r) {
+            return r.arrayBuffer().then(function (b) { Module.sumerApi[id] = ({ status: r.status, data: new Uint8Array(b) }); });
+        }).catch(function () { Module.sumerApi[id] = ({ status: -1, data: new Uint8Array(0) }); });
+        return id;
+    }, create, challengeHex, nonce);
+#else
+    (void)create; (void)challengeHex; (void)nonce;
+    return -1;
+#endif
+}
+
+// Logged in: the passwords typed are wiped from the page.
+void AccountFieldsClear(void)
+{
+#if defined(__EMSCRIPTEN__)
+    EM_ASM({
+        (['acctPass', 'acctPass2']).forEach(function (n) { var e = document.getElementById(n); if (e) e.value = ""; });
+    });
+#endif
+}

@@ -365,17 +365,16 @@ static void DrawTradePanel(void)
     Text("Click Barter or press the offer's number    Esc: close", r.x + 24, r.y + r.height - 34, 16, C_DIM);
 }
 
-// Playing with others the world goes on while the menu is open, and there are no save slots: the
-// host's browser keeps the game.
+// Playing with others the world goes on while the menu is open, and there are no save slots: the server
+// keeps the world, and each player's things go with their account.
 static void DrawNetPausePanel(void)
 {
     Rectangle r = PanelRect(620, 530);
     float bx = r.x + 50, bw = 240, gap = r.width - 100 - 2 * bw, y = r.y + 128;
-    bool host = G.role == NET_HOST;
 
     CenterText("Paused", r.x + r.width / 2, r.y + 20, 30, C_GOLD);
     CenterText("The world goes on while this menu is open. H: controls.", r.x + r.width / 2, r.y + 64, 16, C_TEXT);
-    CenterText(TextFormat(L("Room \"%s\". The host's browser keeps the game and everyone's things."), NetRoom()), r.x + r.width / 2, r.y + 92, 15, C_DIM);
+    CenterText(TextFormat(L("Server \"%s\". Your things are kept with your account."), NetRoom()), r.x + r.width / 2, r.y + 92, 15, C_DIM);
     // A battle royale's crowd goes in two narrow columns, with each player's kills and whether they are out.
     if (PlayerCount() > 6) {
         int row = 0;
@@ -395,8 +394,7 @@ static void DrawNetPausePanel(void)
         DrawRectangle((int)bx, (int)y + 2, 16, 16, PlayerColor(s));
         DrawRectangleLines((int)bx, (int)y + 2, 16, 16, Fade(BLACK, 0.6f));
         DrawTextEx(GameFont(), p->name, (Vector2){ bx + 26, y }, 18, 1, s == G.self ? C_GOLD : C_TEXT);
-        const char *tag = s == 0 ? (s == G.self ? "host, you" : "host") : s == G.self ? "you" : "";
-        if (tag[0]) Text(TextFormat("(%s)", L(tag)), bx + 160, y + 2, 15, C_DIM);
+        if (s == G.self) Text(TextFormat("(%s)", L("you")), bx + 160, y + 2, 15, C_DIM);
         Text(PlayerColorName(s), bx + 250, y + 2, 15, C_DIM);
         if (G.pvp) Text(KillDeath(s), bx + 320, y + 2, 15, C_TEXT);
         if (p->wanted > 0) Text(TextFormat(L("wanted %d:%02d"), (int)p->wanted / 60, (int)p->wanted % 60), bx + 440, y + 2, 15, C_BAD);
@@ -408,8 +406,8 @@ static void DrawNetPausePanel(void)
     CenterText(RulesText(), r.x + r.width / 2, r.y + 398, 15, C_GOLD);
     y = r.y + r.height - 96;
     if (Button((Rectangle){ bx, y, bw, 40 }, "Resume (Esc)", true, 0)) SetPanel(PANEL_NONE);
-    if (Button((Rectangle){ bx + bw + gap, y, bw, 40 }, host ? "Save (F5)" : "Hand in my things (F5)", true, 0)) SaveNow();
-    if (Button((Rectangle){ bx, y + 54, r.width - 100, 40 }, host ? "Save and end the game for everyone (Q)" : "Leave the game (Q)", true, 0)) G.quit = true;
+    if (Button((Rectangle){ bx + bw + gap, y, bw, 40 }, "Hand in my things (F5)", true, 0)) SaveNow();
+    if (Button((Rectangle){ bx, y + 54, r.width - 100, 40 }, "Leave the game (Q)", true, 0)) G.quit = true;
 }
 
 static void DrawPausePanel(void)
@@ -640,10 +638,12 @@ static void DrawHelpPanel(void)
         "Herbs grow in green meadows, most of all across the river: chew one from your baskets to heal fast. Snakes hide "
         "in long grass; a hiss means back off (crouch to creep by). Hurt a boar and its whole sounder charges. Arrows "
         "landing close send prey running and bring wolves down on you.",
-        "Playing together (in the browser): up to six players, each with a house in their own color. The world never pauses, "
-        "and the night passes when everyone lies in bed. The farm, the coop and the eggs are shared. The host decides whether "
-        "players can hurt each other (PvP: everyone starts somewhere in the city and the ziggurat is unguarded) and can turn "
-        "on combat mode.",
+        "Playing together: pick one of the game's servers on the title screen, up to six players each, every one with a house "
+        "in their own color. The world never pauses, and the night passes when everyone lies in bed. The farm, the coop and the "
+        "eggs are shared. On a PvP server players can hurt each other (everyone starts somewhere in the city, the ziggurat is unguarded).",
+        "Experience: 1 for a beast or a townsman brought down, 3 for a guard, raider, barbarian or bandit, 10 for another player, "
+        "and 10 for every player in a battle royale round you win. Level 1 takes 100 to reach level 2, level 2 another 200, "
+        "up to level 100. Your level, K/D and things are kept with your account.",
     };
     const int nk = (int)(sizeof(keys) / sizeof(keys[0])), nt = (int)(sizeof(tips) / sizeof(tips[0]));
     Rectangle r = PanelRect(fminf(1200.0f, UiWidth() - 20.0f), fminf(690.0f, UiHeight() - 16.0f));
@@ -756,7 +756,7 @@ static void DrawStatus(void)
     bool wolves = AnyWolfHunting(), beast = AnyBeastAttacking();
     bool alert = me->alone || wolves || beast || me->wanted > 0;
 
-    DrawRectangle(12, 12, 360, alert ? 208 : 186, Fade(BLACK, 0.4f));
+    DrawRectangle(12, 12, 360, alert ? 230 : 208, Fade(BLACK, 0.4f));
     Text(TextFormat(L("Day %d  %02d:%02d  %s"), G.day, hh, mm, L(PhaseName())), 24, 20, 22, RAYWHITE);
     Text(TextFormat(L("%s, day %d of %d"), SeasonName(Season()), SeasonDay(), SEASON_DAYS), 24, 46, 18, C_GOLD);
     const char *status = G.herbT > 0 ? TextFormat(L("Herbs %ds"), (int)ceilf(G.herbT))
@@ -772,16 +772,25 @@ static void DrawStatus(void)
     DrawRectangle(bx, 101, 200, 14, Fade(BLACK, 0.5f));
     DrawRectangle(bx, 101, (int)(200 * Clamp(G.health, 0, HEALTH_MAX) / HEALTH_MAX), 14, G.health < 35 ? C_BAD : C_GOOD);
     DrawRectangleLines(bx, 101, 200, 14, Fade(BLACK, 0.6f));
-    if (G.combat) Text("Arrows: unlimited (combat mode)", 24, 124, 18, C_TEXT);
+    if (G.combat) Text("Arrows: unlimited (battle royale)", 24, 124, 18, C_TEXT);
     else Text(TextFormat(L("Arrows %d/%d   +%d carried"), G.quiver, G.quiverMax, BagCount(IT_ARROWS)), 24, 124, 18, C_TEXT);
     Text(TextFormat(L("In hand: %s%s"), EquipName(G.equip), G.player.crouching ? L("  |  crouching") : ""), 24, 146, 18,
          G.player.crouching ? C_GOOD : C_TEXT);
     Text(TextFormat(L("Armor: %s"), ArmorName(UseArmor())), 24, 168, 18, C_TEXT);
-    if (me->wanted > 0) Text(TextFormat(L("Wanted by the guards  %d:%02d"), (int)me->wanted / 60, (int)me->wanted % 60), 24, 190, 18, C_BAD);
-    else if (wolves) Text("Wolves are hunting you!", 24, 190, 18, C_BAD);
-    else if (beast) Text("A wild beast is attacking you!", 24, 190, 18, C_BAD);
-    else if (me->alone) Text("Alone outside the walls", 24, 190, 18, C_GOLD);
-    if (Online() && G.pvp) Text(TextFormat(L("PvP: %s"), KillDeath(G.self)), 24, 212, 18, C_TEXT);
+    // The level, and how far into it: experience is only shown, never spent.
+    long xp = AccountXp();
+    int level = LevelOf(xp);
+    Text(LevelText(xp), 24, 190, 18, C_GOLD);
+    if (level < MAX_LEVEL) {
+        float into = (float)(xp - LevelStart(level)) / (float)(LevelStart(level + 1) - LevelStart(level));
+        DrawRectangle(250, 196, 110, 8, Fade(BLACK, 0.5f));
+        DrawRectangle(250, 196, (int)(110 * Clamp(into, 0.0f, 1.0f)), 8, C_GOLD);
+    }
+    if (me->wanted > 0) Text(TextFormat(L("Wanted by the guards  %d:%02d"), (int)me->wanted / 60, (int)me->wanted % 60), 24, 212, 18, C_BAD);
+    else if (wolves) Text("Wolves are hunting you!", 24, 212, 18, C_BAD);
+    else if (beast) Text("A wild beast is attacking you!", 24, 212, 18, C_BAD);
+    else if (me->alone) Text("Alone outside the walls", 24, 212, 18, C_GOLD);
+    if (Online() && G.pvp) Text(TextFormat(L("PvP: %s"), KillDeath(G.self)), 24, 234, 18, C_TEXT);
 }
 
 static void DrawMinimap(int ox, int oy, int size)
@@ -1136,8 +1145,12 @@ void DrawUI(void)
                    (float)sw / 2, (float)sh - 140, 22, RAYWHITE);
         CenterText("E, Space or a step gets you up.", (float)sw / 2, (float)sh - 106, 18, C_DIM);
     }
-    if (NetSilence() > 3.0f)
-        CenterText("The host's game is not answering. Is its browser tab hidden or closed?", (float)sw / 2, 210, 18, C_BAD);
+    if (NetSilence() > 3.0f) CenterText("The server is not answering. Check your connection.", (float)sw / 2, 210, 18, C_BAD);
+    // Experience just gained, rising and fading over the crosshair.
+    if (G.xpGainT > 0) {
+        float k = G.xpGainT / 2.0f;
+        CenterText(TextFormat("+%d XP", G.xpGain), (float)sw / 2, (float)sh / 2 - 60 - 30 * (1.0f - k), 22, Fade(C_GOLD, fminf(1.0f, k * 2.0f)));
+    }
     if (OnWeb() && G.panel == PANEL_NONE && !PointerCaptured() && !TouchOn())
         CenterText("Click the game to look around with the mouse", (float)sw / 2, (float)sh / 2 + 70, 20, C_GOLD);
 

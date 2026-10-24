@@ -50,7 +50,8 @@
 #define MAX_WORKERS     16
 #define MAX_CARAVANS    2
 #define CARAVAN_GUARDS  2
-#define MAX_PLAYERS     20          // a battle royale's limit; other games take six (PlayerLimit)
+#define MAX_PLAYERS     21          // slot 0 is the server's own; a battle royale takes twenty players, other games six
+#define MAX_SEATS       20          // houses and colors go by seat (Seat): slot 1 of a server's game is seat 0
 #define MAX_HOUSES      6
 #define STATUES         15
 #define HOUSE_STN       6
@@ -345,8 +346,16 @@ typedef struct { unsigned char *d; int n, cap; bool bad; } Writer;
 typedef struct { const unsigned char *d; int n, at; bool bad; } Reader;
 
 enum { LINK_OFF, LINK_CONNECTING, LINK_OPEN, LINK_CLOSED };
-// What the relay server says; S_DATA carries a message from another player.
-enum { S_HELLO = 1, S_JOIN, S_LEAVE, S_FULL, S_NOHOST, S_TAKEN, S_HOSTLEFT, S_DATA = 16 };
+// What server.py says; S_DATA carries a message from the game's server (or, to it, from a player).
+// S_TAKEN: the account is already playing on another server; S_BUSY: no more servers can run now;
+// S_LOGIN: not logged in.
+enum { S_HELLO = 1, S_JOIN, S_LEAVE, S_FULL, S_NOHOST, S_TAKEN, S_HOSTLEFT, S_BUSY, S_LOGIN, S_DATA = 16, S_TEST = 32 };
+// What the game's server tells server.py (sent to NET_TO_SERVER): a player's things for the account,
+// experience and kills gained, and how the room is doing for the list of servers.
+#define NET_TO_SERVER 254
+enum { H_STORE = 1, H_PROGRESS, H_STATUS, H_TEST };   // H_TEST: test builds only (tools/web/hosthooks.c)
+// The kinds of rooms server.py runs (its --rooms).
+enum { ROOM_SURVIVAL, ROOM_PVP, ROOM_ROYALE };
 typedef struct { int kind, from; const unsigned char *data; int len; } NetMessage;
 
 // What a guest asks the host before it changes the shared world (shots and blows need no answer).
@@ -465,9 +474,12 @@ typedef struct {
     PlayerRecord records[MAX_RECORDS];
     int recordCount;
     bool waitBed;
-    // The host's rules for a shared game: players can hurt each other ('pvp'), and in combat mode
+    // The rules of a shared game: players can hurt each other ('pvp'); in a battle royale ('combat')
     // everyone fights with the best of everything and the guards leave player fights alone.
     bool pvp, combat;
+    // Experience just gained, shown for a moment as "+3 XP" (progress.c).
+    int xpGain;
+    float xpGainT;
 } Game;
 
 extern Game G;
@@ -475,7 +487,7 @@ extern const ItemDef ITEMS[IT_COUNT];
 extern const char *const BOW_NAMES[3];
 const char *ArmorName(int armor);
 float ArmorReduction(int armor);
-// The gear a player fights with: their own, or the best of everything in combat mode (items.c).
+// The gear a player fights with: their own, or the best of everything in a battle royale (items.c).
 int UseBow(void);
 int UseWeapon(void);
 int UseArmor(void);
@@ -742,7 +754,6 @@ int PeopleInArc(Vector3 chest, Vector3 fwd, float range, float minDot, int *out,
 bool FighterIsFoe(int i);
 int FighterCount(void);
 bool FighterInfo(int i, Vector3 *pos, float *hp, float *maxHp, const char **name, bool *hostile, bool *dead);
-float LandingHeight(float x, float z);
 void SaveGamePrefs(void);
 void LoadGamePrefs(void);
 int FpsLimit(void);
@@ -898,12 +909,13 @@ void DrawTouch(void);
 Vector2 PointerPosition(void);
 float PixelRatio(void);
 
-// The connection to the relay server (net.c).
-bool NetOpen(bool host, const char *room);
+// The connection to server.py (net.c): a WebSocket in the browser; in the server program, its pipes.
+bool NetOpen(const char *room);
 void NetShut(void);
 int NetLink(void);
 bool NetSend(int to, const void *data, int len);
 bool NetPoll(NetMessage *m);
+void NetWait(double seconds);   // the server program only
 
 // Every player as the world sees them (players.c).
 void SyncSelf(void);
@@ -955,15 +967,19 @@ void NetStrike(Vector3 chest, Vector3 fwd, int equip, int weapon, int phase);
 void NetSendRecord(void);
 void NetSaveSoon(void);
 float NetSilence(void);
-bool NetBegin(bool host, const char *name, const char *room);
+bool NetBegin(const char *name, const char *room);
 int NetLobby(void);
 const char *NetFailure(void);
 const char *NetRoom(void);
 void NetLeave(void);
 void NetFrame(float dt);
-void NetRules(bool pvp, bool combat);
 const char *RulesText(void);
 const char *KillDeath(int s);
+bool Dedicated(void);
+void ServeRoom(int mode, const char *room);
+void HostProgress(int slot, int xp, int kills, int deaths);
+void ServerTick(float dt);
+void HostTest(const char *in, char *out, int size);   // test builds of the server program only
 
 // Save files and the records the host keeps for each player (save.c).
 void W8(Writer *w, unsigned v);
@@ -1085,6 +1101,7 @@ int RoyalePhase(void);
 bool RoyaleOut(void);
 int RoyaleWinner(void);
 void RoyaleSkipTo(float t);
+void RoyaleCountdownTo(float t);
 int RoyaleAlive(void);
 float StormRadius(float t);
 bool InStorm(Vector3 p);
@@ -1113,5 +1130,56 @@ void DrawRoyaleHUD(float sw, float sh);
 void DrawRoyaleMap(float mx, float mz, float s);
 void NetRound(int slot, float x, float z);
 int HouseOf(int slot);
+int Seat(int slot);
+float RoyaleCountdown(void);
+int RoyaleStarted(void);
+
+// Levels and experience (progress.c): level L takes 100 x L experience to reach L + 1, up to level 100.
+#define MAX_LEVEL   100
+#define XP_KILL     1    // a beast or a townsman brought down
+#define XP_FIGHTER  3    // a guard, raider, barbarian or bandit
+#define XP_PLAYER   10   // another player
+#define XP_WIN      10   // winning a battle royale round: this much for each player it began with
+long LevelStart(int level);
+int LevelOf(long xp);
+const char *LevelText(long xp);
+int KillXp(int role);
+void AwardXp(int slot, int xp, int kills, int deaths);
+void ShowGain(long before, long after);
+
+// The player's account on the game's server (account.c, web.c): logging in happens on the title screen.
+bool LoggedIn(void);
+const char *AccountName(void);
+long AccountXp(void);
+int AccountKills(void);
+int AccountDeaths(void);
+void AccountGain(int xp, int kills, int deaths, bool report);
+void AccountFlush(void);
+void AccountSaved(int slot, const unsigned char *data, int len);
+void AccountFrame(void);
+void AccountStart(void);
+int AccountState(void);
+void AccountSubmit(bool create);
+void AccountLogout(void);
+// The page's side (web.c): requests to server.py's /api, and the account fields laid over the title screen.
+int ApiStart(const char *method, const char *path, const void *body, int len);
+int ApiDone(int id, unsigned char *buf, int size, int *len);
+void AccountForm(bool show, bool create, Rectangle name, Rectangle pass, Rectangle pass2);
+bool AccountEnter(void);
+void AccountFieldName(char *out, int size);
+int AccountFieldCheck(bool create);
+int AccountSend(bool create, const char *challengeHex, unsigned nonce);
+void AccountFieldsClear(void);
+const char *AccountNote(void);
+bool AccountSavesReady(void);
+void AccountRooms(void);
+int RoomCount(void);
+bool RoomInfo(int i, char *id, int idSize, char *title, int titleSize, int *mode, int *players, int *max, int *state);
+enum { ACC_UNKNOWN, ACC_OUT, ACC_BUSY, ACC_IN };
+
+// SHA-256, for the small sum of work a new account costs (sha256.c).
+void Sha256(const void *data, int len, unsigned char out[32]);
+int LeadingZeroBits(const unsigned char hash[32]);
+bool WorkDone(const unsigned char challenge[16], const char *name, unsigned nonce, int bits);
 
 #endif
