@@ -247,6 +247,39 @@ def main():
         check(st == 401 and not ann.cookie, "logged out")
         st, body = ann.login("ANN", "secret1")
         check(st == 200 and body.startswith(b"Ann\t25\t"), "and back in, whatever the case of the name (%r)" % body)
+
+        # The password changed, after the current one; other browsers logged in with the old one are logged out.
+        other = Api(port)
+        other.login("Ann", "secret1")
+        pw = lambda old, new: ann.call("POST", "/api/password", json.dumps({"password": old, "newPassword": new}).encode())
+        st, body = pw("not-it", "secret2")
+        check(st == 401 and body == b"Wrong password.", "a password change needs the current password (%d %r)" % (st, body))
+        st, body = pw("secret1", "short")
+        check(st == 400, "and a new password of 6 characters or more (%d)" % st)
+        st, body = pw("secret1", "secret2")
+        st2, me = ann.call("GET", "/api/me")
+        st3, _ = other.call("GET", "/api/me")
+        check(st == 200 and st2 == 200 and st3 == 401, "the password is changed; this browser stays logged in, the other is logged out (%d %d %d)" % (st, st2, st3))
+        st, _ = Api(port).login("Ann", "secret1")
+        st2, _ = Api(port).login("Ann", "secret2")
+        check(st == 401 and st2 == 200, "the old password no longer works, the new one does")
+
+        # Deleting: not while playing; then the account and everything kept with it are gone, and the name is free.
+        ann.call("POST", "/api/save?slot=0", b"SAVE" * 10)
+        a = Socket(port, "s1", ann.cookie)
+        a.recv()
+        st, body = ann.call("POST", "/api/delete", json.dumps({"password": "secret2"}).encode())
+        check(st == 409, "an account cannot be deleted while it plays (%d %r)" % (st, body))
+        a.close()
+        time.sleep(1)
+        st, body = ann.call("POST", "/api/delete", json.dumps({"password": "secret1"}).encode())
+        check(st == 401, "deleting needs the current password (%d)" % st)
+        st, body = ann.call("POST", "/api/delete", json.dumps({"password": "secret2"}).encode())
+        left = [db.execute("SELECT COUNT(*) FROM %s WHERE name = 'Ann'" % t).fetchone()[0] for t in ("accounts", "sessions", "saves")]
+        check(st == 200 and not ann.cookie and left == [0, 0, 0], "the account is deleted with its sessions and saves (%d, left %s)" % (st, left))
+        st, _ = Api(port).login("Ann", "secret2")
+        st2, body = Api(port).create("Ann", "secret3")
+        check(st == 401 and st2 == 200 and body.startswith(b"Ann\t0\t0\t0"), "it can no longer log in, and a new account may take the name, from level 1")
     finally:
         proc.terminate()
         try:

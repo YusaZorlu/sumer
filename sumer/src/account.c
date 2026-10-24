@@ -1,7 +1,7 @@
 // The player's account on the game's server (server.py): logging in and creating one on the title screen,
 // the level and K/D it keeps, the copy of the singleplayer saves it keeps, and the list of its servers.
-// The server keeps only the account's name, a hash of its password and the game: no e-mail, nothing
-// personal. A new account costs a moment of work (sha256.c), which keeps anyone from making thousands.
+// The server keeps only the account's name, a hash of its password and the game: no e-mail, no real name
+// (web/privacy.html says what is kept). The password can be changed and the account deleted. A new account costs a moment of work (sha256.c), which keeps anyone from making thousands.
 // The answers come as lines of tab-separated words. Natively (the server program, the tests) nothing is
 // sent: the numbers are only kept here.
 #include "game.h"
@@ -21,6 +21,7 @@ static char name[NAME_LEN], note[200];
 static long xp;
 static int kills, deaths;
 static int meReq = -1, sendReq = -1, challengeReq = -1, progressReq = -1, savesReq = -1, roomsReq = -1, uploadReq = -1, logoutReq = -1;
+static int changeReq = -1, deleteReq = -1;
 // The work a new account costs: the server's challenge, how many zero bits, the next number to try.
 static unsigned char challenge[16];
 static char challengeHex[33];
@@ -77,6 +78,11 @@ const char *AccountNote(void)
 bool AccountSavesReady(void)
 {
     return savesReady;
+}
+
+void AccountNoteClear(void)
+{
+    note[0] = '\0';
 }
 
 static void Note(const char *s)
@@ -219,10 +225,9 @@ static void SendProgress(void)
     flushT = 0;
 }
 
-void AccountLogout(void)
+// Logged out here (the server ended the session, or the account is gone).
+static void Forget(void)
 {
-    if (state == ACC_IN && progressReq < 0 && (pendXp || pendKills || pendDeaths)) SendProgress();
-    logoutReq = ApiStart("POST", "/api/logout", NULL, 0);
     state = ACC_OUT;
     name[0] = '\0';
     xp = kills = deaths = 0;
@@ -231,6 +236,47 @@ void AccountLogout(void)
     roomCount = 0;
     workBits = -1;
     note[0] = '\0';
+}
+
+void AccountLogout(void)
+{
+    if (state == ACC_IN && progressReq < 0 && (pendXp || pendKills || pendDeaths)) SendProgress();
+    logoutReq = ApiStart("POST", "/api/logout", NULL, 0);
+    Forget();
+}
+
+// A password request is under way.
+bool AccountWaiting(void)
+{
+    return changeReq >= 0 || deleteReq >= 0;
+}
+
+// The password page: a new password, typed twice, after the current one.
+void AccountChangePassword(void)
+{
+    if (state != ACC_IN || AccountWaiting()) return;
+    int problem = AccountPasswordCheck(true);
+    if (problem) {
+        Note(problem == 1 ? "Type your current password first." : problem == 3 ? "A password needs at least 6 characters."
+                                                                               : "The two new passwords are not the same.");
+        return;
+    }
+    Note("Changing your password...");
+    changeReq = AccountSendPassword("/api/password");
+    if (changeReq < 0) Note("Could not reach the game server.");
+}
+
+// The account and everything the server keeps with it, for good (asked twice on the title screen).
+void AccountDelete(void)
+{
+    if (state != ACC_IN || AccountWaiting()) return;
+    if (AccountPasswordCheck(false)) {
+        Note("Type your current password first.");
+        return;
+    }
+    Note("Deleting your account...");
+    deleteReq = AccountSendPassword("/api/delete");
+    if (deleteReq < 0) Note("Could not reach the game server.");
 }
 
 // Experience, kills and deaths gained: shown at once. Alone ('report'), they are sent on to the server
@@ -394,6 +440,23 @@ void AccountFrame(void)
         }
         sentXp = sentKills = sentDeaths = 0;
         if (status == 401) AccountLogout();
+    }
+    if ((status = Answer(&changeReq, &len)) != 0) {
+        if (status == 200) {
+            AccountFieldsClear();
+            Note("Your password is changed.");
+        } else {
+            Refused(status);
+        }
+    }
+    if ((status = Answer(&deleteReq, &len)) != 0) {
+        if (status == 200) {
+            AccountFieldsClear();
+            Forget();
+            Note("Your account is deleted, with everything the server kept for it.");
+        } else {
+            Refused(status);
+        }
     }
     (void)Answer(&logoutReq, &len);
     if (!LoggedIn()) return;

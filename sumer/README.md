@@ -25,6 +25,10 @@ The title screen asks you to **log in**, or to make an account on the **Create a
 15 letters, digits and `_ - .`) and a password (6 characters or more), typed twice. The page's own fields
 take them, so a password manager or a phone's keyboard works as anywhere else; Enter sends them. The
 account stays logged in in that browser for 60 days, or until **Log out** (bottom right of the title).
+**Your account** (top right of the title) changes the password (the current one first; other browsers
+logged in to the account are logged out) or deletes the account, with everything the server keeps for it
+(asked twice). **Privacy** (top right) opens `web/privacy.html`: who runs the game, what is kept and who
+else handles it (netcup hosts the server, Cloudflare proxies it).
 
 The server keeps only the account's name, a hash of its password (scrypt; never the password itself) and
 the game: your level and K/D, your three singleplayer save slots, and your things in the survival servers
