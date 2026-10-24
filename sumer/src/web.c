@@ -382,7 +382,11 @@ void AccountForm(int form, Rectangle a, Rectangle b, Rectangle c)
 #if defined(__EMSCRIPTEN__)
     static float last[12];
     float k = UiScale() / PixelRatio();
-    float now[12] = { (float)form, k, a.x, a.y, a.width, a.height, b.x, b.y, c.x, c.y, 0, 0 };
+    float now[12] = { (float)form, k, a.x, a.y, a.width, a.height, b.x, b.y, c.x, c.y, (float)Language(), 0 };
+    // What each field is for, shown in it while empty (and over it while typing on a phone: see shell.html).
+    bool pw = form == FORM_PASSWORD;
+    const char *tips[4] = { L("Account name"), L(pw ? "Current password" : "Password"), L(pw ? "New password" : "Password again"),
+                            L("New password again") };
     if (memcmp(now, last, sizeof(now)) == 0) return;
     memcpy(last, now, sizeof(now));
     EM_ASM({
@@ -405,8 +409,12 @@ void AccountForm(int form, Rectangle a, Rectangle b, Rectangle c)
         place('acctPass3', $8, $9, $4, $5, pw);
         var p = document.getElementById('acctPass');
         if (p) p.setAttribute('autocomplete', form == 2 ? 'new-password' : 'current-password');
+        (['acctName', 'acctPass', 'acctPass2', 'acctPass3']).forEach(function (id, n) {
+            var e = document.getElementById(id);
+            if (e) e.placeholder = UTF8ToString(HEAP32[($10 >> 2) + n]);
+        });
         if (!form && document.activeElement && document.activeElement.classList.contains('acct')) document.activeElement.blur();
-    }, form, k, a.x, a.y, a.width, a.height, b.x, b.y, c.x, c.y);
+    }, form, k, a.x, a.y, a.width, a.height, b.x, b.y, c.x, c.y, tips);
 #else
     (void)form; (void)a; (void)b; (void)c;
 #endif

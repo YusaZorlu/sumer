@@ -493,6 +493,7 @@ int UseWeapon(void);
 int UseArmor(void);
 bool UseMace(void);
 bool UseArrowheads(void);
+bool UnlimitedArrows(void);
 
 float RandF(float lo, float hi);
 float Hash2(int a, int b);

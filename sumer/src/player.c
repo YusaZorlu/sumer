@@ -136,7 +136,7 @@ static void HandleBow(Player *p, float dt, bool input)
     if (input && G.equip == EQ_BOW && TouchDown(TB_ATTACK)) held = true;
 
     if (held) {
-        if (!p->aiming && G.quiver == 0 && !G.combat) {
+        if (!p->aiming && G.quiver == 0 && !UnlimitedArrows()) {
             Say("Quiver empty. Press R to refill from your baskets, or restock at home.");
             G.ignoreClick = true;
             return;
@@ -146,13 +146,13 @@ static void HandleBow(Player *p, float dt, bool input)
         return;
     }
 
-    if (p->aiming && input && p->draw > 0.15f && (G.quiver > 0 || G.combat)) {
+    if (p->aiming && input && p->draw > 0.15f && (G.quiver > 0 || UnlimitedArrows())) {
         Vector3 right = { cosf(p->yaw), 0, -sinf(p->yaw) };
         Vector3 fwd = { -sinf(p->yaw), 0, -cosf(p->yaw) };
         float chest = p->crouching ? 1.12f : 1.5f;
         Vector3 from = { p->pos.x, p->pos.y + chest, p->pos.z };
         from = Vector3Add(from, Vector3Add(Vector3Scale(right, -0.2f), Vector3Scale(fwd, 0.7f)));
-        if (!G.combat) G.quiver--;
+        if (!UnlimitedArrows()) G.quiver--;
         int shot = ShootArrow(from, AimPoint(), p->draw);
         if (G.arrowCam && shot >= 0) {
             G.followArrow = shot;

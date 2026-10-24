@@ -61,9 +61,8 @@ a way to play still to come. Sumer Survival offers:
   listed with what it is and who is on it (or "nobody here; joining opens it": an empty server sleeps
   until someone joins). Up to six players each.
   - **Survival 1, Survival 2**: PvP off: players cannot hurt each other.
-  - **PvP 1, PvP 2**: players can hurt each other with blows and arrows. A player who starts a fight inside
-    the city's canals is wanted by the guards; hitting back, or hitting someone already wanted, is no
-    crime. Everyone starts somewhere in the city (on open ground, away from the other players), and so does
+  - **PvP 1, PvP 2**: players can hurt each other with blows and arrows. Arrows never run out there, and the
+    guards stay out of fights between players (attacking townsfolk or guards still angers them). Everyone starts somewhere in the city (on open ground, away from the other players), and so does
     anyone brought down, instead of waking at home. The guards on the ziggurat's stairs and terrace are gone,
     so anyone can climb to the priest on top for the day's +20% speed boost: the welcome says so.
 
@@ -120,7 +119,7 @@ a way to play still to come. Sumer Survival offers:
   as dots in their colors.
 - With PvP on, every player's score shows over their head, in the Esc menu's list of players and (your
   own) under your health: "K/D 3/1 (3.0)", players brought down and times brought down by a player.
-  Anyone wanted by the guards shows how long the search still lasts. When a player brings another
+  Anyone wanted by the guards (for attacking townsfolk) shows how long the search still lasts. When a player brings another
   down, everyone else hears of it.
 - Blows between players are seen and felt. A swing at another player takes 0.3 seconds to land
   (a person's takes 0.55), and for that moment a yellow mark shows over the swinger; raise your
@@ -356,7 +355,8 @@ fields outside. Gates: south (main road), east, west, north, plus the harbor wat
   quiver and the composite bow
 - Herders' village, on the downs south-west of the city: mud houses, a walled yard with a clay bread oven
   and dung cakes drying on its wall, beehive granaries, baskets and jars by the doors, someone baking and
-  someone shearing, and a sheepfold with its flock.
+  someone shearing, and a sheepfold with its flock. Cows and sheep (the city farm's and the flock) come to
+  no harm, but you cannot walk through them.
   The shepherd is the only one who sells sheepskin and sheep, and takes plant waste as fodder
 - Fishers' village, across the river from the city: reed houses, a reed windbreak, fish drying on racks,
   nets hung on poles, a stack of cut reeds, boats drawn up on the bank, people mending nets, and good fishing in the river just below. The fisher sells the only fine

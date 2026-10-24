@@ -90,7 +90,8 @@ let fails = 0; const check = (ok, w) => { console.log((ok ? 'PASS: ' : 'FAIL: ')
   check(!!c && c.royale.on === 0 && c.guards.length > 0 && c.pvp === 0, `Sumer Survival > Survival 1 is the usual game, PvP off (royale ${c && c.royale.on}, pvp ${c && c.pvp})`);
   await click(bob, ...ROYALE);
   await click(bob, ...ROYALE_1);
-  let b = await waitFor(bob, 'Bob joined', i => i.lobby === 0 && i.role === 2, 90000).catch(e => null);
+  // The list of players comes a moment after joining.
+  let b = await waitFor(bob, 'Bob joined', i => i.lobby === 0 && i.role === 2 && i.players >= 2, 90000).catch(e => null);
   check(!!b && b.royale.on === 1 && b.peers.some(p => p.name === name) && !b.peers.some(p => p.name === 'Cem' + RUN),
         `Sumer Royale > Royale puts Bob in Ann's battle royale, not Cem's game (${b && b.peers.map(p => p.name)})`);
 

@@ -911,8 +911,8 @@ static void StartBlow(int a, int s, float dmg)
     SetMark(a, MARK_WARN, PVP_WINDUP + 0.1f);
 }
 
-// The blow's damage reaches player s, from player a. Whoever starts a fight in the city's lands is wanted
-// by the guards, unless it is a battle royale; hitting back, or hitting someone wanted, is no crime.
+// The blow's damage reaches player s, from player a. Guards stay out of fights between players: on a PvP
+// server and in a battle royale fighting is the point. (Elsewhere players cannot hurt each other at all.)
 static void Hurt(int a, int s, float dmg, bool opened, bool melee)
 {
     Vector3 sp = G.peers[s].pos;
@@ -932,10 +932,6 @@ static void Hurt(int a, int s, float dmg, bool opened, bool melee)
         else NetBlowLanded(a, at, heavy);
     }
     SpawnBurst((Vector3){ sp.x, sp.y + 1.2f, sp.z }, (Color){ 170, 30, 30, 255 }, 10, 2.2f);
-    if (!G.combat && !provoked && InCityLands(G.peers[a].pos.x, G.peers[a].pos.z)) {
-        if (G.peers[a].wanted <= 0) Say("You attacked %s in the city. Guards will hunt you!", G.peers[s].name);
-        G.peers[a].wanted = WANTED_TIME;
-    }
 }
 
 // A blow's moment has come: it lands, or is turned aside, or finds no one.

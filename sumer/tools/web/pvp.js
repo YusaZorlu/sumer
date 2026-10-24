@@ -70,7 +70,7 @@ async function game(kind) {
   check(r.after.health < r.before.health && /attacks you/.test(r.after.msg), `Bob's blow hurts Ann (${r.before.health} -> ${r.after.health}): "${r.after.msg}"`);
   check(r.seen.bobFelt > 0, `Bob feels his blow land on Ann over the network: his view kicks (${r.seen.bobFelt.toFixed(2)})`);
   const bobAtAnn = r.after.peers.find(p => p.name === BOB);
-  check(bobAtAnn && bobAtAnn.wanted > 0, `Bob started a fight in the city: the guards want him (${bobAtAnn ? bobAtAnn.wanted : '?'} s)`);
+  check(bobAtAnn && bobAtAnn.wanted === 0, `Bob started a fight in the city, and the guards stay out of it (wanted ${bobAtAnn ? bobAtAnn.wanted : '?'})`);
   // Ann hits back: no crime.
   await cmd(g.ann, 4, Math.PI, 0.3);
   await cmd(g.ann, 14, 2);
