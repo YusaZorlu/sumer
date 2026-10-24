@@ -728,20 +728,6 @@ static void Kill(Animal *a)
     a->awareness = 0;
 }
 
-// Dev console: every beast on its feet within r of p falls dead; how many.
-int KillAnimalsNear(Vector3 p, float r)
-{
-    int n = 0;
-    for (int i = 0; i < G.animalCount; i++) {
-        Animal *a = &G.animals[i];
-        if (!a->active || a->state == ST_DEAD || XZDist(a->pos, p) > r) continue;
-        a->hp = 0;
-        Kill(a);
-        n++;
-    }
-    return n;
-}
-
 // An arrow that hisses past or lands close by: wolves come for the archer, everything else runs.
 static void React(Animal *a)
 {
@@ -897,6 +883,7 @@ static void HitAnimal(Animal *a, int damage)
     SpawnBurst(Center(a), (Color){ 170, 30, 30, 255 }, 12, 2.4f);
     if (a->hp <= 0) {
         Kill(a);
+        AwardXp(s, XP_KILL, 0, 0);
         if (a->type == AN_SNAKE) Say("You killed the snake.");
         else Say("%s down! Walk up to it and press E to take the carcass.", AnimalName(a->type));
     } else if (a->type == AN_BOAR && (float)a->hp >= BOAR_SPENT * (float)DEFS[AN_BOAR].hp) {

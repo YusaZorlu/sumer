@@ -374,7 +374,7 @@ void HurtPlayer(float dmg, int by)
 
 void HurtPlayerFrom(float dmg, int by, const Vector3 *src)
 {
-    if (G.sleeping || G.god) return;
+    if (G.sleeping) return;
     // This happens to this machine's player, whoever struck: what it says is for them.
     int actor = G.actor;
     G.actor = G.self;
@@ -466,7 +466,7 @@ void SaveNow(void)
         else Say("Could not save the game in this browser.");
     } else if (G.role == NET_CLIENT) {
         NetSendRecord();
-        Say("The host keeps your things; they are sent along every few seconds.");
+        Say("Your things are kept with your account on the server; they are sent along every few seconds.");
     } else if (SaveGame()) {
         Say("Game saved to %s.", SaveFileName(SaveSlot()));
     } else {
@@ -511,13 +511,10 @@ static void HandleMenus(bool paused)
         SetPanel(G.panel == PANEL_NONE ? PANEL_PAUSE : PANEL_NONE);
     } else if (KeyPressed(KEY_H) && (G.panel == PANEL_NONE || G.panel == PANEL_PAUSE || G.panel == PANEL_HELP)) {
         SetPanel(G.panel == PANEL_HELP ? PANEL_NONE : PANEL_HELP);
-    } else if (G.devTools && (KeyPressed(KEY_GRAVE) || KeyPressed(KEY_F2))) {
-        if (G.panel == PANEL_NONE || G.panel == PANEL_BAG) SetPanel(PANEL_CONSOLE);
-        else if (G.panel == PANEL_CONSOLE) SetPanel(PANEL_NONE);
     } else if (KeyPressed(KEY_T) && Online() && G.panel == PANEL_NONE && !G.sleeping) {
         SetPanel(PANEL_CHAT);
         while (GetCharPressed() > 0) {}   // the T that opened it is not typed
-    } else if (KeyPressed(KEY_TAB) || TouchPressed(TB_BAG) || (KeyPressed(KEY_I) && G.panel != PANEL_CONSOLE && G.panel != PANEL_CHAT)) {
+    } else if (KeyPressed(KEY_TAB) || TouchPressed(TB_BAG) || (KeyPressed(KEY_I) && G.panel != PANEL_CHAT)) {
         if (G.panel == PANEL_NONE) SetPanel(PANEL_BAG);
         else if (G.panel != PANEL_PAUSE && G.panel != PANEL_HELP && G.panel != PANEL_SETTINGS) SetPanel(PANEL_NONE);
     }
@@ -655,6 +652,7 @@ void GameUpdate(void)
         }
     }
     if (G.msgT > 0) G.msgT -= dt;
+    if (G.xpGainT > 0) G.xpGainT -= dt;
     if (G.hurtT > 0) G.hurtT -= dt;
     if (G.flinchT > 0) G.flinchT -= dt;
     for (int k = 0; k < 4; k++) G.hitLight[k] = fmaxf(0.0f, G.hitLight[k] - dt * 1.1f);
@@ -667,6 +665,23 @@ void GameUpdate(void)
             SaveGame();
         }
     }
+}
+
+// The game's server program (host/main.c): the world goes on by 'dt' seconds, with no player of its own.
+void ServerTick(float dt)
+{
+    CollectBodies();
+    UpdateWorld(dt);
+    RoyaleUpdate(dt);
+    UpdateTime(dt / HOUR_SECONDS);
+    UpdateDawn();
+    UpdateWeather();
+    UpdateBeds(dt);
+    UpdateFields();
+    UpdateSky();
+    UpdateLights();
+    NetFrame(dt);
+    UpdatePeers(dt);
 }
 
 void GameDraw(void)

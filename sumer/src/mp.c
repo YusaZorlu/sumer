@@ -1,6 +1,9 @@
-// Multiplayer: what the host and its guests tell each other. The host runs the whole world and sends
-// a picture of it ten times a second. Each guest runs only its own player: it reports where it is,
-// and asks the host before it takes anything from the world (a carcass, a resource, the eggs...).
+// Multiplayer: what the host and its guests tell each other. The host is the game's server program
+// (host/main.c), which server.py runs for each room: it runs the whole world and sends a picture of it
+// ten times a second, and has no player of its own (slot 0 is its own). Each guest runs only its own
+// player: it reports where it is, and asks the host before it takes anything from the world (a carcass,
+// a resource, the eggs...). The players' things belong to their accounts: server.py hands them to the
+// host as a player comes in, and the host hands them back as the player sends them along.
 #include "game.h"
 #include <math.h>
 #include <stdarg.h>
@@ -8,7 +11,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define NET_VERSION   14
+#define NET_VERSION   15
+#define RECORD_FORMAT 1        // the first byte of a player's things as server.py keeps them
+#define STATUS_EVERY  2.0f
 #define SNAP_EVERY    0.1f
 #define STATE_EVERY   0.066f
 #define RECORD_EVERY  15.0f
@@ -21,15 +26,18 @@
 #define MAX_ARGS      REQ_ARGS
 
 enum { M_HELLO = 1, M_WELCOME, M_ROSTER, M_SNAP, M_STATE, M_REQ, M_REPLY, M_EVENT, M_RECORD, M_KICK, M_CHAT };
-enum { EV_HURT = 1, EV_SAY, EV_HIT, EV_IMPACT, EV_SKIP, EV_PARRIED, EV_STUNNED, EV_LANDED, EV_ROUND, EV_CHAT };
+enum { EV_HURT = 1, EV_SAY, EV_HIT, EV_IMPACT, EV_SKIP, EV_PARRIED, EV_STUNNED, EV_LANDED, EV_ROUND, EV_CHAT, EV_PROGRESS };
 
 typedef struct { int id, kind, args[MAX_ARGS], nargs; float age; } Pending;
 typedef struct { Vector3 pos; Color color; int count; float speed; bool ring; } Effect;
 
 static enum { PHASE_OFF, PHASE_CONNECTING, PHASE_WAITING, PHASE_PLAYING } phase;
-static bool hosting;
+static bool dedicated;
 static char myName[NAME_LEN], myRoom[32], failure[200];
-static float snapT, stateT, recordT, saveT, lostT;
+static float snapT, stateT, recordT, saveT, lostT, statusT;
+static double hostClock;
+// Who server.py says is coming in on each connection: their account's name and their things.
+static struct { bool known, hasRecord; char name[NAME_LEN]; PlayerRecord rec; } arrivals[256];
 static int snapCount, nextId = 1, worldSign;
 static Pending pending[MAX_PENDING];
 static Effect effects[MAX_EFFECTS];
@@ -109,6 +117,18 @@ static void SendAll(Writer *w)
 static void SendHost(Writer *w)
 {
     if (!w->bad) NetSend(0, w->d, w->n);
+}
+
+// To server.py itself (H_*).
+static void SendServer(Writer *w)
+{
+    if (!w->bad && dedicated) NetSend(NET_TO_SERVER, w->d, w->n);
+}
+
+// The game's server program (host/main.c): no player of its own.
+bool Dedicated(void)
+{
+    return dedicated;
 }
 
 // A fingerprint of the world built from the seed: a page with another version of the game builds a
@@ -286,7 +306,8 @@ static void WriteSnapshot(Writer *w, bool slow)
         const Arrow *a = &G.arrows[i];
         if (!a->active) continue;
         W8(w, (unsigned)i);
-        W8(w, (unsigned)(a->owner & 15) | (a->flying ? 16u : 0u) | (a->spent ? 32u : 0u));
+        W8(w, a->owner >= 0 && a->owner < MAX_PLAYERS ? (unsigned)a->owner : 255u);
+        W8(w, (a->flying ? 1u : 0u) | (a->spent ? 2u : 0u));
         WPos(w, a->pos);
         WQ(w, a->vel.x, 16.0f); WQ(w, a->vel.y, 16.0f); WQ(w, a->vel.z, 16.0f);
         W8(w, Byte(a->fade * 200.0f));
@@ -493,20 +514,21 @@ static void ReadSnapshot(Reader *r)
     int arrows = (int)R8(r);
     for (int k = 0; k < arrows && !r->bad; k++) {
         int i = (int)R8(r);
+        int owner = (int)R8(r);
         unsigned bits = R8(r);
         Vector3 pos = RPos(r), vel;
         vel.x = RQ(r, 16.0f);
         vel.y = RQ(r, 16.0f);
         vel.z = RQ(r, 16.0f);
         float fade = (float)R8(r) / 200.0f;
-        int owner = (int)(bits & 15u);
+        if (owner == 255) owner = -1;
         if (i >= MAX_ARROWS || owner == G.self) continue;
         Arrow *a = &netArrows[i];
         if (!a->active || Vector3Distance(a->pos, pos) > 4.0f) *a = (Arrow){ .pos = pos, .active = true };
         a->pos = pos;
         a->vel = vel;
-        a->flying = (bits & 16u) != 0;
-        a->spent = (bits & 32u) != 0;
+        a->flying = (bits & 1u) != 0;
+        a->spent = (bits & 2u) != 0;
         a->fade = fade;
         a->owner = owner;
         seen[i] = true;
@@ -777,8 +799,8 @@ static void HostChat(int slot, const char *raw)
 {
     static double last[MAX_PLAYERS];
     char text[CHAT_MAX + 1];
-    if (!ChatTidy(raw, text, (int)sizeof(text)) || GetTime() - last[slot] < 0.5) return;
-    last[slot] = GetTime();
+    if (!ChatTidy(raw, text, (int)sizeof(text)) || (last[slot] > 0 && hostClock - last[slot] < 0.5)) return;
+    last[slot] = hostClock;
     Writer w = Begin(M_EVENT);
     W8(&w, EV_CHAT);
     W8(&w, (unsigned)slot);
@@ -1046,39 +1068,41 @@ static void Snapshot(int slotOrAll, bool slow)
     else SendGuest(slotOrAll, &w);
 }
 
-// A guest's name, tidied: letters, digits, spaces and a few marks; never empty.
-static void TidyName(char *name, int fallback)
+// server.py says who comes in on connection 'net': the account's name, and its things for this kind of
+// game (none in a battle royale, or the first time).
+static void HostJoin(int net, Reader *r)
 {
-    char clean[NAME_LEN];
-    int n = 0;
-    for (const char *c = name; *c && n < NAME_LEN - 1; c++)
-        if ((*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z') || (*c >= '0' && *c <= '9') || strchr(" -_.'", *c)) clean[n++] = *c;
-    while (n > 0 && clean[n - 1] == ' ') n--;
-    clean[n] = '\0';
-    if (!n) snprintf(clean, sizeof(clean), "Player %u", (unsigned)fallback % 10u);
-    snprintf(name, NAME_LEN, "%s", clean);
+    char name[NAME_LEN];
+    RStr(r, name, NAME_LEN);
+    int len = (int)R16(r);
+    if (r->bad || !name[0] || net < 0 || net > 255) return;
+    arrivals[net].known = true;
+    snprintf(arrivals[net].name, NAME_LEN, "%s", name);
+    arrivals[net].hasRecord = len > 1 && R8(r) == RECORD_FORMAT && ReadRecord(r, &arrivals[net].rec);
 }
 
 static void HostHello(int net, Reader *r)
 {
     int version = (int)R8(r);
-    char name[NAME_LEN];
-    RStr(r, name, NAME_LEN);
     if (r->bad) return;
     if (version != NET_VERSION) {
-        Kick(net, "This page has a different version of the game than the host's. Reload it.");
+        Kick(net, "This page has a different version of the game than the server's. Reload it.");
         return;
     }
-    TidyName(name, net);
-    for (int s = 0; s < MAX_PLAYERS; s++)
+    if (net < 0 || net > 255 || !arrivals[net].known) {
+        Kick(net, "Log in again to play.");
+        return;
+    }
+    const char *name = arrivals[net].name;
+    for (int s = 1; s < MAX_PLAYERS; s++)
         if (G.peers[s].active && SameName(G.peers[s].name, name)) {
-            Kick(net, "Someone with that name is already playing. Pick another name.");
+            Kick(net, "You are already playing in this game.");
             return;
         }
-    const PlayerRecord *rec = FindRecord(name);
+    const PlayerRecord *rec = arrivals[net].hasRecord ? &arrivals[net].rec : NULL;
     int slot = -1;
-    if (rec && rec->slot > 0 && !G.peers[rec->slot].active) slot = rec->slot;
-    for (int s = 1; s < PlayerLimit() && slot < 0; s++)
+    if (rec && rec->slot >= 1 && rec->slot <= PlayerLimit() && !G.peers[rec->slot].active) slot = rec->slot;
+    for (int s = 1; s <= PlayerLimit() && slot < 0; s++)
         if (!G.peers[s].active) slot = s;
     if (slot < 0) {
         Kick(net, TextFormat(L("The game is full: %d players already."), PlayerLimit()));
@@ -1089,7 +1113,7 @@ static void HostHello(int net, Reader *r)
     Announce("%s joined the game.", name);
 
     Peer *p = &G.peers[slot];
-    *p = (Peer){ .active = true, .net = net, .health = HEALTH_MAX, .flags = PF_GROUND };
+    *p = (Peer){ .active = true, .net = net, .health = HEALTH_MAX, .flags = PF_GROUND | (RoyalePhase() == RP_RUN ? PF_OUT : 0) };
     snprintf(p->name, NAME_LEN, "%s", name);
     // In PvP everyone starts somewhere else in the city; otherwise a returning player is where they left.
     p->pos = p->shown = G.pvp ? CitySpawn(slot) : rec ? rec->pos : G.houses[HouseOf(slot)].door;
@@ -1098,7 +1122,7 @@ static void HostHello(int net, Reader *r)
     W8(&w, (unsigned)slot);
     W32(&w, (unsigned)worldSign);
     WStr(&w, myRoom);
-    W8(&w, (G.pvp ? 1u : 0u) | (G.combat ? 2u : 0u) | (RoyalePhase() == RP_RUN ? 4u : 0u) | (G.devTools ? 8u : 0u));
+    W8(&w, (G.pvp ? 1u : 0u) | (G.combat ? 2u : 0u) | (RoyalePhase() == RP_RUN ? 4u : 0u));
     W8(&w, rec ? 1u : 0u);
     if (rec) WriteRecord(&w, rec);
     WF(&w, p->pos.x);
@@ -1122,6 +1146,7 @@ static void HostLeave(int net)
     char name[NAME_LEN];
     snprintf(name, sizeof(name), "%s", p->name);
     p->active = false;
+    if (net >= 0 && net <= 255) arrivals[net].known = false;
     CalmBeasts(slot);
     SendRoster();
     Announce("%s left the game.", name);
@@ -1150,14 +1175,48 @@ static void HostState(int slot, Reader *r)
     p->style = style;
 }
 
+// A player's things, sent along now and then and as they leave: server.py keeps them with their account
+// (a battle royale keeps nothing).
 static void HostRecord(int slot, Reader *r)
 {
     PlayerRecord rec;
-    if (!ReadRecord(r, &rec)) return;
+    if (!ReadRecord(r, &rec) || Royale()) return;
     snprintf(rec.name, NAME_LEN, "%s", G.peers[slot].name);
     rec.slot = slot;
-    KeepRecord(&rec);
-    NetSaveSoon();
+    Writer w = Begin(H_STORE);
+    WStr(&w, rec.name);
+    W8(&w, RECORD_FORMAT);
+    WriteRecord(&w, &rec);
+    SendServer(&w);
+}
+
+// Experience, kills and deaths for the player in this slot: server.py adds them to the account, and the
+// player's own game shows them.
+void HostProgress(int slot, int xp, int kills, int deaths)
+{
+    if (G.role != NET_HOST || slot == G.self || !PlayerIn(slot)) return;
+    Writer w = Begin(H_PROGRESS);
+    WStr(&w, G.peers[slot].name);
+    W32(&w, (unsigned)xp);
+    W16(&w, (unsigned)kills);
+    W16(&w, (unsigned)deaths);
+    SendServer(&w);
+    w = Begin(M_EVENT);
+    W8(&w, EV_PROGRESS);
+    W32(&w, (unsigned)xp);
+    W16(&w, (unsigned)kills);
+    W16(&w, (unsigned)deaths);
+    SendGuest(slot, &w);
+}
+
+// How the room is doing, for the list of servers: in a battle royale, whether a round is on.
+static void SendStatus(void)
+{
+    Writer w = Begin(H_STATUS);
+    W8(&w, (unsigned)PlayerCount());
+    W8(&w, (unsigned)RoyalePhase());
+    W8(&w, (unsigned)RoyaleAlive());
+    SendServer(&w);
 }
 
 static void SendState(void)
@@ -1194,20 +1253,20 @@ static void ResetSession(void)
     memset(pending, 0, sizeof(pending));
     memset(netArrows, 0, sizeof(netArrows));
     effectCount = 0;
-    snapT = stateT = recordT = saveT = lostT = 0;
+    snapT = stateT = recordT = saveT = lostT = statusT = 0;
     snapCount = 0;
     ChatClear();
 }
 
-bool NetBegin(bool host, const char *name, const char *room)
+// A player joins room 'room' on server.py, under their account's name.
+bool NetBegin(const char *name, const char *room)
 {
     ResetSession();
-    hosting = host;
     snprintf(myName, sizeof(myName), "%s", name);
     snprintf(myRoom, sizeof(myRoom), "%s", room);
     failure[0] = '\0';
     phase = PHASE_CONNECTING;
-    if (!NetOpen(host, room)) {
+    if (!NetOpen(room)) {
         phase = PHASE_OFF;
         snprintf(failure, sizeof(failure), "%s", L("Multiplayer works in the browser version, served by server.py."));
         return false;
@@ -1229,16 +1288,6 @@ static void Drop(const char *why)
     LeaveToLobby(why);
 }
 
-// The rules the host picked on the title screen for the game it opens.
-static bool rulePvp = true, ruleCombat, ruleDev;
-
-void NetRules(bool pvp, bool combat, bool dev)
-{
-    rulePvp = pvp;
-    ruleCombat = pvp && combat;
-    ruleDev = dev;
-}
-
 // A player's kills and deaths at other players' hands, and the ratio: "K/D 3/1 (3.0)".
 const char *KillDeath(int s)
 {
@@ -1247,50 +1296,41 @@ const char *KillDeath(int s)
     return TextFormat("K/D %d/%d (%.1f)", p->kills, p->deaths, ratio);
 }
 
-// The game's rules in a line.
 // What a PvP game's welcome adds: the way to the priest's blessing is open.
 static const char *ZigguratHint(void)
 {
     return G.pvp ? L(" Tip: the priest on top of the ziggurat gives you a boost: +20% speed for a day. Its stairs are unguarded here.") : "";
 }
 
+// The game's rules in a line.
 const char *RulesText(void)
 {
     if (Royale()) return L("Battle royale: best gear and unlimited arrows, no guards or raiders, houses of no use. The last one standing wins.");
-    return L(!G.pvp ? "PvP off: players cannot hurt each other." : G.combat ? "Combat mode: best gear, unlimited arrows, guards stay out of player fights."
-                    : "PvP on: guards punish whoever starts a fight in the city.");
+    return L(G.pvp ? "PvP on: guards punish whoever starts a fight in the city." : "PvP off: players cannot hurt each other.");
 }
 
-static void StartHosting(void)
+// The server program's game (host/main.c): a world of its own for room 'room', with no player in it.
+// A survival or PvP world carries on from its save (sumer-mp.sav, in the room's own folder).
+void ServeRoom(int mode, const char *room)
 {
+    dedicated = true;
+    SetRoyale(mode == ROOM_ROYALE);
+    ResetSession();
+    snprintf(myRoom, sizeof(myRoom), "%s", room);
+    memset(arrivals, 0, sizeof(arrivals));
     GameInit();
     worldSign = WorldSignature();
     G.role = NET_HOST;
     G.self = G.actor = 0;
-    G.peers[0] = (Peer){ .active = true, .net = 0 };
-    snprintf(G.peers[0].name, NAME_LEN, "%s", myName);
-    SetHome(0);
-    bool resumed = LoadNetGame();
-    const PlayerRecord *mine = FindRecord(myName);
-    if (mine) ApplyRecord(mine);
-    G.pvp = rulePvp || Royale();
-    G.combat = ruleCombat || Royale();
-    G.devTools = ruleDev;
-    if (G.pvp) {
-        RemoveZigguratGuards();
-        G.player.pos = CitySpawn(0);
-        G.player.pos.y = GroundHeight(G.player.pos.x, G.player.pos.z, G.player.pos.y + 0.5f);
-    }
+    memset(G.peers, 0, sizeof(G.peers));
+    LoadNetGame();
+    G.recordCount = 0;   // the players' things are kept with their accounts
+    G.pvp = mode != ROOM_SURVIVAL;
+    G.combat = mode == ROOM_ROYALE;
+    if (G.pvp) RemoveZigguratGuards();
     UpdateSky();
-    FollowCamera(1.0f);
+    NetOpen(NULL);
     phase = PHASE_PLAYING;
-    if (resumed) Say("%s %s%s", TextFormat(L("Your game is open again: day %d. Friends join from this same address."), G.day), RulesText(), ZigguratHint());
-    else if (Royale())
-        Say("%s %s", L(TouchOn() ? "You are hosting a battle royale. Friends open this same address and press Join; tap Use to start a round."
-                                 : "You are hosting a battle royale. Friends open this same address and press Join; press Enter to start a round."),
-            RulesText());
-    else Say("%s %s%s", L("You are hosting a new game. Friends open this same address and press Join."), RulesText(), ZigguratHint());
-    G.msgT = 8.0f;
 }
 
 static void StartGuest(Reader *r)
@@ -1304,19 +1344,18 @@ static void StartGuest(Reader *r)
     if (hasRecord && !ReadRecord(r, &rec)) hasRecord = false;
     float startX = RF(r), startZ = RF(r);
     if (r->bad || slot <= 0 || slot >= MAX_PLAYERS) {
-        Fail("The host sent something this game could not read.");
+        Fail("The server sent something this game could not read.");
         return;
     }
     GameInit();
     if (WorldSignature() != sign) {
-        Fail("This page has a different version of the game than the host's. Reload it.");
+        Fail("This page has a different version of the game than the server's. Reload it.");
         return;
     }
     G.role = NET_CLIENT;
     G.pvp = (rules & 1u) != 0;
     G.combat = (rules & 2u) != 0;
     RoyaleJoinLate((rules & 4u) != 0);
-    G.devTools = (rules & 8u) != 0;
     G.self = G.actor = slot;
     memset(G.peers, 0, sizeof(G.peers));
     G.peers[slot] = (Peer){ .active = true };
@@ -1336,8 +1375,9 @@ static void StartGuest(Reader *r)
     UpdateSky();
     FollowCamera(1.0f);
     phase = PHASE_PLAYING;
-    Say("%s %s%s", TextFormat(L(hasRecord ? "Welcome back. Your home has the %s lintel." : "You joined the game. Your home has the %s lintel."), PlayerColorName(slot)),
-        RulesText(), ZigguratHint());
+    if (Royale()) Say("%s %s", L("You joined the battle royale. A round starts once two or more players are here."), RulesText());
+    else Say("%s %s%s", TextFormat(L(hasRecord ? "Welcome back. Your home has the %s lintel." : "You joined the game. Your home has the %s lintel."), PlayerColorName(slot)),
+             RulesText(), ZigguratHint());
     G.msgT = 9.0f;
 }
 
@@ -1349,19 +1389,21 @@ int NetLobby(void)
     if (phase == PHASE_PLAYING) return 1;
     while (NetPoll(&m)) {
         if (m.kind == S_HELLO) {
-            if (hosting) {
-                StartHosting();
-                return 1;
-            }
             Writer w = Begin(M_HELLO);
             W8(&w, NET_VERSION);
             WStr(&w, myName);
             SendHost(&w);
             phase = PHASE_WAITING;
         } else if (m.kind == S_TAKEN) {
-            Fail("Someone is already hosting a game here. Press Join instead.");
+            Fail("Your account is already playing on a server. Leave that game first.");
         } else if (m.kind == S_NOHOST) {
-            Fail("No one is hosting a game here yet. One player presses Host first.");
+            Fail("There is no such server.");
+        } else if (m.kind == S_BUSY) {
+            Fail("All the servers that can run at once are busy. Join one with players in it, or try again later.");
+        } else if (m.kind == S_LOGIN) {
+            Fail("Log in again to play.");
+        } else if (m.kind == S_HOSTLEFT) {
+            Fail("The server stopped this game. Try again in a moment.");
         } else if (m.kind == S_FULL) {
             Fail(Royale() ? "The game is full: twenty players already." : "The game is full: six players already.");
         } else if (m.kind == S_DATA && m.len > 0) {
@@ -1378,7 +1420,7 @@ int NetLobby(void)
         if (phase == PHASE_OFF) return -1;
     }
     if (NetLink() == LINK_CLOSED) {
-        Fail("Could not reach the game server. Is server.py running?");
+        Fail("Could not reach the game server.");
         return -1;
     }
     return 0;
@@ -1394,7 +1436,7 @@ const char *NetRoom(void)
     return myRoom;
 }
 
-// Saves (the host) or hands in this player's belongings (a guest), then closes the connection.
+// A guest hands in their belongings, then closes the connection; the server program saves its world.
 void NetLeave(void)
 {
     if (G.role == NET_HOST) SaveNetGame();
@@ -1407,8 +1449,27 @@ void NetLeave(void)
 static void HostFrame(float dt)
 {
     NetMessage m;
+    hostClock += dt;
     while (NetPoll(&m)) {
-        if (m.kind == S_JOIN) continue;
+        if (m.kind == S_JOIN) {
+            Reader r = { m.data, m.len, 0, false };
+            HostJoin(m.from, &r);
+            continue;
+        }
+#if defined(SUMER_TEST) && !defined(__EMSCRIPTEN__)
+        // The test suites ask the server program what its world is like, or have it do something (server.py --test).
+        if (m.kind == S_TEST) {
+            static char reply[1 << 16];
+            char text[256];
+            int n = m.len < 255 ? m.len : 255;
+            memcpy(text, m.data, (size_t)n);
+            text[n] = '\0';
+            reply[0] = H_TEST;
+            HostTest(text, reply + 1, (int)sizeof(reply) - 1);
+            NetSend(NET_TO_SERVER, reply, 1 + (int)strlen(reply + 1));
+            continue;
+        }
+#endif
         if (m.kind == S_LEAVE) {
             HostLeave(m.from);
             continue;
@@ -1434,17 +1495,17 @@ static void HostFrame(float dt)
         default: break;
         }
     }
-    if (NetLink() == LINK_CLOSED) {
-        SaveNetGame();
-        Drop("Lost the connection to the game server. Your game was saved.");
-        return;
-    }
+    if (NetLink() != LINK_OPEN) return;   // server.py is gone: host/main.c saves and stops
     snapT += dt;
     if (snapT >= SNAP_EVERY) {
         snapT = 0;
-        bool anyone = PlayerCount() > 1;
-        if (anyone) Snapshot(-1, ++snapCount % SLOW_EVERY == 0);
+        if (PlayerCount() > 0) Snapshot(-1, ++snapCount % SLOW_EVERY == 0);
         else effectCount = 0;
+    }
+    statusT += dt;
+    if (statusT >= STATUS_EVERY) {
+        statusT = 0;
+        SendStatus();
     }
     saveT += dt;
     if (saveT >= SAVE_EVERY) {
@@ -1491,6 +1552,11 @@ static void ClientEvent(Reader *r)
         if (!r->bad && slot < MAX_PLAYERS) ChatAdd(slot, text);
         break;
     }
+    case EV_PROGRESS: {
+        int xp = (int)R32(r), kills = (int)R16(r), deaths = (int)R16(r);
+        if (!r->bad) AccountGain(xp, kills, deaths, false);
+        break;
+    }
     case EV_HIT:
         G.hitMarkT = 0.3f;
         if (R8(r) == 1) SfxPlay(SFX_ARROW, 0.8f);
@@ -1528,7 +1594,7 @@ static void ClientFrame(float dt)
     NetMessage m;
     while (NetPoll(&m)) {
         if (m.kind == S_HOSTLEFT) {
-            Drop("The host left the game.");
+            Drop("The server stopped this game. Your things were kept.");
             return;
         }
         if (m.kind != S_DATA || m.len < 1) continue;

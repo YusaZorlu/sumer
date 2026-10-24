@@ -6,92 +6,106 @@ fog and glow (see Graphics).
 
 ## Run
 
-The game runs in a web browser: `python3 server.py`, then open the address it prints (see below).
-`web/` holds the built game; `sh build-web.sh` rebuilds it (needs Emscripten).
+The game runs in a web browser, served by `server.py` (Python 3.8 or newer, nothing else to install):
+
+    python3 server.py
+
+It prints the addresses to open: `http://localhost:8000/` on this computer, `http://<this computer's
+address>:8000/` for the others on your network (`--port 9000` picks another port). `web/` holds the built
+game (`sh build-web.sh` rebuilds it; needs Emscripten) and `host/sumer-host` the game's server program
+(built for 64-bit Linux; `sh build-host.sh` rebuilds it on any machine with a C compiler).
 
 The desktop version (Linux and macOS, `run.sh` and the ready-built `sumer-prebuilt`) is kept on the
 `desktop` branch, as it was on 20 October 2026, with the Sumerian characters. Work goes on in the browser
 version only; the desktop branch is not updated for now.
 
-## Play in a browser, alone or together
+## Accounts
 
-The game also runs in a web browser, and there up to six people can share one world. Start the
-server (Python 3.8 or newer, nothing else to install):
+The title screen asks you to **log in**, or to make an account on the **Create account** tab: a name (3 to
+15 letters, digits and `_ - .`) and a password (6 characters or more), typed twice. The page's own fields
+take them, so a password manager or a phone's keyboard works as anywhere else; Enter sends them. The
+account stays logged in in that browser for 60 days, or until **Log out** (bottom right of the title).
 
-    python3 server.py
+The server keeps only the account's name, a hash of its password (scrypt; never the password itself) and
+the game: your level and K/D, your three singleplayer save slots, and your things in the survival servers
+and in the PvP servers (one set for each kind, whichever server of it you play on). No e-mail, nothing
+personal. A new account costs the browser a second or two of work (a proof of work), and each address can
+make only a few a day, so nobody can make thousands of them; addresses are kept in memory only, never
+written down.
 
-It prints the addresses to open: `http://localhost:8000/` on this computer, `http://<this computer's
-address>:8000/` for the others on your network (`--port 9000` picks another port). The browser
-version is already built in `web/`; `sh build-web.sh` rebuilds it (needs Emscripten).
+### Levels
 
-The title screen asks for your name, then the way to play: **Sumer Survival**, **Sumer Royale** (the battle
-royale, below), and a third place kept for a way to play still to come. Sumer Survival offers:
+Every account has a level, 1 to 100, shown on the title screen and under your health in the game: level 1
+takes 100 experience to reach level 2, level 2 another 200, level 3 another 300, and so on. Experience is
+only shown, never spent, and the same level counts for every way to play:
 
-- **Singleplayer**: your own world. Its three save slots are kept in the browser.
-- **Multiplayer** (PvP off) and **Multiplayer PvP** (PvP on; Combat mode switches beside it): host the
-  shared world: starts it, or carries on the one you hosted before. The host's
-  browser runs the world and keeps its save: the world and every player's things, saved every
-  minute, when a night passes, when someone leaves, and on F5. Keep the host's tab open and in front
-  while others play (browsers slow down hidden tabs). "New world" beside it (click twice) erases the
-  hosted world so the next game starts fresh.
-- **The rules**, which whoever joins plays by:
-  - **PvP** (Multiplayer PvP): whether players can hurt each other with blows and
-    arrows. A player who starts a fight inside the city's canals is wanted by the guards; hitting
-    back, or hitting someone already wanted, is no crime. In a PvP game everyone starts somewhere
-    else in the city (the spot is picked on open ground, away from the other players), and so does
-    anyone brought down, instead of waking at home. The guards on the ziggurat's stairs and
-    terrace are gone, so anyone can climb to the priest on top for the day's +20% speed boost: the
-    welcome says so.
-  - **Combat mode** (off unless you switch it on, beside Multiplayer PvP): everyone fights with the best
-    of everything (bronze sickle-sword, the war mace, the best bow with bronze arrowheads, bronze
-    armor) and arrows never run out. The guards stay out of fights between players, and a player
-    brought down comes to at home with full health (somewhere in the city in a PvP game, as always). Your own gear is untouched: it is what your
-    record keeps, and what you have again in a game without combat mode.
-  The rules show in everyone's Esc menu and when they join.
-- **Join a game**: joins the game hosted in the same room. Join again under the same name and your
-  things and your house are waiting.
+- 1 for a beast or a townsman brought down, 3 for a guard, raider, barbarian or bandit;
+- 10 for another player brought down (also counted in your K/D: players brought down / times brought down
+  by a player);
+- winning a battle royale round: 10 for every player the round began with.
+
+"+3 XP" rises over the crosshair as you gain it, and reaching a level is news.
+
+## Ways to play
+
+After logging in: **Sumer Survival**, **Sumer Royale** (the battle royale, below), and a third place kept for
+a way to play still to come. Sumer Survival offers:
+
+- **Singleplayer**: your own world, in three save slots. They are kept in the browser and with your
+  account, so another browser logged in to it plays on from the same saves.
+- **The servers**: the game's shared worlds, run by the server day and night whoever is in them. Each is
+  listed with what it is and who is on it (or "nobody here; joining opens it": an empty server sleeps
+  until someone joins). Up to six players each.
+  - **Survival 1, Survival 2**: PvP off: players cannot hurt each other.
+  - **PvP 1, PvP 2**: players can hurt each other with blows and arrows. A player who starts a fight inside
+    the city's canals is wanted by the guards; hitting back, or hitting someone already wanted, is no
+    crime. Everyone starts somewhere in the city (on open ground, away from the other players), and so does
+    anyone brought down, instead of waking at home. The guards on the ziggurat's stairs and terrace are gone,
+    so anyone can climb to the priest on top for the day's +20% speed boost: the welcome says so.
+
+  Your things come with you from server to server of the same kind (the survival servers share one set,
+  the PvP servers another), handed in every few seconds and as you leave; the world itself stays with its
+  server. One account plays on one server at a time.
 
 ### Sumer Royale (battle royale)
 
-**Sumer Royale** on the title screen, then **Host a battle royale** or **Join the battle royale** (the same
-server and address; `?mode=br` in the address opens straight on these). Up to twenty players; its rooms are
-its own, apart from Sumer Survival's even under the same name.
+**Sumer Royale** on the title screen, then **Royale**. Up to twenty players.
 
 - **The map**: the same land with no city guards, village guards, raiders, barbarians, bandits or caravans;
   the townsfolk, villagers, traders and wild animals (partridges too) stay. About 150 more trees stand out in the land. Houses
-  are of no use: beds, storerooms, querns, troughs, workbenches and ovens do nothing. Nothing is saved.
-- **Rules**: PvP and combat mode are always on (the best gear, unlimited arrows).
-- **A round**: everyone gathers in the city; the host presses **Enter** (on a touch screen, **Use** with nothing at hand) to start a round. Each player is set
-  down somewhere out in the land, 240-420 m from the city and far from the others, with full health.
+  are of no use: beds, storerooms, querns, troughs, workbenches and ovens do nothing. Nothing is kept
+  between rounds: everyone starts each one with the best of everything (bronze sickle-sword, the war mace,
+  the best bow with bronze arrowheads, bronze armor) and arrows that never run out.
+- **A round** starts by itself half a minute after two or more players are in (the line at the top of the
+  screen counts down; one player alone waits). Each player is set down somewhere out in the land,
+  240-420 m from the city and far from the others, with full health.
 - **The sandstorm**: a wall of dust that closes in on the city in stages. It waits a minute, closes to
   380 m (4 minutes in), rests, to 190 m, rests, to 90 m, rests, and ends 25 m round the middle of the city
   13 minutes in. Inside it you lose health every second (2 at first, up to 12 at the end; armor softens
   it) and the screen turns dusty. The map shows its edge as an orange circle; the line at the top of the
-  screen counts down to its next move. The map shows no other players.
+  screen counts down to its next move and how many still stand of how many began. The map shows no other
+  players.
 - **Statues**: fifteen gypsum worshippers on brick plinths (five in the city, ten out in the land; gold
   marks on the map, a burning light over each while its blessing is there). Press E to pray; the first one
   there takes the blessing for the rest of the round: Ninurta's +5% attack speed (swings and drawing the
   bow), Enlil's +5% running speed, or Gula's +10% healing. Blessings add up.
 - **Out**: whoever is brought down is out for the round and watches someone still in it (click or Space:
-  the next one). Someone who joins while a round is on watches too. The last one standing wins; the host
-  presses Enter for the next round.
+  the next one). Someone who joins while a round is on watches too. The last one standing wins, is
+  congratulated, and gains 10 experience for every player the round began with; half a minute later the
+  next round starts.
 - The Esc menu lists everyone in two columns with their kills and who is out.
 
-Everyone who opens the same address plays in the same room; add `?room=any-name` to the address to run
-another game on the same server. To play over the internet, run `server.py` on a machine the others
-can reach (its port open); behind HTTPS the page connects securely by itself.
+### Playing together
 
-Playing together:
-
-- Each player has a house of their own and wears its color: blue for the host, then red, green,
-  yellow, purple and teal. The five guest houses stand in a row south of the east-west street, doors to the
+- Each player has a house of their own and wears its color: blue for the first in, then red, green,
+  yellow, purple and teal. The houses stand by the farm and in a row south of the east-west street, doors to the
   street, each with its own bed, storeroom, quern, trough, workbench and oven, under a flat roof (inside, the camera stays under it). The farm, the coop, the
   hens and the eggs are shared.
 - The world never stops: the Esc menu only takes your hands off the keys, and time can't be
   fast-forwarded (T).
 - T opens a chat line: type, and Enter sends it to everyone (Esc puts it away, keeping what you typed).
   The last lines stay at the bottom left for 15 seconds, each name in its player's color, and all of
-  them show again while you type. The host passes every line on: up to 100 characters, two a second.
+  them show again while you type. The server passes every line on: up to 100 characters, two a second.
 - The night passes when every player lies in bed (E at your bed; E, Space or a step gets you up).
   Someone brought down comes to at home at once (somewhere in the city in a PvP game), with 30% health,
   and the message says who did it (a player by name).
@@ -112,6 +126,32 @@ Playing together:
   the blow came from (top ahead of you, bottom behind, left and right), for blows from people,
   animals and arrows too. Other players swing, raise and sweep their weapons as you do yours, and
   lean into the blow.
+
+## Running the game's server
+
+`server.py` serves the game, keeps the accounts and runs the servers listed on the title screen. Each
+server's world runs in a program of its own (`host/sumer-host`), which `server.py` starts when the first
+player joins it and stops once it has stood empty five minutes (`--idle`), saving its world first; a
+survival or PvP world carries on from there next time. One such program takes about 5 MB of memory and a
+few percent of one core with six players in it.
+
+    python3 server.py --port 8000 --bind 127.0.0.1 --data /opt/sumer/data
+
+- `--data`: where the accounts (`sumer.db`, SQLite; a copy in `backups/` each day, the last seven kept)
+  and the servers' worlds (`rooms/<id>/sumer-mp.sav`) are kept. By default `data/` next to `server.py`.
+- `--rooms`: the servers, as `id:kind:Title` separated by commas, kind `survival`, `pvp` or `royale`. The
+  default is `survival-1:survival:Survival 1,survival-2:survival:Survival 2,pvp-1:pvp:PvP 1,pvp-2:pvp:PvP 2,royale:royale:Royale`.
+- `--max-active` (default 5): how many servers may run at once. On a small machine set 2 or 3: the first
+  ones to open run, and the rest show "cannot open now: all servers busy" until one empties.
+- `--host-bin`: the game's server program, if not `host/sumer-host`.
+- `--work` (default 18): how many zero bits the proof of work for a new account must find (each one more
+  doubles the work).
+- `--test`: for the test suites only (no work, no limits, rooms made on demand, `/test/...` requests).
+
+Behind a proxy (Caddy, Cloudflare) `server.py` takes the player's address from `CF-Connecting-IP` or
+`X-Forwarded-For` for its limits, and marks the session cookie Secure when the page came over HTTPS. The
+browser and the server program must be built from the same sources: a page from another version is told
+to reload. To change a server's world for good, stop `server.py` and delete `data/rooms/<id>`.
 
 ## Graphics
 
@@ -174,8 +214,7 @@ The controls show on a phone or tablet, and on any other screen once a finger to
 | E / F | Use, talk, pick up, climb a ladder, search a body, fill or pour a bucket, open the coop / alternate action (plant a date) |
 | R | Refill quiver from carried arrow baskets |
 | B | Torch on/off (it burns from 17:00, brighter as dusk turns to night; also a button in Tab, see Combat) |
-| Tab | Baskets (inventory), equipment and armor; with dev tools on, its "Dev console" button opens the dev console |
-| ` or F2 | Dev console, when dev tools are on (see below) |
+| Tab | Baskets (inventory), equipment and armor |
 | T (hold) | Fast-forward time (playing alone) |
 | T | Chat, in a shared game or a battle royale (the dead watching too): type a line, Enter sends it to everyone, Esc puts it away |
 | F5 | Save |
@@ -190,28 +229,6 @@ The controls show on a phone or tablet, and on any other screen once a finger to
 Panels also take number keys (barter offer N, with 0, - and = for offers 10-12; use basket N; coop actions
 1-4), so nothing depends on a click landing. The game pauses when the window loses focus (a screenshot tool, switching apps);
 Resume or Esc takes the mouse back.
-
-## Dev console
-
-For testing. It is there only when **Dev tools** were turned on on the title screen before playing alone or
-hosting (a rule like PvP and Combat mode, off by default; `?dev=1` in the address turns it on too). Then
-everyone in that game can open it: Tab, then the "Dev console" button, or the ` key (F2 on keyboards without
-it). Type a command and press Enter; the up arrow brings back the last one, Tab or Esc closes. Buttons below
-do the usual ones.
-
-| Command | Does |
-|---|---|
-| `where` | Where you are, the day and hour, the nearest village |
-| `tp <x> <z>` / `tp <place>` | Moves you; places: city, ziggurat, hunters, herders, fishers, camp1-4, band1, band2, wolf |
-| `heal`, `god`, `gear`, `arrows` | Full health and food; nothing hurts you (again to stop); the best bow, sword, war mace and bronze armor; a full quiver |
-| `give <item> [n]` | Puts things in your baskets, by the start of their English name (`give bread 5`) |
-| `speed <x>` | Walking and running that many times as fast |
-| `hour <h>`, `rain on/off` | Sets the time of day; starts or stops rain (host) |
-| `spawn <beast> [n]` | Brings that many calm gazelles, onagers, boars, geese, wolves or snakes in front of you (host) |
-| `kill [m]` | Brings down every foe and beast within m metres, 20 if not given (host) |
-| `calm` | Beasts and fighters let you be, and you are no longer wanted (host) |
-
-In a joined game the world commands (marked host) are the host's.
 
 ## Game settings
 
@@ -249,7 +266,7 @@ menu or on the title screen) to step the volume through off, low, medium and hig
 
 The fight tune starts when a hostile guard, villager, raider, caravan guard, boar or wolf pack within
 50 m is after you, when you are hit, and (in a game with PvP) when another player nearby is swinging a weapon or
-aiming, or anyone is within 60 m in combat mode. It carries on for 12 seconds after the last such moment, then
+aiming, or anyone is within 60 m in a battle royale. It carries on for 12 seconds after the last such moment, then
 the day or night tune fades back in; being brought down ends it at once. Every player's game decides this
 for itself from what it already knows, so in a shared game each person hears their own fight, and there is
 nothing extra to send over the network.
@@ -454,7 +471,10 @@ and time: "Switch to this" saves the current game and loads that slot; on an emp
 begins there. "New game" (click twice) erases only the slot in play.
 
 In the browser the slots live in the browser's storage for the game's address (a game played alone
-there is also saved every two minutes); the host's shared game is kept the same way, in `sumer-mp.sav`.
+there is also saved every two minutes), and every save is sent to your account on the server too; on the
+title screen the account's saves come back into the browser, so you play on from them anywhere. Saves
+made in a browser before accounts go to the first account logged in there. The servers' shared worlds
+are kept by the server (`data/rooms/<id>/sumer-mp.sav`), your things in them with your account.
 
 Each file is a few KB at most: day and time, your position, health and food, baskets, storage,
 quiver, bow, tools, weapon, war mace, armor, temple access, blessing, farm plots and water, coop and
@@ -583,7 +603,7 @@ the game: body (a man or a woman), hair, beard (none for a woman), clothes and j
 the view; 1-5 step through a row). Change it any time with "Your look" in the Esc menu. It is kept in
 `sumer.look`; the other players see it, in your player color. Armor is worn over the clothes: the wolf pelt
 over the shoulders with its head as a hood, leather in laced bands, bronze armor as the soldiers' studded
-cloak (and helmet in combat mode).
+cloak (and helmet in a battle royale).
 
 ## Armor
 
@@ -683,11 +703,16 @@ Animals you kill stay gone until the next spring, when their herds are full agai
 | `src/effects.c` | Particles, impact rings, arrow trails, swing trails, how a landed blow feels (hold, kick, flash) |
 | `src/save.c` | Compact binary save/load, save slots |
 | `src/main.c` | The program: window and the browser's frame loop |
-| `src/actions.c` | Prompts and the actions behind E and F, taking from the shared world (a guest asks the host first) |
+| `src/actions.c` | Prompts and the actions behind E and F, taking from the shared world (a guest asks the server first) |
 | `src/players.c` | Every player as the world sees them: positions, damage to a player on another machine, other players drawn |
-| `src/mp.c` | Multiplayer messages: the host's snapshots, guests' requests and replies, messages in each player's language |
-| `src/net.c` | The WebSocket to `server.py` |
-| `src/lobby.c` | The browser's title screen: name, play alone, host, join, the hosting rules, music, graphics, language |
+| `src/mp.c` | Multiplayer messages: the server program's snapshots, players' requests and replies, messages in each player's language, players' things and experience handed to `server.py` |
+| `src/net.c` | The connection to `server.py`: a WebSocket in the browser, the standard input and output in the server program |
+| `src/lobby.c` | The browser's title screen: the account, the ways to play, the lists of servers, music, graphics, language |
+| `src/account.c` | The account: logging in, level and K/D, the saves and experience sent to the server, the list of servers |
+| `src/progress.c` | Levels and experience |
+| `src/sha256.c` | SHA-256, for the proof of work a new account costs |
+| `host/main.c` | The game's server program: one room's world, run for `server.py` |
+| `server.py` | Serves the game, keeps the accounts (SQLite), runs the rooms' server programs and passes their messages |
 | `src/web.c` | What differs in a browser: saves in IndexedDB, the captured mouse, taps and clicks, the canvas's pixels, phone detection |
 | `src/touch.c` | Touch controls: the stick, looking by dragging, the see-through buttons |
 | `src/shell.html` | The page around the browser game |

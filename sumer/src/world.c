@@ -400,12 +400,12 @@ static void BuildWilds(void)
         if ((h < 1.0f && Fertility(x, z) > 0.3f) || !Open(x, z, 1.5f)) continue;
         Color c = Mix(COL_ROCK, (Color){ 150, 136, 112, 255 }, Hash2(tries, 59));
         if (Hash2(tries, 61) < 0.4f) {   // a flat slab, half sunk
-            float s = RandF(1.0f, 2.2f);
-            AddBox(x, h - 0.12f, z, s, RandF(0.18f, 0.35f), s * RandF(0.5f, 0.9f), c, false);
+            float s = RandF(1.0f, 2.2f), tall = RandF(0.18f, 0.35f), deep = s * RandF(0.5f, 0.9f);
+            AddBox(x, h - 0.12f, z, s, tall, deep, c, false);
         } else {   // a scatter of stones
             for (int j = 0; j < 5; j++) {
-                float s = RandF(0.15f, 0.45f);
-                AddShape(x + RandF(-1.2f, 1.2f), h - 0.3f * s, z + RandF(-1.2f, 1.2f), s * 1.2f, s, s, Mix(c, COL_STONE, Hash2(tries, j)), false, SHAPE_BLOB);
+                float s = RandF(0.15f, 0.45f), dx = RandF(-1.2f, 1.2f), dz = RandF(-1.2f, 1.2f);
+                AddShape(x + dx, h - 0.3f * s, z + dz, s * 1.2f, s, s, Mix(c, COL_STONE, Hash2(tries, j)), false, SHAPE_BLOB);
             }
         }
         k++;
@@ -438,8 +438,10 @@ static void BuildWestBank(void)
         if (InWater(x, z) || TerrainHeight(x, z) > 1.2f) continue;
         if (k % 6 == 0) AddResource(x, z, RES_REEDS);
         else
-            for (int j = 0; j < 3; j++)
-                AddBox(x + RandF(-0.6f, 0.6f), TerrainHeight(x, z) - 0.1f, z + RandF(-0.6f, 0.6f), 0.09f, RandF(1.3f, 2.4f), 0.09f, COL_REED, false);
+            for (int j = 0; j < 3; j++) {
+                float dx = RandF(-0.6f, 0.6f), dz = RandF(-0.6f, 0.6f), tall = RandF(1.3f, 2.4f);
+                AddBox(x + dx, TerrainHeight(x, z) - 0.1f, z + dz, 0.09f, tall, 0.09f, COL_REED, false);
+            }
     }
 
     Forest(-250, -300, 30, 24, 10, false);
@@ -502,7 +504,8 @@ static void BuildVegetation(void)
 
     for (float z = -510.0f; z <= 510.0f; z += 12.0f) {
         if (fabsf(z + 10) < 8 || fabsf(z - 30) < 6 || fabsf(z + 62) < 6 || (z > FORD_Z0 - 4 && z < FORD_Z1 + 4)) continue;
-        AddResource(-126.4f + RandF(-0.4f, 0.4f), z + RandF(-2, 2), RES_REEDS);
+        float dx = RandF(-0.4f, 0.4f), dz = RandF(-2, 2);
+        AddResource(-126.4f + dx, z + dz, RES_REEDS);
     }
     for (int i = 0; i < 92; i++) {
         float x = RandF(-127.5f, -121.0f), z = RandF(-515, 515);
@@ -606,8 +609,10 @@ void BuildWorld(void)
     BuildRoads();
     BuildLights();
 
-    for (int i = 0; i < MAX_STARS; i++)
-        G.stars[i] = Vector3Normalize((Vector3){ RandF(-1, 1), RandF(0.12f, 1), RandF(-1, 1) });
+    for (int i = 0; i < MAX_STARS; i++) {
+        float x = RandF(-1, 1), y = RandF(0.12f, 1), z = RandF(-1, 1);
+        G.stars[i] = Vector3Normalize((Vector3){ x, y, z });
+    }
     GfxWorldChanged();
 }
 

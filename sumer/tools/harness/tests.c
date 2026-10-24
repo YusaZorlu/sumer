@@ -893,65 +893,6 @@ static void TestBandits(void)
 }
 
 // The dev console's commands do what they say.
-static void TestConsole(void)
-{
-    G.self = G.actor = 0;
-    G.devTools = false;
-    G.hour = 12;
-    ConsoleRun("hour 22");
-    Check(fabsf(G.hour - 12) < 0.01f && strstr(ConsoleLine(ConsoleLines() - 1), "off") != NULL,
-          "console: does nothing while dev tools are off (\"%s\")", ConsoleLine(ConsoleLines() - 1));
-    G.devTools = true;
-    ConsoleRun("tp 120 -40");
-    Check(XZDist(G.player.pos, (Vector3){ 120, 0, -40 }) < 0.1f, "console: tp 120 -40 moves you there (%.1f, %.1f)", G.player.pos.x, G.player.pos.z);
-    ConsoleRun("tp hunters");
-    Check(XZDist(G.player.pos, VillageCenter(VIL_HUNTERS)) < 12, "console: tp hunters takes you to the hunters' village");
-    ConsoleRun("tp band2");
-    float nearest = 1e9f;
-    for (int i = 0; i < MAX_RAIDERS; i++)
-        if (RaiderBandit(i)) nearest = fminf(nearest, XZDist(G.raiders[i].pos, G.player.pos));
-    Check(nearest < 40, "console: tp band2 puts you within sight of a bandit band (%.0f m)", nearest);
-    ConsoleRun("tp 120 -40");
-
-    G.health = 40;
-    ConsoleRun("heal");
-    Check(G.health == HEALTH_MAX && G.food == FOOD_MAX, "console: heal fills health and food");
-    ConsoleRun("god");
-    HurtPlayer(30, BY_WOLF);
-    Check(G.health == HEALTH_MAX, "console: god, and a bite does nothing (%.0f)", G.health);
-    ConsoleRun("god");
-    HurtPlayer(10, BY_WOLF);
-    Check(G.health < HEALTH_MAX, "console: god again, and it hurts again (%.0f)", G.health);
-    G.health = HEALTH_MAX;
-
-    int dates = BagCount(IT_DATES);
-    ConsoleRun("give dates 5");
-    Check(BagCount(IT_DATES) == dates + 5, "console: give dates 5 (%d -> %d)", dates, BagCount(IT_DATES));
-    ConsoleRun("hour 22");
-    Check(fabsf(G.hour - 22) < 0.01f, "console: hour 22 (%.2f)", G.hour);
-    ConsoleRun("hour 12");
-
-    G.player.yaw = 0;
-    ConsoleRun("spawn wolf 3");
-    int near = 0;
-    for (int i = 0; i < G.animalCount; i++)
-        near += G.animals[i].type == AN_WOLF && G.animals[i].active && G.animals[i].state != ST_DEAD && XZDist(G.animals[i].pos, G.player.pos) < 20;
-    Check(near >= 3, "console: spawn wolf 3 brings three wolves near you (%d)", near);
-    ConsoleRun("kill 25");
-    near = 0;
-    for (int i = 0; i < G.animalCount; i++)
-        near += G.animals[i].type == AN_WOLF && G.animals[i].active && G.animals[i].state != ST_DEAD && XZDist(G.animals[i].pos, G.player.pos) < 20;
-    Check(near == 0 && strstr(ConsoleLine(ConsoleLines() - 1), "beasts") != NULL, "console: kill 25 brings them down (\"%s\")",
-          ConsoleLine(ConsoleLines() - 1));
-    ConsoleRun("nonsense");
-    Check(strstr(ConsoleLine(ConsoleLines() - 1), "Unknown") != NULL, "console: an unknown command says so");
-    ConsoleRun("speed 1");
-    G.devSpeed = 0;
-    G.devTools = false;
-    RespawnPeople();
-    G.health = HEALTH_MAX;
-    PlaceAt(3, 4, 0);
-}
 
 // The ziggurat is lived in: people at work in its rooms, and the guards off duty stay in a PvP game.
 static void TestTempleLife(void)
@@ -2107,8 +2048,9 @@ static void TestHitLights(void)
     G.flinchT = 0;
 }
 
-// A battle royale: twenty players, no guards or raiders, houses of no use, fifteen statues, a round set
-// down far out in the land, blessings that stick, a sandstorm closing in, and the fallen out to watch.
+// A battle royale: twenty players, no guards or raiders, houses of no use, fifteen statues, no round for one
+// player alone, a countdown once two are in, a round set down far out in the land, blessings that stick, a
+// sandstorm closing in, the winner's experience, and the fallen out to watch.
 static void TestRoyale(void)
 {
     SetRoyale(true);
@@ -2135,15 +2077,37 @@ static void TestRoyale(void)
     Check(StatueCount() == 15 && dry == 15 && outside >= 10, "15 statues on dry ground, %d of them out in the land", outside);
     Check(StormRadius(0) > 760.0f && StormRadius(2000) < 30.0f && StormRadius(300) < StormRadius(200), "the storm starts beyond the map's corners and closes to the city (%.0f m at the end)", StormRadius(2000));
 
-    // A round begun alone: set down far out, a blessing from a statue, then the fall.
+    // Alone, no round starts, not even when asked; with a second player in, one starts after half a minute.
     G.role = NET_SOLO;
     G.player.pos = G.stations[STN_STORAGE];
     FindTarget(true);
     Check(!(G.target.kind == TGT_STATION && G.target.index == STN_STORAGE), "a house's storeroom is of no use");
     RoyaleStart();
+    RoyaleUpdate(1.0f);
+    Check(RoyalePhase() == RP_WAIT && RoyaleCountdown() < 0, "one player alone: no round, no countdown (phase %d)", RoyalePhase());
+    G.peers[1] = (Peer){ .active = true, .net = 1, .health = HEALTH_MAX, .flags = PF_GROUND };
+    snprintf(G.peers[1].name, NAME_LEN, "Bob");
+    G.peers[1].pos = (Vector3){ 0, 0, 0 };
+    RoyaleUpdate(0.5f);
+    float wait = RoyaleCountdown();
+    RoyaleUpdate(0.5f);
+    Check(RoyalePhase() == RP_WAIT && wait > 29.0f && RoyaleCountdown() < wait, "two players in: the round counts down from half a minute (%.1f s)", wait);
+    RoyaleCountdownTo(0.01f);
+    RoyaleUpdate(0.02f);
     Vector3 at = G.player.pos;
     float far = XZDist(at, (Vector3){ 0, 0, CITY_Z });
-    Check(RoyalePhase() == RP_RUN && far > 200.0f && !InWater(at.x, at.z), "the round begins %.0f m out from the city, on dry land", far);
+    Check(RoyalePhase() == RP_RUN && far > 200.0f && !InWater(at.x, at.z) && RoyaleStarted() == 2, "the round begins %.0f m out from the city, on dry land, two players in it", far);
+    // What every player's game is told of the round: how many began it (a guest once read 0: "2 of 0 standing").
+    {
+        static unsigned char buf[64];
+        Writer w = { buf, 0, sizeof(buf), false };
+        WriteRoyale(&w);
+        Reader r = { buf, w.n, 0, false };
+        G.role = NET_CLIENT;
+        ReadRoyale(&r);
+        G.role = NET_SOLO;
+        Check(!r.bad && r.at == w.n && RoyaleStarted() == 2 && RoyalePhase() == RP_RUN, "a guest reads the round as begun by two");
+    }
     int s = 0;
     for (int i = 0; i < StatueCount(); i++)
         if (i % 3 == 0) s = i;
@@ -2156,13 +2120,97 @@ static void TestRoyale(void)
     Check(ok && !again && fabsf(RoyaleAttack() - 1.05f) < 0.001f && StatueClaimed(s), "Ninurta's statue gives +5%% attack speed once (now x%.2f); the second prayer gets nothing", RoyaleAttack());
     G.player.pos = (Vector3){ 500, TerrainHeight(500, 500), 500 };
     Check(!InStorm(G.player.pos), "a minute in, the storm has not reached the map's edge yet");
+
+    // Bob falls: the player is the last one standing and gains ten experience for each of the two who began.
+    long xp = AccountXp();
+    G.peers[1].flags |= PF_OUT;
+    SyncSelf();
+    RoyaleUpdate(0.016f);
+    Check(RoyalePhase() == RP_OVER && RoyaleWinner() == 0 && AccountXp() == xp + 2 * XP_WIN && strstr(G.msg, "Congratulations"),
+          "the last one standing wins and gains %ld experience: \"%s\"", AccountXp() - xp, G.msg);
+
+    // The next round counts down by itself; brought down in it, the player is out and watches, and Bob wins.
+    RoyaleUpdate(0.016f);
+    Check(RoyaleCountdown() > 29.0f, "the next round counts down by itself (%.1f s)", RoyaleCountdown());
+    RoyaleCountdownTo(0.01f);
+    RoyaleUpdate(0.02f);
     HurtPlayerFrom(500, BY_STORM, NULL);
     SyncSelf();
     RoyaleUpdate(0.016f);
-    Check(RoyaleOut() && (G.peers[0].flags & PF_OUT) && RoyalePhase() == RP_OVER, "brought down, the player is out and watches; alone, the round is over");
+    Check(RoyaleOut() && (G.peers[0].flags & PF_OUT) && RoyalePhase() == RP_OVER && RoyaleWinner() == 1, "brought down, the player is out and watches; Bob wins that round");
+    G.peers[1].active = false;
 
     SetRoyale(false);
     GameInit();
+}
+
+// Levels and experience: level L takes 100 x L to the next, up to 100; what each kill is worth.
+static void TestLevels(void)
+{
+    Check(LevelStart(1) == 0 && LevelStart(2) == 100 && LevelStart(3) == 300 && LevelStart(100) == 495000, "levels begin at 0, 100, 300 ... 495000 experience");
+    Check(LevelOf(0) == 1 && LevelOf(99) == 1 && LevelOf(100) == 2 && LevelOf(299) == 2 && LevelOf(300) == 3 && LevelOf(2000000000L) == 100,
+          "level 1 up to 99, 2 from 100, 3 from 300, and 100 at the top");
+    Check(strcmp(LevelText(340), "Level 3 (40/300)") == 0 && strcmp(LevelText(600000), "Level 100") == 0, "the level in a line: \"%s\"", LevelText(340));
+    Check(KillXp(ROLE_GUARD) == 3 && KillXp(ROLE_RAIDER) == 3 && KillXp(ROLE_BARBARIAN) == 3 && KillXp(ROLE_BANDIT) == 3 && KillXp(ROLE_CIVILIAN) == 1 && KillXp(ROLE_MERCHANT) == 1,
+          "a fighter is worth 3 experience, anyone else 1");
+
+    // Alone, a guard brought down gives 3 experience at once, shown over the crosshair; a level reached is news.
+    G.role = NET_SOLO;
+    G.self = G.actor = 0;
+    CollectFighters();
+    int guard = -1;
+    for (int i = 0; i < FighterCount() && guard < 0; i++) {
+        Vector3 pos;
+        float hp, maxHp;
+        const char *name;
+        bool hostile, dead;
+        if (FighterInfo(i, &pos, &hp, &maxHp, &name, &hostile, &dead) && !dead && strstr(name, "guard")) guard = i;
+    }
+    long xp = AccountXp();
+    G.xpGain = 0;
+    G.xpGainT = 0;
+    if (guard >= 0) DamagePerson(guard, 10000.0f);
+    Check(guard >= 0 && AccountXp() == xp + XP_FIGHTER && G.xpGain == XP_FIGHTER && G.xpGainT > 0, "a guard brought down: +%d experience, shown at once", (int)(AccountXp() - xp));
+    AwardXp(0, (int)(LevelStart(LevelOf(AccountXp()) + 1) - AccountXp()), 0, 0);
+    Check(strstr(G.msg, "Level up") != NULL, "a level reached is news: \"%s\"", G.msg);
+    GameInit();
+}
+
+// SHA-256 for the work a new account costs, checked against known hashes and against server.py's own.
+static void TestSha256(void)
+{
+    unsigned char h[32];
+    char hex[65];
+    const char *abc = "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
+    static char many[1000];
+    memset(many, 'a', sizeof(many));
+    const struct { const char *in; int len; const char *want; } cases[] = {
+        { "abc", 3, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" },
+        { abc, (int)strlen(abc), "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1" },
+        { many, 1000, "41edece42d63e8d9bf515a9ba6932e1c20cbc9f5a5d134645adb5db1b9737ea3" },
+    };
+    for (int c = 0; c < 3; c++) {
+        Sha256(cases[c].in, cases[c].len, h);
+        for (int i = 0; i < 32; i++) snprintf(hex + 2 * i, 3, "%02x", h[i]);
+        Check(strcmp(hex, cases[c].want) == 0, "SHA-256 of a %d-byte text: %s", cases[c].len, hex);
+    }
+    unsigned char challenge[16];
+    for (int i = 0; i < 16; i++) challenge[i] = (unsigned char)i;
+    // Python's hashlib found 4758 the first number to give 12 zero bits for this challenge and "Ann".
+    int first = -1;
+    for (unsigned n = 0; n < 100000 && first < 0; n++)
+        if (WorkDone(challenge, "Ann", n, 12)) first = (int)n;
+    Check(first == 4758 && WorkDone(challenge, "Ann", 4758, 12) && !WorkDone(challenge, "Bob", 4758, 12), "the work for a new account agrees with server.py's (%d)", first);
+}
+
+// A server's game keeps slot 0 for itself: its first player gets the first house and color.
+static void TestSeats(void)
+{
+    G.role = NET_CLIENT;
+    Check(Seat(1) == 0 && Seat(2) == 1 && Seat(20) == 19 && HouseOf(1) == 0 && HouseOf(7) == 0 && PlayerColor(1).b == PlayerColor(0).b,
+          "on a server, slot 1 is the first seat (the blue house), slot 2 the second");
+    G.role = NET_SOLO;
+    Check(Seat(0) == 0 && HouseOf(0) == 0, "alone, the player is in the first seat");
 }
 
 // Six players, six houses; in PvP the start is anywhere in the city and the ziggurat is unguarded.
@@ -2261,7 +2309,6 @@ static void RunTests(void)
     TestGuardRound();
     TestWolfWays();
     TestBandits();
-    TestConsole();
     TestTempleLife();
     TestWilds();
     TestPartridges();
@@ -2283,5 +2330,8 @@ static void RunTests(void)
     TestHitLights();
     TestSixPlayers();
     TestRoyale();
+    TestLevels();
+    TestSha256();
+    TestSeats();
     printf("%d passed, %d failed\n", passes, fails);
 }

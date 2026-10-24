@@ -18,7 +18,8 @@ if [ ! -f raylib-web/src/libraylib.a ] || [ "$(cat raylib-web/.graphics 2>/dev/n
 fi
 
 mkdir -p web
-emcc -std=gnu99 -O2 -Wall -Wextra -o web/index.html src/*.c -Iraylib-web/src raylib-web/src/libraylib.a \
+# tools/same-world.flags: the server program (build-host.sh) must build the very same world as the browser.
+emcc -std=gnu99 -O2 -Wall -Wextra @tools/same-world.flags -o web/index.html src/*.c -Iraylib-web/src raylib-web/src/libraylib.a \
     -DPLATFORM_WEB -sUSE_GLFW=3 -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=1048576 -sFORCE_FILESYSTEM=1 \
     -sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE='$stringToNewUTF8,$UTF8ToString' \
     -sEXPORTED_RUNTIME_METHODS=HEAPF32 \

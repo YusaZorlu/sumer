@@ -91,28 +91,41 @@ static void Fence(float x0, float z0, float x1, float z1)
 static const float HOUSE_SPOTS[MAX_HOUSES][3] = { { 20, 22, 0 }, { 14, 50, 1 }, { 28, 50, 1 }, { 42, 50, 1 }, { -14, 50, 1 }, { 56, 50, 1 } };
 static const int HOUSE_STATIONS[HOUSE_STN] = { STN_BED, STN_STORAGE, STN_QUERN, STN_TROUGH, STN_BENCH, STN_OVEN };
 
+// Where a player's house and color come from. A server's game keeps slot 0 for itself, so its first player
+// (slot 1) gets the first house and color, as the one playing alone (slot 0) does.
+int Seat(int slot)
+{
+    int seat = slot > 0 && (Dedicated() || IsClient()) ? slot - 1 : slot;
+    return seat >= 0 && seat < MAX_SEATS ? seat : 0;
+}
+
 // The six houses go round: in a battle royale (twenty players) several share one, which is of no use there anyway.
 int HouseOf(int slot)
 {
-    return slot >= 0 ? slot % MAX_HOUSES : 0;
+    return Seat(slot) % MAX_HOUSES;
 }
 
-Color PlayerColor(int slot)
+static Color SeatColor(int seat)
 {
-    static const Color colors[MAX_PLAYERS] = {
+    static const Color colors[MAX_SEATS] = {
         { 38, 84, 160, 255 }, { 176, 46, 40, 255 }, { 46, 128, 62, 255 }, { 222, 162, 30, 255 }, { 118, 60, 150, 255 }, { 30, 150, 150, 255 },
         { 226, 118, 30, 255 }, { 220, 110, 160, 255 }, { 236, 232, 220, 255 }, { 40, 36, 34, 255 }, { 120, 76, 40, 255 }, { 150, 200, 50, 255 },
         { 26, 40, 96, 255 }, { 120, 24, 36, 255 }, { 120, 120, 40, 255 }, { 120, 200, 230, 255 }, { 200, 40, 200, 255 }, { 130, 130, 130, 255 },
         { 200, 170, 60, 255 }, { 60, 100, 70, 255 },
     };
-    return colors[slot >= 0 && slot < MAX_PLAYERS ? slot : 0];
+    return colors[seat >= 0 && seat < MAX_SEATS ? seat : 0];
+}
+
+Color PlayerColor(int slot)
+{
+    return SeatColor(Seat(slot));
 }
 
 const char *PlayerColorName(int slot)
 {
-    static const char *const names[MAX_PLAYERS] = { "blue", "red", "green", "yellow", "purple", "teal", "orange", "pink", "white", "black",
+    static const char *const names[MAX_SEATS] = { "blue", "red", "green", "yellow", "purple", "teal", "orange", "pink", "white", "black",
                                                     "brown", "lime", "navy", "maroon", "olive", "sky blue", "magenta", "grey", "gold", "pine" };
-    return L(names[slot >= 0 && slot < MAX_PLAYERS ? slot : 0]);
+    return L(names[Seat(slot)]);
 }
 
 typedef struct { float cx, cz; int rot; } Frame;
@@ -236,7 +249,7 @@ static void BuildHouse(int h)
     const float seg = (D - 2 * t - gap) / 2;
     Frame f = { HOUSE_SPOTS[h][0], HOUSE_SPOTS[h][1], (int)HOUSE_SPOTS[h][2] };
     House *home = &G.houses[h];
-    Color own = PlayerColor(h), wall = Mix(COL_MUD_PALE, own, 0.12f), band = Mix(own, COL_MUD_PALE, 0.25f);
+    Color own = SeatColor(h), wall = Mix(COL_MUD_PALE, own, 0.12f), band = Mix(own, COL_MUD_PALE, 0.25f);
     Vector3 st[HOUSE_STN];
 
     home->center = (Vector3){ f.cx, 0, f.cz };
@@ -355,10 +368,14 @@ static void BuildPen(void)
     Fence(50, 32, 50, 36);
     AddBox(58.5f, 0, 27.2f, 2.4f, 0.4f, 0.8f, COL_WOOD, true);
     AddBox(58.5f, 0.4f, 27.2f, 2.0f, 0.02f, 0.5f, COL_WATER, false);
-    for (int i = 0; i < MAX_COWS; i++)
-        G.cows[i] = (Wanderer){ { RandF(52, 58), 0, RandF(29, 34) }, RandF(-PI, PI), RandF(1, 3), 0 };
-    for (int i = 0; i < MAX_SHEEP; i++)
-        G.sheep[i] = (Wanderer){ { RandF(52, 58), 0, RandF(28, 34) }, RandF(-PI, PI), RandF(1, 3), 0 };
+    for (int i = 0; i < MAX_COWS; i++) {
+        float x = RandF(52, 58), z = RandF(29, 34), heading = RandF(-PI, PI), timer = RandF(1, 3);
+        G.cows[i] = (Wanderer){ { x, 0, z }, heading, timer, 0 };
+    }
+    for (int i = 0; i < MAX_SHEEP; i++) {
+        float x = RandF(52, 58), z = RandF(28, 34), heading = RandF(-PI, PI), timer = RandF(1, 3);
+        G.sheep[i] = (Wanderer){ { x, 0, z }, heading, timer, 0 };
+    }
     KeepOut(48, 25, 61, 37);
 }
 

@@ -4,6 +4,9 @@
 /raylib-linux/
 /raylib-web
 
+# server.py's accounts and the rooms' worlds (its --data folder)
+/data/
+
 # Saves and settings the game writes next to itself
 *.sav
 *.sav.tmp
@@ -19,3 +22,5 @@ sumer.sfx
 /tools/web/click/flow/
 /tools/web/shots/
 sumer.look
+sumer.prefs
+sumer.name

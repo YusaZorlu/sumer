@@ -331,6 +331,8 @@ bool ServeRequest(int slot, int kind, const int *args, int n, int *res, int *nre
         if (n >= 1 && a >= BY_PLAYER && a < BY_PLAYER + MAX_PLAYERS && a - BY_PLAYER != slot && PlayerIn(a - BY_PLAYER) && PlayerIn(slot)) {
             G.peers[a - BY_PLAYER].kills++;
             G.peers[slot].deaths++;
+            AwardXp(a - BY_PLAYER, XP_PLAYER, 1, 0);
+            AwardXp(slot, 0, 0, 1);
             // Everyone hears of it but the one brought down, whose own message lists what they lost.
             for (int s = 0; s < MAX_PLAYERS; s++)
                 if (s != slot && PlayerIn(s)) SayTo(s, "%s brought down %s.", G.peers[a - BY_PLAYER].name, G.peers[slot].name);

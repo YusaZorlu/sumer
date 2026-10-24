@@ -1,79 +1,36 @@
-// The browser's title screen: the player's name, then the way to play (Sumer Survival: alone, hosting a game
-// with or without PvP, or joining one; Sumer Royale: hosting or joining a battle royale). The room
-// comes from the page address (?room=...), so friends on one server can run separate games. For tests
-// and links, ?auto=solo|host|join&name=... starts at once.
+// The browser's title screen. First the account: log in, or create one on a tab of its own (account.c).
+// Then the ways to play: Sumer Survival (alone, or on one of the game's servers, together or with PvP)
+// and Sumer Royale (the battle royale servers), each server picked from a list that shows who is on it.
+// For tests and links, ?auto=solo plays alone and ?auto=join&room=ID joins that server, once logged in.
 #include "game.h"
 #include <stdio.h>
 #include <string.h>
 
-#define NAME_FILE "sumer.name"
-
 static enum { LOBBY_MENU, LOBBY_CONNECT } stage;
-// The title's pages: the ways to play, then Sumer Survival's (alone, together, PvP) or Sumer Royale's.
+// The title's pages: the ways to play, then Sumer Survival's (alone, or a server) or Sumer Royale's.
 static enum { PAGE_MODES, PAGE_SURVIVAL, PAGE_ROYALE } page;
-static bool open, loaded, autoDone, confirmNew, pvp = true, combat, dev;
-static char name[NAME_LEN], room[32], note[200];
+static bool open, loaded, autoDone, createTab;
+static char note[200];
 static float connectT;
-
-static bool NameChar(int c)
-{
-    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || (c && strchr(" -_.'", c));
-}
-
-static void Keep(char *dst, int size, const char *src)
-{
-    int n = 0;
-    for (const char *c = src; *c && n < size - 1; c++)
-        if (NameChar(*c)) dst[n++] = *c;
-    dst[n] = '\0';
-}
-
-static void LoadName(void)
-{
-    char buf[64] = "";
-    FILE *f = fopen(DataPath(NAME_FILE), "r");
-    if (f) {
-        if (!fgets(buf, sizeof(buf), f)) buf[0] = '\0';
-        fclose(f);
-    }
-    buf[strcspn(buf, "\r\n")] = '\0';
-    Keep(name, NAME_LEN, buf);
-}
-
-static void SaveName(void)
-{
-    FILE *f = fopen(DataPath(NAME_FILE), "w");
-    if (!f) return;
-    fprintf(f, "%s\n", name);
-    fclose(f);
-    SyncStorage();
-}
 
 const char *PlayerName(void)
 {
-    return name[0] ? name : "Player";
+    return LoggedIn() ? AccountName() : "Player";
 }
 
 void OpenLobby(const char *why)
 {
     if (!loaded) {
         loaded = true;
-        LoadName();
-        Keep(room, sizeof(room), PageParam("room"));
-        if (!room[0]) snprintf(room, sizeof(room), "sumer");
-        char given[NAME_LEN];
-        Keep(given, NAME_LEN, PageParam("name"));
-        if (given[0]) snprintf(name, sizeof(name), "%s", given);
-        if (strcmp(PageParam("pvp"), "0") == 0) pvp = false;
-        if (strcmp(PageParam("combat"), "1") == 0) combat = true;
-        if (strcmp(PageParam("dev"), "1") == 0) dev = true;
         if (Royale()) page = PAGE_ROYALE;   // ?mode=br: straight to the battle royale
+        AccountStart();
     }
     open = true;
     stage = LOBBY_MENU;
     snprintf(note, sizeof(note), "%s", why && why[0] ? L(why) : "");
     LockMouse(false);
     WantPointer(false);
+    AccountFlush();
 }
 
 bool InLobby(void)
@@ -94,11 +51,10 @@ static void Enter(void)
 {
     open = false;
     G.quit = false;
+    AccountForm(false, false, (Rectangle){ 0 }, (Rectangle){ 0 }, (Rectangle){ 0 });
     SetPanel(StyleChosen() || PageParam("auto")[0] ? PANEL_NONE : PANEL_LOOK);
     G.wasCaptured = false;
 }
-
-static void PlayAlone(void);
 
 #ifdef SUMER_TEST
 // For tests: back at the title, start again the way the page's address says (?auto=solo plays alone).
@@ -110,24 +66,23 @@ void LobbyAgain(void)
 
 static void PlayAlone(void)
 {
-    SaveName();
+    SetRoyale(false);
     SetSaveSlot(LastSlot());
     GameInit();
     if (LoadGame()) {
         Say("Welcome back. Day %d. Slot %d was loaded.", G.day, SaveSlot() + 1);
         G.msgT = 6.0f;
     }
-    G.devTools = dev;
     Enter();
 }
 
-static void Connect(bool host)
+// Onto server 'id', a room of kind 'mode'.
+static void Join(const char *id, int mode)
 {
-    SaveName();
     note[0] = '\0';
     connectT = 0;
-    NetRules(pvp, combat, dev);
-    if (NetBegin(host, PlayerName(), room)) stage = LOBBY_CONNECT;
+    SetRoyale(mode == ROOM_ROYALE);
+    if (NetBegin(AccountName(), id)) stage = LOBBY_CONNECT;
     else snprintf(note, sizeof(note), "%s", NetFailure());
 }
 
@@ -153,15 +108,72 @@ static bool Choice(Rectangle r, const char *label, bool enabled)
     return hover && MousePressed(MOUSE_BUTTON_LEFT);
 }
 
-static void TypeName(void)
+// A tab: lit while it is the one open.
+static bool Tab(Rectangle r, const char *label, bool on)
 {
-    int c, n = (int)strlen(name);
-    while ((c = GetCharPressed()) > 0)
-        if (NameChar(c) && n < NAME_LEN - 1 && !(c == ' ' && n == 0)) {
-            name[n++] = (char)c;
-            name[n] = '\0';
-        }
-    if ((KeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && n > 0) name[n - 1] = '\0';
+    bool hover = CheckCollisionPointRec(UiMouse(), r);
+    DrawRectangleRec(r, on ? (Color){ 150, 110, 60, 255 } : hover ? (Color){ 90, 68, 42, 255 } : (Color){ 58, 48, 38, 255 });
+    DrawRectangleLinesEx(r, 1, on ? (Color){ 240, 200, 120, 255 } : (Color){ 150, 120, 80, 255 });
+    Centered(label, r.x + r.width / 2, r.y + (r.height - 18) / 2, 18, (Color){ 240, 230, 210, 255 });
+    return hover && !on && MousePressed(MOUSE_BUTTON_LEFT);
+}
+
+// Where a server stands, in a few words.
+static const char *RoomLine(int mode, int players, int max, int state)
+{
+    const char *kind = L(mode == ROOM_PVP ? "PvP: players can fight" : mode == ROOM_ROYALE ? "Battle royale" : "Together, no PvP");
+    if (state == 3) return TextFormat("%s - %s", kind, L("cannot open now: all servers busy"));
+    if (state == 0) return TextFormat("%s - %s", kind, L("nobody here; joining opens it"));
+    if (players >= max) return TextFormat("%s - %s", kind, L("full"));
+    return TextFormat(L(state == 2 ? "%s - %d/%d players, a round under way" : "%s - %d/%d players"), kind, players, max);
+}
+
+// The servers of the kinds wanted, one row each from y on; returns where the rows end.
+static float RoomRows(float x, float y, bool survival, bool menu)
+{
+    char id[24], title[40];
+    int mode, players, max, state, shown = 0;
+    for (int i = 0; i < RoomCount(); i++) {
+        if (!RoomInfo(i, id, (int)sizeof(id), title, (int)sizeof(title), &mode, &players, &max, &state)) continue;
+        if ((mode == ROOM_ROYALE) == survival) continue;
+        bool ok = menu && state != 3 && players < max;
+        if (Choice((Rectangle){ x, y, 250, 36 }, title, ok)) Join(id, mode);
+        Label(RoomLine(mode, players, max, state), x + 270, y + 10, 15, (Color){ 150, 140, 125, 255 });
+        y += 44;
+        shown++;
+    }
+    if (!shown) {
+        Label(RoomCount() ? "No servers of this kind are set up." : "Asking the game server for its servers...", x, y + 8, 15, (Color){ 150, 140, 125, 255 });
+        y += 44;
+    }
+    return y;
+}
+
+// ?auto=solo|join&room=ID: once logged in (and, to join, once the list of servers says what kind it is).
+static void AutoStart(void)
+{
+    const char *mode = PageParam("auto");
+    if (!mode[0]) {
+        autoDone = true;
+        return;
+    }
+    if (!LoggedIn() || !AccountSavesReady()) return;
+    if (strcmp(mode, "solo") == 0) {
+        autoDone = true;
+        PlayAlone();
+        return;
+    }
+    char want[32], id[24], title[40];
+    int kind, players, max, state;
+    snprintf(want, sizeof(want), "%s", PageParam("room"));
+    AccountRooms();
+    if (!RoomCount()) return;
+    // A room not in the list (a test server's) is of the kind its name begins with.
+    int room = strncmp(want, "royale", 6) == 0 ? ROOM_ROYALE : strncmp(want, "pvp", 3) == 0 ? ROOM_PVP : ROOM_SURVIVAL;
+    for (int i = 0; i < RoomCount(); i++)
+        if (RoomInfo(i, id, (int)sizeof(id), title, (int)sizeof(title), &kind, &players, &max, &state) && strcmp(id, want) == 0) room = kind;
+    autoDone = true;
+    Join(want, room);
 }
 
 void LobbyFrame(void)
@@ -169,14 +181,9 @@ void LobbyFrame(void)
     const Color gold = { 240, 200, 120, 255 }, text = { 240, 230, 210, 255 }, dim = { 150, 140, 125, 255 }, bad = { 230, 110, 90, 255 };
     float sw = UiWidth(), sh = UiHeight(), cx = sw / 2;
 
-    if (!autoDone) {
-        autoDone = true;
-        const char *mode = PageParam("auto");
-        if (strcmp(mode, "solo") == 0) PlayAlone();
-        else if (strcmp(mode, "host") == 0) Connect(true);
-        else if (strcmp(mode, "join") == 0) Connect(false);
-        if (!open) return;
-    }
+    AccountFrame();
+    if (!autoDone && stage == LOBBY_MENU) AutoStart();
+    if (!open) return;
     if (stage == LOBBY_CONNECT) {
         int state = NetLobby();
         connectT += GetFrameTime();
@@ -188,8 +195,6 @@ void LobbyFrame(void)
             stage = LOBBY_MENU;
             snprintf(note, sizeof(note), "%s", NetFailure());
         }
-    } else {
-        TypeName();
     }
 
     BeginDrawing();
@@ -209,117 +214,105 @@ void LobbyFrame(void)
     DrawRectangleRec(panel, (Color){ 30, 24, 20, 238 });
     DrawRectangleLinesEx(panel, 2, (Color){ 150, 120, 80, 255 });
     Centered("SUMER", cx, panel.y + 18, 50, gold);
-    Centered(page == PAGE_ROYALE ? "Sumer Royale" : page == PAGE_SURVIVAL ? "Sumer Survival" : "Ur, c. 2100 BC",
-             cx, panel.y + 74, 20, page == PAGE_ROYALE ? gold : text);
+    bool in = LoggedIn();
+    Centered(!in ? "Ur, c. 2100 BC" : page == PAGE_ROYALE ? "Sumer Royale" : page == PAGE_SURVIVAL ? "Sumer Survival" : "Ur, c. 2100 BC",
+             cx, panel.y + 74, 20, in && page == PAGE_ROYALE ? gold : text);
 
     float x = panel.x + 40, y = panel.y + 120;
-    Label("Your name", x, y + 8, 20, text);
-    Rectangle field = { x + 150, y, 330, 38 };
-    DrawRectangleRec(field, (Color){ 58, 48, 38, 255 });
-    DrawRectangleLinesEx(field, 1, stage == LOBBY_MENU ? gold : dim);
-    DrawTextEx(GameFont(), name, (Vector2){ field.x + 10, field.y + 9 }, 20, 2, text);
-    if (stage == LOBBY_MENU && ((int)(GetTime() * 2.0) & 1)) {
-        Vector2 m = MeasureTextEx(GameFont(), name, 20, 2);
-        DrawRectangle((int)(field.x + 12 + m.x), (int)field.y + 8, 2, 22, text);
-    }
-    // A phone has no keys to type with: a tap on the field opens the browser's box, and with it the keyboard.
-    if (stage == LOBBY_MENU && TouchOn() && CheckCollisionPointRec(UiMouse(), field) && MousePressed(MOUSE_BUTTON_LEFT)) {
-        char got[64];
-        if (AskText(L("Your name"), name, got, (int)sizeof(got))) {
-            int n = 0;
-            for (const char *c = got; *c && n < NAME_LEN - 1; c++)
-                if (NameChar((unsigned char)*c) && !(*c == ' ' && n == 0)) name[n++] = *c;
-            name[n] = '\0';
-        }
-    }
-    y += 50;
-    Label(TextFormat(L("Room: %s   (add ?room=a-name to the address for a game of your own)"), room), x, y, 15, dim);
-    y += 40;
-
-    bool menu = stage == LOBBY_MENU, named = name[0] != '\0';
-    Rectangle row = { x, y, 250, 44 };
-    if (page == PAGE_MODES) {
-        // The ways to play. The third place is kept for one to come.
-        if (Choice(row, "Sumer Survival", menu)) {
-            SetRoyale(false);
-            page = PAGE_SURVIVAL;
-        }
-        Label("Alone or with friends: farm, hunt, trade", x + 270, y + 4, 15, dim);
-        Label("and get through the seasons in Ur.", x + 270, y + 24, 15, dim);
-        y += 58;
-        if (Choice((Rectangle){ x, y, 250, 44 }, "Sumer Royale", menu)) {
-            SetRoyale(true);
-            page = PAGE_ROYALE;
-        }
-        Label("Battle royale for up to twenty players:", x + 270, y + 4, 15, dim);
-        Label("the last one standing wins.", x + 270, y + 24, 15, dim);
-        y += 58;
-        Choice((Rectangle){ x, y, 250, 44 }, "Coming soon", false);
-        Label("Another way to play is on its way.", x + 270, y + 14, 15, dim);
-        y += 70;
-    } else if (page == PAGE_SURVIVAL) {
-        if (Choice(row, "Singleplayer", menu)) PlayAlone();
-        Label("Kept in this browser, in three save slots.", x + 270, y + 14, 15, dim);
-        y += 54;
-        if (Choice((Rectangle){ x, y, 250, 44 }, "Multiplayer", menu && named)) {
-            pvp = false;
-            Connect(true);
-        }
-        int day;
-        float hour;
-        Label("Host: up to five friends join from this address.", x + 270, y + 4, 15, dim);
-        if (NetSaveSummary(&day, &hour)) {
-            // The hosted world carries on until its host starts a new one (two clicks).
-            Label(TextFormat(L("Your hosted world: day %d."), day), x + 270, y + 24, 15, dim);
-            if (Choice((Rectangle){ panel.x + panel.width - 160, y + 20, 120, 24 }, confirmNew ? "Erase it?" : "New world", menu)) {
-                if (confirmNew) {
-                    DeleteNetGame();
-                    snprintf(note, sizeof(note), "%s", L("The hosted world is erased. Host a game to begin a new one."));
-                }
-                confirmNew = !confirmNew;
-            }
-        }
-        y += 54;
-        if (Choice((Rectangle){ x, y, 250, 44 }, "Multiplayer PvP", menu && named)) {
-            pvp = true;
-            Connect(true);
-        }
-        Label("Host, with players able to fight each other.", x + 270, y + 4, 15, dim);
-        if (Choice((Rectangle){ x + 270, y + 22, 200, 22 }, combat ? "Combat mode: on" : "Combat mode: off", menu)) combat = !combat;
-        y += 54;
-        if (Choice((Rectangle){ x, y, 250, 44 }, "Join a game", menu && named)) Connect(false);
-        Label("Joins the game hosted in this room, by its rules.", x + 270, y + 14, 15, dim);
+    bool menu = stage == LOBBY_MENU;
+    int acc = AccountState();
+    Rectangle hidden = { 0 };
+    if (!in) {
+        // The account: log in, or create one. The fields are the page's own, laid over these frames.
+        bool busy = acc != ACC_OUT;
+        if (Tab((Rectangle){ cx - 205, y, 200, 32 }, "Log in", !createTab) && !busy) createTab = false;
+        if (Tab((Rectangle){ cx + 5, y, 200, 32 }, "Create account", createTab) && !busy) createTab = true;
         y += 52;
-        // Dev tools go for playing alone too: the dev console (Tab, then its button, or `).
-        if (Choice((Rectangle){ x, y, 120, 26 }, "Back", menu)) page = PAGE_MODES;
-        if (Choice((Rectangle){ x + 140, y, 190, 26 }, dev ? "Dev tools: on" : "Dev tools: off", menu)) dev = !dev;
-        Label("The dev console, alone or hosting.", x + 345, y + 6, 13, dim);
-        y += 38;
-    } else {
-        // A battle royale: no saves, no rules to pick. The host starts each round when everyone is in.
-        if (Choice(row, "Host a battle royale", menu && named)) Connect(true);
-        Label("Up to nineteen friends join from this same address.", x + 270, y + 4, 15, dim);
-        Label("No guards or raiders; a sandstorm closes in.", x + 270, y + 24, 15, dim);
-        y += 58;
-        if (Choice((Rectangle){ x, y, 250, 44 }, "Join the battle royale", menu && named)) Connect(false);
-        Label("Joins the battle royale hosted in this room.", x + 270, y + 14, 15, dim);
-        y += 58;
-        if (Choice((Rectangle){ x, y, 120, 26 }, "Back", menu)) page = PAGE_MODES;
-        if (Choice((Rectangle){ x + 140, y, 190, 26 }, dev ? "Dev tools: on" : "Dev tools: off", menu)) dev = !dev;
-        Label("The dev console, when you host.", x + 345, y + 6, 13, dim);
-        y += 50;
-    }
-
-    if (stage == LOBBY_CONNECT) {
-        Centered(connectT < 8.0f ? "Connecting..." : "Still connecting. Is server.py running?", cx, y, 20, gold);
-        if (Choice((Rectangle){ cx - 80, y + 34, 160, 38 }, "Cancel", true)) {
-            NetShut();
-            stage = LOBBY_MENU;
+        Rectangle fields[3];
+        const char *labels[3] = { "Account name", "Password", "Password again" };
+        int rows = createTab ? 3 : 2;
+        for (int k = 0; k < rows; k++) {
+            fields[k] = (Rectangle){ x + 230, y, 380, 38 };
+            Label(labels[k], x + 20, y + 9, 20, text);
+            DrawRectangleRec(fields[k], (Color){ 58, 48, 38, 255 });
+            DrawRectangleLinesEx(fields[k], 1, busy ? dim : gold);
+            y += 48;
         }
-    } else if (note[0]) {
-        Centered(note, cx, y, 17, bad);
-    } else if (!named) {
-        Centered("Type a name to host or join a game.", cx, y, 17, dim);
+        if (rows == 2) fields[2] = hidden;
+        AccountForm(acc != ACC_UNKNOWN, createTab, fields[0], fields[1], fields[2]);
+        y += 8;
+        bool go = Choice((Rectangle){ cx - 125, y, 250, 44 }, createTab ? "Create account" : "Log in", !busy) || (!busy && AccountEnter());
+        if (go) AccountSubmit(createTab);
+        y += 60;
+        if (acc == ACC_UNKNOWN) Centered("Connecting to the game server...", cx, y, 17, gold);
+        else if (AccountNote()[0]) Centered(AccountNote(), cx, y, 17, acc == ACC_BUSY ? gold : bad);
+        else if (note[0]) Centered(note, cx, y, 17, bad);
+        Centered(createTab ? "No e-mail needed: only your account name and a hash of your password are kept."
+                           : "Your level, K/D and things are kept with your account on the game's server.",
+                 cx, panel.y + panel.height - 40, 15, dim);
+    } else {
+        AccountForm(false, false, hidden, hidden, hidden);
+        Rectangle row = { x, y, 250, 44 };
+        if (page == PAGE_MODES) {
+            // The ways to play. The third place is kept for one to come.
+            if (Choice(row, "Sumer Survival", menu)) {
+                SetRoyale(false);
+                page = PAGE_SURVIVAL;
+            }
+            Label("Alone or with others: farm, hunt, trade", x + 270, y + 4, 15, dim);
+            Label("and get through the seasons in Ur.", x + 270, y + 24, 15, dim);
+            y += 58;
+            if (Choice((Rectangle){ x, y, 250, 44 }, "Sumer Royale", menu)) page = PAGE_ROYALE;
+            Label("Battle royale for up to twenty players:", x + 270, y + 4, 15, dim);
+            Label("the last one standing wins.", x + 270, y + 24, 15, dim);
+            y += 58;
+            Choice((Rectangle){ x, y, 250, 44 }, "Coming soon", false);
+            Label("Another way to play is on its way.", x + 270, y + 14, 15, dim);
+            y += 70;
+        } else if (page == PAGE_SURVIVAL) {
+            AccountRooms();
+            bool ready = AccountSavesReady();
+            if (Choice(row, "Singleplayer", menu && ready)) PlayAlone();
+            Label(ready ? "Three save slots, kept with your account." : "Fetching your saves...", x + 270, y + 14, 15, dim);
+            y += 56;
+            Label("Servers: the world goes on while you are away; your things come with you.", x, y, 15, text);
+            y += 24;
+            y = RoomRows(x, y, true, menu);
+            if (Choice((Rectangle){ x, y + 4, 120, 26 }, "Back", menu)) page = PAGE_MODES;
+            y += 44;
+        } else {
+            // A battle royale: a round starts by itself once two or more players are in.
+            AccountRooms();
+            Label("A round starts by itself once two or more players are in. Everyone starts", x, y, 15, text);
+            Label("with the best gear; the winner gains 10 XP for every player in the round.", x, y + 20, 15, text);
+            y += 50;
+            y = RoomRows(x, y, false, menu);
+            if (Choice((Rectangle){ x, y + 4, 120, 26 }, "Back", menu)) page = PAGE_MODES;
+            y += 44;
+        }
+        if (stage == LOBBY_CONNECT) {
+            Centered(connectT < 8.0f ? "Connecting..." : "Still connecting...", cx, y, 20, gold);
+            if (Choice((Rectangle){ cx - 80, y + 30, 160, 34 }, "Cancel", true)) {
+                NetShut();
+                stage = LOBBY_MENU;
+            }
+        } else if (note[0]) {
+            Centered(note, cx, y, 17, bad);
+        }
+        // Who is playing: their level and their K/D (kills and deaths at other players' hands).
+        long xp = AccountXp();
+        int kills = AccountKills(), deaths = AccountDeaths();
+        float ratio = deaths > 0 ? (float)kills / (float)deaths : (float)kills;
+        const char *who = TextFormat("%s   %s   K/D %d/%d (%.1f)", AccountName(), LevelText(xp), kills, deaths, ratio);
+        float by = panel.y + panel.height - 40;
+        DrawTextEx(GameFont(), who, (Vector2){ x, by + 5 }, 18, 1, gold);
+        float frac = LevelOf(xp) >= MAX_LEVEL ? 1.0f : (float)(xp - LevelStart(LevelOf(xp))) / (float)(LevelStart(LevelOf(xp) + 1) - LevelStart(LevelOf(xp)));
+        DrawRectangle((int)x, (int)by + 26, 400, 4, (Color){ 58, 48, 38, 255 });
+        DrawRectangle((int)x, (int)by + 26, (int)(400 * frac), 4, gold);
+        if (Choice((Rectangle){ panel.x + panel.width - 160, by, 120, 26 }, "Log out", menu)) {
+            AccountLogout();
+            page = PAGE_MODES;
+        }
     }
 
     if (Choice((Rectangle){ panel.x + 14, panel.y + 12, 214, 26 }, TextFormat(L("Music: %s"), L(MusicLevelName())), menu))

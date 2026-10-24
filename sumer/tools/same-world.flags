@@ -1,0 +1,1 @@
+-ffp-contract=off -fno-builtin-sin -fno-builtin-sinf -fno-builtin-cos -fno-builtin-cosf -fno-builtin-tan -fno-builtin-tanf -fno-builtin-atanf -fno-builtin-atan2f -fno-builtin-asinf -fno-builtin-acosf -fno-builtin-exp -fno-builtin-expf -fno-builtin-pow -fno-builtin-powf -fno-builtin-tanhf -fno-builtin-hypotf

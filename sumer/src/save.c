@@ -174,7 +174,9 @@ bool SaveGame(void)
     for (int i = 0; i < MASK_BYTES; i++) W8(&w, animals[i]);
     W8(&w, G.hasMace ? 1u : 0u);
 
-    return WriteFile(SaveFileName(slot), &w);
+    bool ok = WriteFile(SaveFileName(slot), &w);
+    if (ok) AccountSaved(slot, w.d, w.n);   // the server keeps a copy with the account
+    return ok;
 }
 
 // Written beside the old file, then renamed over it, so a crash never leaves half a save.
@@ -362,6 +364,7 @@ void DeleteSave(void)
 {
     remove(DataPath(SaveFileName(slot)));
     SyncStorage();
+    AccountSaved(slot, NULL, 0);
 }
 
 bool SaveSummary(int s, int *day, float *hour)
@@ -625,8 +628,10 @@ bool SaveNetGame(void)
     Writer w = { buf, 0, NET_SAVE_MAX, false };
     PlayerRecord mine;
 
-    CaptureRecord(&mine);
-    KeepRecord(&mine);
+    if (!Dedicated()) {
+        CaptureRecord(&mine);
+        KeepRecord(&mine);
+    }
     W32(&w, NET_SAVE_MAGIC);
     W8(&w, NET_SAVE_VERSION);
     WriteWorld(&w);

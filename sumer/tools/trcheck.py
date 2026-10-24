@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Lists string literals in the game sources that have no Turkish entry in turkish.c.
+"""Lists string literals in the game sources (and the refusals server.py sends) that have no Turkish entry in turkish.c.
 
 Usage: trcheck.py <srcdir>
 Adjacent literals ("a" "b") are joined, as the C compiler does.
@@ -52,11 +52,18 @@ for name in sorted(os.listdir(src)):
             continue
         missing.setdefault(s, name)
 
+# What server.py refuses with is shown on the title screen in the player's language too.
+server = os.path.join(src, '..', 'server.py')
+said = re.findall(r'text\("((?:[^"\\\n]|\\.)*)"\)', open(server, encoding='utf-8').read()) if os.path.exists(server) else []
+for s in said:
+    if s not in keys and re.search(r'[A-Za-z]{2}', s):
+        missing.setdefault(s, 'server.py')
+
 for s, name in sorted(missing.items(), key=lambda kv: (kv[1], kv[0])):
     print(f'{name}: "{s}"')
 print(f'-- {len(missing)} literals without a Turkish entry', file=sys.stderr)
 
-used = set()
+used = set(said)
 for name in os.listdir(src):
     if name.endswith('.c') and name not in SKIP:
         used.update(literals(open(os.path.join(src, name), encoding='utf-8').read()))

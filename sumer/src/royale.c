@@ -1,10 +1,10 @@
 // Battle royale: up to twenty players on a map with no guards, raiders or barbarians, where houses
-// are of no use. The host starts a round: everyone is set down somewhere across the map, far from the
-// others, with the best gear (combat mode). A sandstorm closes in on the city in stages and hurts
+// are of no use. A round starts by itself half a minute after two or more players are in: everyone is
+// set down somewhere across the map, far from the others, with the best gear. A sandstorm closes in on the city in stages and hurts
 // whoever is caught in it. Fifteen statues of the gods stand about the land; praying at one gives a
 // blessing for the rest of the round (+5% attack speed, +5% running speed or +10% healing), the first
-// to reach it takes it. Whoever is brought down watches the others; the last one standing wins.
-// The page is in this mode when its address says ?mode=br (the battle royale port of server.py does).
+// to reach it takes it. Whoever is brought down watches the others; the last one standing wins, and
+// gains ten experience for every player the round began with.
 #include "game.h"
 #include "rlgl.h"
 #include <math.h>
@@ -15,9 +15,12 @@ enum { BOON_ATTACK, BOON_RUN, BOON_HEAL, BOONS };
 
 typedef struct { Vector3 pos; int kind; const char *god; } Statue;
 
+#define ROUND_WAIT 30.0f   // seconds from two players being in to the round's start
+
 static bool mode, modeKnown;
 static Statue statues[STATUES];
-static struct { int phase; float t; unsigned claimed; int winner, started; } rnd;
+// 'countdown': seconds to the next round, or below 0 while fewer than two players are in.
+static struct { int phase; float t; unsigned claimed; int winner, started; float countdown; } rnd;
 static int boons[BOONS];
 static bool out;            // this machine's player was brought down this round and only watches
 static int watched = -1;    // the player a watcher follows
@@ -38,9 +41,21 @@ void SetRoyale(bool on)
     modeKnown = true;
 }
 
+// Players in one game: twenty in a battle royale, six otherwise.
 int PlayerLimit(void)
 {
-    return Royale() ? MAX_PLAYERS : 6;
+    return Royale() ? MAX_SEATS : 6;
+}
+
+float RoyaleCountdown(void)
+{
+    return rnd.countdown;
+}
+
+// How many players the round under way (or the last one) began with.
+int RoyaleStarted(void)
+{
+    return rnd.started;
 }
 
 int RoyalePhase(void)
@@ -53,10 +68,15 @@ bool RoyaleOut(void)
     return Royale() && out;
 }
 
-// Test tools only: jump the round's clock.
+// Test tools only: jump the round's clock, or the wait for the next round.
 void RoyaleSkipTo(float t)
 {
     rnd.t = t;
+}
+
+void RoyaleCountdownTo(float t)
+{
+    if (rnd.countdown >= 0) rnd.countdown = t;
 }
 
 int RoyaleWinner(void)
@@ -189,6 +209,7 @@ void ShapeRoyale(void)
     rnd.claimed = 0;
     rnd.winner = -1;
     rnd.started = 0;
+    rnd.countdown = -1;
     memset(boons, 0, sizeof(boons));
     out = false;
     watched = -1;
@@ -301,13 +322,16 @@ void RoyaleBegin(float x, float z)
     G.msgT = 8.0f;
 }
 
-// The host starts a round: every player somewhere of their own across the land, far apart.
+// The host starts a round: every player somewhere of their own across the land, far apart. Never for
+// one player alone.
 void RoyaleStart(void)
 {
     if (!Royale() || G.role == NET_CLIENT) return;
     int n = 0, slots[MAX_PLAYERS];
     for (int s = 0; s < MAX_PLAYERS; s++)
         if (G.peers[s].active) slots[n++] = s;
+    if (n < 2) return;
+    rnd.countdown = -1;
     float turn = RandF(0, 2.0f * PI);
     rnd.started = n;
     for (int k = 0; k < n; k++) {
@@ -367,11 +391,17 @@ void RoyaleUpdate(float dt)
     if (out && (MousePressed(MOUSE_BUTTON_LEFT) || KeyPressed(KEY_SPACE)) && G.panel == PANEL_NONE) NextWatched(1);
 
     bool host = G.role != NET_CLIENT;
-    // On a touch screen, Use with nothing to use at hand.
-    bool tapStart = TouchPressed(TB_USE) && G.target.kind == TGT_NONE;
-    if (host && G.panel == PANEL_NONE && rnd.phase != RP_RUN && ((KeyPressed(KEY_ENTER) && !IsKeyDown(KEY_LEFT_ALT) && !IsKeyDown(KEY_RIGHT_ALT)) || tapStart))
-        RoyaleStart();
-    if (!host || rnd.phase != RP_RUN) return;
+    if (!host) {
+        if (rnd.countdown > 0) rnd.countdown = fmaxf(0.0f, rnd.countdown - dt);
+        return;
+    }
+    // Between rounds: half a minute once two or more are in, then the round begins.
+    if (rnd.phase != RP_RUN) {
+        if (PlayerCount() < 2) rnd.countdown = -1;
+        else if (rnd.countdown < 0) rnd.countdown = ROUND_WAIT;
+        else if ((rnd.countdown -= dt) <= 0) RoyaleStart();
+        return;
+    }
 
     // The storm hurts whoever it catches, twice a second.
     stormTick += dt;
@@ -381,14 +411,18 @@ void RoyaleUpdate(float dt)
         for (int s = 0; s < MAX_PLAYERS; s++)
             if (G.peers[s].active && !(G.peers[s].flags & PF_OUT) && InStorm(G.peers[s].pos)) HurtSlotFrom(s, hurt, BY_STORM, NULL);
     }
-    // The last one standing wins (a round begun alone ends when its player falls).
+    // The last one standing wins; a round that everyone has left ends without a winner.
     int last = -1, alive = Alive(&last);
     if ((rnd.started >= 2 && alive <= 1) || alive == 0) {
         rnd.phase = RP_OVER;
         rnd.winner = alive == 1 ? last : -1;
-        if (rnd.winner >= 0) Announce("%s is the last one standing and wins the round!", G.peers[rnd.winner].name);
-        else Announce("No one is left standing. The storm wins this round.");
-        if (rnd.winner == G.self) Say("You are the last one standing: you win the round!");
+        if (rnd.winner >= 0) {
+            Announce("%s is the last one standing and wins the round!", G.peers[rnd.winner].name);
+            SayTo(rnd.winner, "Congratulations, you are the last one standing and win the round! +%d XP", XP_WIN * rnd.started);
+            AwardXp(rnd.winner, XP_WIN * rnd.started, 0, 0);
+        } else {
+            Announce("No one is left standing. The storm wins this round.");
+        }
     }
 }
 
@@ -399,6 +433,8 @@ void WriteRoyale(Writer *w)
     WF(w, rnd.t);
     W16(w, rnd.claimed);
     W8(w, rnd.winner >= 0 ? (unsigned)rnd.winner : 255u);
+    W8(w, (unsigned)rnd.started);
+    W8(w, rnd.countdown >= 0 ? (unsigned)Clamp(ceilf(rnd.countdown), 0.0f, 254.0f) : 255u);
 }
 
 void ReadRoyale(Reader *r)
@@ -406,9 +442,11 @@ void ReadRoyale(Reader *r)
     int phase = (int)R8(r);
     float t = RF(r);
     unsigned claimed = R16(r);
-    int winner = (int)R8(r);
+    int winner = (int)R8(r), started = (int)R8(r), countdown = (int)R8(r);
     if (r->bad) return;
-    if (rnd.phase == RP_RUN && phase == RP_OVER && winner == G.self) Say("You are the last one standing: you win the round!");
+    rnd.started = started;
+    if (countdown == 255) rnd.countdown = -1;
+    else if (rnd.countdown < 0 || fabsf(rnd.countdown - (float)countdown) > 1.5f) rnd.countdown = (float)countdown;
     rnd.phase = phase;
     if (fabsf(rnd.t - t) > 1.0f || phase != RP_RUN) rnd.t = t;
     rnd.claimed = claimed;
@@ -492,9 +530,8 @@ void DrawRoyaleHUD(float sw, float sh)
     if (rnd.phase == RP_WAIT || rnd.phase == RP_OVER) {
         const char *done = rnd.phase == RP_OVER ? (rnd.winner >= 0 ? TextFormat(L("%s won the round. "), G.peers[rnd.winner].name)
                                                                            : L("The storm won the round. ")) : "";
-        line = G.role != NET_CLIENT ? TextFormat(L(TouchOn() ? "%sBattle royale: %d players here. Tap Use to start a round."
-                                                           : "%sBattle royale: %d players here. Press Enter to start a round."), done, players)
-                                    : TextFormat(L("%sBattle royale: %d players here. Waiting for the host to start a round."), done, players);
+        line = rnd.countdown >= 0 ? TextFormat(L("%sBattle royale: %d players here. The round starts in %d s."), done, players, (int)ceilf(rnd.countdown))
+                                  : TextFormat(L("%sBattle royale: %d players here. A round starts once two or more players are here."), done, players);
     } else {
         float wait = StormWait(rnd.t);
         line = wait > 0 ? TextFormat(L("%d of %d standing. The storm moves in %d:%02d."), alive, rnd.started, (int)wait / 60, (int)wait % 60)

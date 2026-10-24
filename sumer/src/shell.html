@@ -10,11 +10,17 @@
      the window. No browser gestures on it: a finger on the game is the game's. */
   canvas { display: block; outline: none; position: fixed; left: 0; top: 0; width: 100%; height: 100%; touch-action: none; }
   #status { position: absolute; top: 45%; width: 100%; text-align: center; color: #f0e6d2; font: 18px sans-serif; }
+  /* The account fields: the title screen draws their frames and labels and places them (AccountForm in web.c). */
+  input.acct { display: none; position: fixed; box-sizing: border-box; margin: 0; padding: 0 0.5em; border: 0; outline: none;
+               background: transparent; color: #f0e6d2; font-family: sans-serif; z-index: 2; }
 </style>
 </head>
 <body>
 <div id="status">Loading Sumer...</div>
 <canvas id="canvas" tabindex="-1"></canvas>
+<input id="acctName" class="acct" type="text" autocomplete="username" maxlength="15" spellcheck="false" autocapitalize="off" autocorrect="off">
+<input id="acctPass" class="acct" type="password" autocomplete="current-password" maxlength="128">
+<input id="acctPass2" class="acct" type="password" autocomplete="new-password" maxlength="128">
 <script>
   var canvas = document.getElementById('canvas');
   var Module = {
@@ -57,6 +63,15 @@
       if (d.requestFullscreen) d.requestFullscreen({ navigationUI: 'hide' }).then(landscape).catch(function () {});
       else if (d.webkitRequestFullscreen) d.webkitRequestFullscreen();
     } catch (e) {}
+  });
+  // What is typed in the account fields is not the game's: the game's own key handlers (which keep some
+  // keys, Backspace among them, from the page) do not hear it. Enter in them asks the game to go on.
+  ['keydown', 'keyup', 'keypress'].forEach(function (kind) {
+    window.addEventListener(kind, function (e) {
+      if (!e.target || !e.target.classList || !e.target.classList.contains('acct')) return;
+      e.stopImmediatePropagation();
+      if (kind === 'keydown' && e.key === 'Enter') Module.sumerAcctEnter = 1;
+    }, true);
   });
   // F5 saves the game here instead of reloading the page.
   window.addEventListener('keydown', function (e) {

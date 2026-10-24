@@ -39,8 +39,11 @@ EMSCRIPTEN_KEEPALIVE const char *TestInfo(void)
     Esc(msg, sizeof(msg), G.msgT > 0 ? G.msg : "");
     Esc(chat, sizeof(chat), ChatLast());
     Esc(failure, sizeof(failure), NetFailure());
-    int n = snprintf(buf, sizeof(buf),
-        "{\"lobby\":%d,\"role\":%d,\"self\":%d,\"players\":%d,\"day\":%d,\"hour\":%.3f,\"x\":%.2f,\"y\":%.2f,\"z\":%.2f,"
+    char note[300];
+    Esc(note, sizeof(note), AccountNote());
+    int n = snprintf(buf, sizeof(buf), "{\"xp\":%ld,\"account\":\"%s\",\"accState\":%d,\"note\":\"%s\",", AccountXp(), AccountName(), AccountState(), note);
+    n += snprintf(buf + n, sizeof(buf) - (size_t)n,
+        "\"lobby\":%d,\"role\":%d,\"self\":%d,\"players\":%d,\"day\":%d,\"hour\":%.3f,\"x\":%.2f,\"y\":%.2f,\"z\":%.2f,"
         "\"yaw\":%.3f,\"pitch\":%.3f,\"captured\":%d,\"lang\":%d,\"health\":%.1f,\"food\":%.1f,\"quiver\":%d,\"henCount\":%d,\"eggs\":%d,\"waitBed\":%d,\"sleeping\":%d,\"panel\":%d,\"swing\":%.2f,\"cool\":%.2f,\"equip\":%d,\"pvp\":%d,\"combat\":%d,\"mood\":%d,\"place\":%d,\"musicLevel\":%d,\"hitLight\":[%.2f,%.2f,%.2f,%.2f],\"flinch\":%.2f,\"villagers\":%d,\"gfx\":%d,\"ui\":%.3f,\"shake\":%.2f,"
         "\"target\":%d,\"targetIndex\":%d,\"promptE\":\"%s\",\"msg\":\"%s\",\"chat\":\"%s\",\"failure\":\"%s\",\"peers\":[",
         InLobby(), G.role, G.self, PlayerCount(), G.day, G.hour, G.player.pos.x, G.player.pos.y, G.player.pos.z,
@@ -55,7 +58,8 @@ EMSCRIPTEN_KEEPALIVE const char *TestInfo(void)
                       first ? "" : ",", s, name, p->pos.x, p->pos.z, p->flags, p->health, p->wanted, p->kills, p->deaths, p->mark);
         first = 0;
     }
-    n += snprintf(buf + n, sizeof(buf) - (size_t)n, "],\"fpsLimit\":%d,\"aim\":%d,\"moving\":%d,\"stick\":[%.2f,%.2f],\"touch\":%d,\"fp\":%d,\"crouch\":%d,\"parry\":%.2f,\"buttons\":[", FpsLimit(), G.player.aiming, G.player.moving, TouchStick().x, TouchStick().y, TouchOn(), G.firstPerson,
+    n += snprintf(buf + n, sizeof(buf) - (size_t)n, "],\"screen\":[%d,%d],\"canvas\":[%d,%d],\"fpsLimit\":%d,\"aim\":%d,\"moving\":%d,\"stick\":[%.2f,%.2f],\"touch\":%d,\"fp\":%d,\"crouch\":%d,\"parry\":%.2f,\"buttons\":[", GetScreenWidth(), GetScreenHeight(),
+                  EM_ASM_INT({ return Module.canvas.width | 0; }), EM_ASM_INT({ return Module.canvas.height | 0; }), FpsLimit(), G.player.aiming, G.player.moving, TouchStick().x, TouchStick().y, TouchOn(), G.firstPerson,
                   G.player.crouching, G.parryT + G.parryCool);
     for (int b = 0; b < TB_COUNT; b++) {
         Vector2 c;
@@ -82,8 +86,8 @@ EMSCRIPTEN_KEEPALIVE const char *TestInfo(void)
         n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%s[%.1f,%.1f,%.1f,%d]", first ? "" : ",", p.x, p.y, p.z, v->vit.dead ? 1 : 0);
         first = 0;
     }
-    n += snprintf(buf + n, sizeof(buf) - (size_t)n, "],\"royale\":{\"on\":%d,\"phase\":%d,\"out\":%d,\"alive\":%d,\"winner\":%d,\"attack\":%.2f,\"storm\":%d,\"statues\":[",
-                  Royale(), RoyalePhase(), RoyaleOut(), RoyaleAlive(), RoyaleWinner(), RoyaleAttack(), InStorm(G.player.pos));
+    n += snprintf(buf + n, sizeof(buf) - (size_t)n, "],\"royale\":{\"on\":%d,\"phase\":%d,\"out\":%d,\"alive\":%d,\"winner\":%d,\"started\":%d,\"countdown\":%.1f,\"attack\":%.2f,\"storm\":%d,\"statues\":[",
+                  Royale(), RoyalePhase(), RoyaleOut(), RoyaleAlive(), RoyaleWinner(), RoyaleStarted(), RoyaleCountdown(), RoyaleAttack(), InStorm(G.player.pos));
     for (int i = 0; i < StatueCount(); i++) {
         Vector3 sp = StatuePos(i);
         n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%s[%.1f,%.1f,%d]", i ? "," : "", sp.x, sp.z, StatueClaimed(i));
@@ -92,11 +96,19 @@ EMSCRIPTEN_KEEPALIVE const char *TestInfo(void)
     return buf;
 }
 
+// Where a player set down at (x, z) stands: on the ground, or on a roof that covers it.
+static float LandingHeight(float x, float z)
+{
+    float y = GroundHeight(x, z, TerrainHeight(x, z) + 1.0f);
+    return PointInSolid((Vector3){ x, y + 1.0f, z }) ? GroundHeight(x, z, 50.0f) : y;
+}
+
 // 1 teleport to (a, b); 2 press E; 3 press F; 4 look (yaw a, pitch b); 5 shoot a full-drawn arrow where
 // the camera looks; 6 swing the weapon; 7 add b of item a to the baskets; 8 take an animal: put it
 // down dead at the player's feet (a = index); 9 set the hour to a; 10 shoot at the ground point (a, b)
 // at body height; 11 language a; 12 barter offer b of trader a; 13 hurt the player by a; 14 equip a;
-// 15 open panel a (PANEL_* in game.h); 20 start a battle royale round (the host); 21 skip the round's clock to a s.
+// 15 open panel a (PANEL_* in game.h); 20 start a battle royale round (the host); 21 skip the round's clock to a s;
+// 23 forget whose this browser's saves are, as if made before accounts.
 EMSCRIPTEN_KEEPALIVE void TestCommand(int cmd, float a, float b)
 {
     Player *p = &G.player;
@@ -142,13 +154,9 @@ EMSCRIPTEN_KEEPALIVE void TestCommand(int cmd, float a, float b)
     case 18: LobbyAgain(); break;
     case 20: RoyaleStart(); break;
     case 21: RoyaleSkipTo(a); break;
+    case 23: remove(DataPath("sumer.owner")); SyncStorage(); break;   // this browser's saves as if made before accounts
     default: break;
     }
 }
 
 // Runs a dev console command (see src/console.c) and returns what it said last.
-EMSCRIPTEN_KEEPALIVE const char *TestConsole(const char *cmd)
-{
-    ConsoleRun(cmd);
-    return ConsoleLines() ? ConsoleLine(ConsoleLines() - 1) : "";
-}

@@ -6,9 +6,11 @@ build and test, how the code is organised, what to update with every change, and
 ## The project in one paragraph
 
 An open-world prototype of Ur, about 2100 BC: C99 and raylib 5.5, everything built from primitive shapes and
-lit by the game's own shaders (`src/gfx.c`, `src/shaders.c`), about 19,000 lines in `src/`. It runs in the browser (Emscripten),
-where up to six people share one world: one player's browser is the **host** and runs the whole world,
-`server.py` only relays messages. English and Turkish. The player who writes the requests plays in the
+lit by the game's own shaders (`src/gfx.c`, `src/shaders.c`), about 20,000 lines in `src/`. It runs in the browser (Emscripten),
+alone or on the game's servers: `server.py` keeps the accounts and runs each shared world in **the game's server
+program** (`host/sumer-host`, the same sources built natively), which is the **host**: it runs the whole world and has
+no player of its own; the players' browsers are its guests. Live at sumergame.app (a small Debian VPS behind Caddy
+and Cloudflare; the owner pulls `main` there). English and Turkish. The player who writes the requests plays in the
 browser with friends and tests by playing. **This branch is browser-only** (the owner's choice, to speed up
 testing): the desktop program, `run.sh` and `sumer-prebuilt` are frozen on the `desktop` branch; do not
 rebuild or update them unless asked. The native test harness still builds against `raylib-linux/`.
@@ -36,11 +38,14 @@ All from the repository root. `tools/out/` is for build products and is git-igno
 | What | Command |
 |---|---|
 | Build the browser version into `web/` (needs Emscripten on PATH: `source emsdk_env.sh`) | `sh build-web.sh` |
+| Build the game's server program into `host/sumer-host` (native; builds `raylib-linux/` the first time) | `sh build-host.sh` |
 | Play the browser version, alone or together | `python3 server.py` then open the address it prints |
-| Logic tests (native, about 190 checks, needs `xvfb` or a display) | `sh tools/harness/run.sh` |
-| Browser test build (with `tools/web/testhooks.c`) | `bash tools/web/build.sh` |
-| Serve the test build on :8123 (the battle royale's tests add `?mode=br`) | `sh tools/web/serve.sh &` |
-| Browser suites (host + guests in headless Chromium; needs Playwright, `PLAYWRIGHT=<module path>`) | `sh tools/web/run-suites.sh` |
+| Logic tests (native, about 235 checks, needs `xvfb` or a display) | `sh tools/harness/run.sh` |
+| `server.py` with the server program: accounts, rooms, things kept, idle stop, `--max-active` | `python3 tools/server-test.py` |
+| The server program builds the very same world as the browser (needs emsdk and Node.js) | `sh tools/worldcheck.sh` |
+| Browser test build (with `tools/web/testhooks.c`) and the test server program (with `tools/web/hosthooks.c`) | `bash tools/web/build.sh` |
+| Serve the test build on :8123 (`--test`: no work for new accounts, rooms made on demand, `/test/...`) | `sh tools/web/serve.sh &` |
+| Browser suites (players in headless Chromium; needs Playwright, `PLAYWRIGHT=<module path>`) | `sh tools/web/run-suites.sh` |
 | Real-click tests of the production build (serve `web/` on :8124 first) | `node tools/web/click/click3.js`, `flow.js`, `tap.js`, `swing2.js` |
 | Strings without a Turkish entry | `python3 tools/trcheck.py src` (only non-text literals such as file names and "WASD" may remain) |
 | Render and check the music | `sh tools/music/render.sh` |
@@ -56,8 +61,6 @@ All from the repository root. `tools/out/` is for build products and is git-igno
 | Every guard's post, alone and after PvP takes the ziggurat's away | `tools/out/harness guards` |
 | Things standing on the ground that hang above it as drawn (worst first, and how many) | `tools/out/harness floaters [min gap]` (0 or 1 expected) |
 | A screenshot standing on an upper floor (the ziggurat's middle terrace: 8) | `SHOT_FLOOR=8 tools/out/harness shotin out.png x z yaw pitch dist hour` |
-| The dev console, as panel 8 (runs help, where and give first) | `tools/out/harness ui out.png 8 <lang 0/1>` |
-| Run a dev console command from a browser test | `consoleCmd(page, "tp band1")` in `tools/web/lib.js` (hook `TestConsole` in `testhooks.c`) |
 | Free patches in the city (for placing a house) | `tools/out/harness spots x0 z0 x1 z1 step half [skip]`; also test a spot against what is built before the city houses (see the sixth house's history in `git log`) |
 
 The harness has more modes (`shot`, `citymap`, `textmap`, `wetways`, `canals`, `pvp`, `archers`, `aim`,
@@ -80,13 +83,18 @@ if there is no display. The test build and servers die when the sandbox restarts
    the Controls column must not run into Tips).
 3. **Network.** If anything sent between host and guests changes (snapshot fields, requests, events, welcome
    message), **bump `NET_VERSION` in `src/mp.c`** (host and guests must match; a mismatch says so). Anything a guest
-   must see has to be in the snapshot; guests only *show* the world, the host decides (see below).
+   must see has to be in the snapshot; guests only *show* the world, the host decides (see below). If a player's
+   record (`WriteRecord`) changes, the accounts' stored copies need `RECORD_FORMAT` (mp.c) and a way to read the old one.
+   **World building must give the same world on every compiler** (the server program is gcc, the browser clang): never
+   two random draws in one expression or argument list (C leaves the order open; write them into variables first),
+   build with `tools/same-world.flags`, and run `tools/worldcheck.sh` after changing what the world is built from.
 4. **Saves.** If the save layout changes, bump `SAVE_VERSION` in `src/save.c` and keep loading old versions
    (migrate, do not refuse). The hosted world has its own version in `mp.c`/`save.c`.
 5. **Tests.** Add a check in `tools/harness/tests.c` for the new rule; a browser check in `tools/web/*.js` if it
    involves two players or a real click; run everything.
-6. **Rebuild the product.** `web/index.*` (needs emsdk) is committed; rebuild it when `src/` changed, so
-   people who just pull get the new version.
+6. **Rebuild the product.** `web/index.*` (needs emsdk) and `host/sumer-host` (`sh build-host.sh`, 64-bit Linux,
+   built in a container with an older glibc than the server's Debian 13) are committed; rebuild both when `src/`
+   changed, so the server, which just pulls, gets the new version.
 7. **Commit** on the feature branch with a plain-language message; push the branch.
 
 Code style: C99, 4 spaces, braces on the same line for control flow and on a new line for functions, `static`
@@ -105,8 +113,37 @@ in `src/game.h`) holds the whole world.
   does it directly, a guest sends it; `ServeRequest()` answers; `ApplyReply()` applies the answer). The host sends
   snapshots at 10 Hz (`src/mp.c`, `WVitals/RVitals` for everyone's fight state, animals, villagers, raiders,
   caravans, peers). `G.actor` is who is acting; `Say()` goes to the actor (a guest's message is sent to them), `SayTo`
-  and `Announce` address others. Peers are in `G.peers[]` (slot 0 is the host); each machine's own slot is `G.self`.
+  and `Announce` address others. Peers are in `G.peers[]`; each machine's own slot is `G.self`.
   Guests ease positions toward `netPos`/`netAt`.
+- **The server program** (`host/main.c`, `ServeRoom` and `ServerTick`): `server.py` starts it as
+  `sumer-host survival|pvp|royale ROOM-ID` in `data/rooms/<id>/` and talks to it over its standard input and output
+  (`net.c`: every message has its length in front, 4 bytes little-endian; stdout is taken for that and printing goes
+  to stderr). It ticks 60 times a second in real time (`ServerTick`: the world without a local player), loads and saves
+  `sumer-mp.sav` there (survival and PvP), and stops (saving) when its input closes. **Slot 0 is the server's own and never
+  a player** (`Dedicated()`); players have slots 1-20, and houses and colors go by `Seat(slot)` = slot - 1, so the first
+  player in gets the blue house as one playing alone does. Rules come from the room's kind (`G.pvp` for PvP and the
+  royale, `G.combat`, best gear for everyone, only in the royale); there is no combat mode any more.
+- **What the server program and server.py tell each other** (`mp.c`): `S_JOIN id` carries the account's name and its
+  record for that kind of room (`[RECORD_FORMAT][WriteRecord]`, empty the first time and in the royale); the player's own
+  `M_HELLO` only checks the version. Back to `server.py` (`NetSend(NET_TO_SERVER, ...)`): `H_STORE` (a player's record
+  whenever they send one: every 15 s, on waking, on leaving), `H_PROGRESS` (experience, kills and deaths gained, by name;
+  the player's game hears it as `EV_PROGRESS`), `H_STATUS` (every 2 s: players, the royale's phase, for the list of
+  servers), and in test builds `S_TEST`/`H_TEST` (`tools/web/hosthooks.c`).
+- **Accounts** (`server.py`: `Store` on SQLite, scrypt hashes, sessions as an HttpOnly cookie holding a token whose
+  SHA-256 is stored; `Limits` per address in memory; `CHALLENGES` for the proof of work). The game's side is
+  `src/account.c`: requests go through `ApiStart`/`ApiDone` (`web.c`, fetch); answers are lines of tab-separated words
+  (`name xp kills deaths`; the rooms as `id mode players max state title`). Logging in and creating an account read the
+  page's own fields (`shell.html`: `#acctName`, `#acctPass`, `#acctPass2`, placed over the title screen by `AccountForm`),
+  so the password never enters the game; their key events are kept from GLFW's handlers (a capture listener on window
+  registered before GLFW's, `stopImmediatePropagation`), or Backspace would not work in them. A new account first gets
+  a challenge and finds a number whose SHA-256 (with the challenge and the name) starts with `--work` zero bits
+  (`WorkDone` in `sha256.c`, a slice per frame in `AccountFrame`). Singleplayer saves go to the account after every
+  `SaveGame` (`AccountSaved`) and come back from it at login (`TakeSaves`, replacing the browser's). An account with
+  no saves on the server takes up the browser's own instead (made before accounts), unless `sumer.owner` (whose
+  saves the browser holds, written at each login) names another account.
+- **Experience** (`src/progress.c`): `AwardXp(slot, xp, kills, deaths)` from the kill sites (`DamagePerson` in
+  combat.c, `HitAnimal` in wildlife.c, `RQ_COLLAPSE` in actions.c, the royale's winner); on a server it becomes
+  `HostProgress`, alone `AccountGain(.., report)`, which `account.c` sends every 10 s. `LevelStart(L)` = 50 L (L - 1).
 - **Touch controls** (`src/touch.c`): the page's touch events (not pointer events: synthetic touches in headless Chrome
   give pointer events at 0,0) are read once a frame in `TouchFrame` (called from `PageFrame`); each finger gets a role
   where it came down: a button, the stick (left 40%, lower 65%) or looking. The game asks `TouchPressed/TouchDown/
@@ -115,7 +152,7 @@ in `src/game.h`) holds the whole world.
   (`ForgetClick`). Shown where `OnPhone()`, else after the first touch. Tested by phone.js with real touch events.
   On a phone (`OnPhone()`) the game never asks for pointer lock (`LockMouse`, `WantPointer`) and never pauses on
   losing focus or the pointer: Firefox for Android granted the lock on a tap and its loss paused the game. The
-  title screen's name field opens `window.prompt` (`AskText`) on a touch screen, the only way to a phone keyboard.
+  account fields are the page's own, so a tap on one brings the phone's keyboard.
   Full screen on a phone is asked for by the page (`shell.html`, on touchend). `LeftHanded()` mirrors the thumb's
   buttons and the stick's half; the Attack finger also aims while the bow is drawn.
 - **Frame limit** (`FpsLimit`, game settings, kept in `sumer.prefs` with the arrow camera, view and hand; loaded at
@@ -190,10 +227,6 @@ in `src/game.h`) holds the whole world.
   Every torch burns while `TorchesLit()` (`G.torchGlow`, from 17:00, brightening to full by 20:00 or with the dark);
   the world shader's `night` uniform is that glow, as it only scales torchlight there.
   Bodies: `STYLE_WOMAN` (256) in the 16-bit style. First person: `ViewModel()` in `player.c`.
-- **Dev console** (`src/console.c`, panel `PANEL_CONSOLE` drawn in `ui.c`): only when `G.devTools` (the "Dev tools" rule
-  on the title screen, sent to guests as rules bit 4). `ConsoleRun(text)` parses and runs a command and writes its
-  answer to a 14-line scrollback. World commands check `Host()`. Add a command as one more `else if` in `ConsoleRun`, a line in `Help()`, a row in the README's
-  table, Turkish for its answers, and a check in `TestConsole()`.
 - **Ground as drawn** (`SettleOnGround` in `world.c`, after `BuildTerrain`): things are placed on `TerrainHeight`, but the
   ground is drawn as 6 m triangles (`GroundSurface`/`MeshHeight`), which sag below it over hills. The pass extends
   whatever stands on the land down to the drawn ground (boxes and cylinders grow down, blobs and cones sink). Anything
@@ -208,8 +241,8 @@ in `src/game.h`) holds the whole world.
   or go round wide water by the bridges; townsfolk follow the street graph in `village.c`.
 - **Death** (`Collapse` in `game.c`): the player loses what they gathered that day (`G.safe[]` is the baseline kept
   by `TrackGoods`; storage deposits count as kept).
-- **PvP rules** come from the host (`NetRules`, sent in the welcome message): `G.pvp`, `G.combat`. Combat mode gives
-  everyone the best gear through the `Use*()` accessors in `items.c`, never by changing their own records.
+- **PvP rules** come from the room's kind (`ServeRoom`, sent in the welcome message): `G.pvp`, `G.combat`. The royale's
+  best gear goes through the `Use*()` accessors in `items.c`, never by changing anyone's own records.
   In PvP the world also changes: `RemoveZigguratGuards()` (village.c) drops the three guards on the ziggurat's terrace (posts 5 m up or more; every gate keeps its pair) (host and
   guests both call it right after the rules are known, so their villager lists stay identical), and `CitySpawn()`
   picks where players start and come to after being brought down (the welcome message also carries the spawn).
@@ -250,21 +283,24 @@ in `src/game.h`) holds the whole world.
   transform (or `GripAt` with a point on the body); the next `DrawHuman` reaches that hand there (two-bone `Reach`).
   The player's and other players' weapons go through `HoldWeapon`/`DrawWeaponPart` (player.c), whose frames
   (`SwordFrame`, `ArmFrame`, `BlowFrame` for people's tools and axes) the swing trail also uses: change them together.
-- **Battle royale** (`src/royale.c`, Sumer Royale on the title screen; merged into main): `Royale()` is set by the title
-  menu (`SetRoyale`: Sumer Survival clears it, Sumer Royale sets it) or `?mode=br` in the address. The game connects with
-  `&mode=br`, which gives it rooms apart from the usual game's and up to 19 guests (server.py, one port for both). `MAX_PLAYERS` is 20; `PlayerLimit()` is 6 outside it; there are `MAX_HOUSES` 6 houses (`HouseOf(slot)`). The
+- **Battle royale** (`src/royale.c`, Sumer Royale on the title screen): `Royale()` is set by the room joined
+  (`SetRoyale` from the room's kind; `?mode=br` opens the title on its page). `MAX_PLAYERS` is 21 (slot 0 the server's),
+  `PlayerLimit()` 20 players in it and 6 outside it; there are `MAX_HOUSES` 6 houses (`HouseOf(slot)`). A round starts by
+  itself `ROUND_WAIT` (30 s) after two or more are in (`rnd.countdown`, sent with the round; never for one player), and the
+  winner gets `XP_WIN` for each player it began with (`rnd.started`, also sent: guests once read 0). The
   world is built with `BuildRoyale()` (statues, more trees; same on every machine) and `ShapeRoyale()` after `GameInit`
   builds it (no guards or wardens, caravans away; raiders and the bandit bands are skipped in their own functions). The host runs the round
   (`rnd`: phase `RP_WAIT/RUN/OVER`, its clock, the claimed statues as a bit mask, the winner), sent in every snapshot
   (`WriteRoyale`/`ReadRoyale`); `EV_ROUND` sets a guest down for a new round; `RQ_STATUE` claims a statue. A fallen player
   sets `PF_OUT` in their own flags (`RoyaleFall` from `Collapse`); out players are not bodies, targets or drawn, and their
   camera follows another (`RoyaleCamera`). The storm hurts through `HurtSlotFrom(.., BY_STORM, ..)` on the host. Tests:
-  `TestRoyale` (harness), `tools/web/royale.js` (`?mode=br` on serve.sh's port 8123), `harness royale out.png x z
+  `TestRoyale` (harness), `tools/web/royale.js` (a `royale-*` room on serve.sh's port 8123), `harness royale out.png x z
   yaw t [statue]` for pictures.
 - **Music** (`src/music.c`): see its own section below.
 - **Drawing**: see "Graphics: how drawing works" below.
-- **Web specifics:** `src/web.c` (storage in IndexedDB: call `SyncStorage()` after writing a file), `src/shell.html`
-  (the page, click and key tap fixes), `src/lobby.c` (title screen), `src/net.c` (websocket to `server.py`).
+- **Web specifics:** `src/web.c` (storage in IndexedDB: call `SyncStorage()` after writing a file; requests to `/api`),
+  `src/shell.html` (the page, click and key tap fixes, the account fields), `src/lobby.c` (title screen), `src/net.c`
+  (websocket to `server.py`).
   The canvas size has to be kept in step with the window (a past bug: clicks landed in the wrong place in any
   window that was not 1280x720). `PageFrame` now gives the canvas the screen's own pixels (`PixelRatio()`, up to
   about 4 million) and the page's CSS stretches it over the window; mouse and finger positions for menus come from
@@ -274,8 +310,8 @@ in `src/game.h`) holds the whole world.
   `OnScreen()` (world to UI point), never `GetScreenWidth()`, `GetMousePosition()` or `GetWorldToScreen()` directly;
   a scissor rectangle has to be multiplied by `UiScale()`. Panels must fit 960 x 540.
 - **Limits that have been hit:** `MAX_VILLAGERS` (64; it ran out at 48), `MAX_FIGHTERS` 128, `MAX_BOXES` 20000.
-  `MAX_PLAYERS` is 6 (relay `MAX_GUESTS` in `server.py` is 5; houses in `HOUSE_SPOTS`, colors and their names in
-  `village.c`). A new house goes where nothing built *before* the city's own houses overlaps it (those are laid out
+  `MAX_PLAYERS` is 21 with slot 0 the server's (`MAX_PLAYERS` per kind in `server.py`: 6, 6, 20; houses in
+  `HOUSE_SPOTS`, colors and their names by seat in `village.c`). A new house goes where nothing built *before* the city's own houses overlaps it (those are laid out
   last and go around it), clear of the townsfolk's streets.
 
 ## Traps already hit
@@ -284,17 +320,30 @@ in `src/game.h`) holds the whole world.
   without `-sEXPORTED_RUNTIME_METHODS=HEAPF32` (now in `build-web.sh` and `tools/web/build.sh`) the browser game
   throws on each audio block and is silent. Check after any Emscripten or raylib upgrade (`tools/web/audio.js`).
 - Browsers start the audio context only after a click or key; the game does not need to handle that (miniaudio does).
-- Do not read several values inside one brace initializer when they come from a stream (`Vector3 v = { R(), R(), R() }`):
-  evaluation order is unspecified. Read into variables in order.
+- Do not read several values inside one brace initializer or argument list when they come from a stream
+  (`Vector3 v = { R(), R(), R() }`, `AddBox(x + RandF(..), .., RandF(..))`): evaluation order is unspecified, and gcc
+  and clang differ. Read into variables in order. For random draws while building the world this once made the
+  server program's world differ from the browser's (reeds 3 m apart): `tools/worldcheck.sh` catches it.
+- clang (the browser) fuses `a * b + c` when it folds constants at build time and gcc does not: every build passes
+  `tools/same-world.flags` (`-ffp-contract=off`, and no build-time folding of `sinf` and the like).
+- The server program's world runs in real time, while a headless browser page's game time runs slow (see below): in
+  the browser suites a 0.3 s blow warning or a gazelle's start can pass between two looks; poll the page that sees it
+  often, shoot at once, and freeze the royale's countdown (`hostCmd(room, 22, 600)`) while a slow page loads.
+- `EM_ASM` code is a macro argument: commas inside `{ ... }` or `[ ... ]` split it too. Wrap object and array literals in
+  parentheses (`var o = ({ a: 1, b: 2 });`) and declare one `var` per line.
 - Test hooks for the browser (`tools/web/testhooks.c`): `TestInfo()` returns the state as JSON, `TestCommand(n, a, b)`
   drives the game (1 teleport, 2 E, 3 F, 4 look, 5 shoot, 6 swing, 7 add item, 9 set hour, 13 hurt, 14 equip ...). Add
-  fields there when a test needs to see something new.
+  fields there when a test needs to see something new. The server program's own (`tools/web/hosthooks.c`) answer
+  `hostInfo(room)` and `hostCmd(room, n, a, b)` in `tools/web/lib.js` (9 hour, 20 start a royale round, 21 the round's
+  clock, 22 the countdown), and `stopRoom(room)` stops a room as if it stood empty. `lib.js`'s `open(browser, name, url)`
+  logs a fresh browser context in to its own account first; every run uses new names and rooms (`RUN`).
 - Headless Chromium has no GPU: it runs about 5 frames a second, and the game clamps each frame to 0.05 s, so game time
   runs at a quarter of real time there (a 0.3 s windup takes over a second). Time-based checks need generous waits; use
   `waitFor` in `tools/web/lib.js` instead of fixed sleeps, and poll for what you expect.
 - Asking a page for its state (`info()`) many times a second slows that page, and a seventh heavy page makes the whole
-  machine crawl: `tools/web/mp6.js` tests the full game with six pages and asks the relay itself (a raw WebSocket)
-  whether a seventh would be turned away.
+  machine crawl: `tools/web/mp6.js` tests the full game with six pages and asks the server itself (a raw WebSocket from
+  a seventh account's light page) whether a seventh would be turned away.
+- `TestInfo` answers `lobby: 0` before the title screen has even opened (storage still loading): wait for `day > 0` too.
 - `tools/web/audio.js` counts empty audio blocks; in the 5 fps headless browser a few percent are normal (Web Audio shares the
   main thread with a very slow render loop), so it allows 5%. It has not been measured in a real browser on a real GPU.
 - Without a sound device the game runs silently (raylib prints a warning). That is expected on servers and in CI.
@@ -387,4 +436,7 @@ no sound files. Read the comment at the top of the file and the notation comment
   and tree models (Quaternius nature packs are CC0 low-poly with flat colors, which suits baking into the static
   meshes), then a second ground (grass) map. There is no model loader yet.
 - More sound effects: footsteps, the bow, animals, ambience (blows, parries and arrows have theirs).
+- Accounts cannot change their password or delete themselves yet, and a lost password cannot be recovered (there is
+  no e-mail by design). The guest is trusted with its own things (records come from its game), so a changed page could
+  give itself anything; experience is only shown, which is why that was left so.
 - `web/` is rebuilt by hand; there is no CI. The desktop branch needs its own catching up if it is ever revived.

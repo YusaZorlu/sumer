@@ -862,7 +862,7 @@ const char *MusicTitle(int m)
 
 // Is something out to hurt this player? Anything hostile to them nearby: a pack or a boar on their
 // trail, guards, villagers, raiders and caravan guards that have turned on them. In a game with PvP,
-// another player nearby who is fighting (or anyone in combat mode) counts too. The facts used are the
+// another player nearby who is fighting (or anyone in a battle royale) counts too. The facts used are the
 // ones every player's game holds, so guests hear the same.
 static bool Threatened(void)
 {
