@@ -13,6 +13,13 @@
   /* The account fields: the title screen draws their frames and labels and places them (AccountForm in web.c). */
   input.acct { display: none; position: fixed; box-sizing: border-box; margin: 0; padding: 0 0.5em; border: 0; outline: none;
                background: transparent; color: #f0e6d2; font-family: sans-serif; z-index: 2; }
+  input.acct::placeholder { color: #8a7c66; }
+  /* Typing on a phone: the keyboard would cover the field, so it moves to the top of what is still visible,
+     large, with what it is for written over it. */
+  input.acct.typing { left: 4% !important; width: 92% !important; height: 48px !important; top: var(--typing-top, 40px) !important;
+                      font-size: 22px !important; background: #3a3026 !important; border: 2px solid #f0c878 !important; z-index: 6; }
+  #acctTip { display: none; position: fixed; left: 4%; width: 92%; color: #f0c878; font: 17px sans-serif; z-index: 6;
+             background: #1e1814; padding: 6px 0 4px; }
 </style>
 </head>
 <body>
@@ -22,6 +29,7 @@
 <input id="acctPass" class="acct" type="password" autocomplete="current-password" maxlength="128">
 <input id="acctPass2" class="acct" type="password" autocomplete="new-password" maxlength="128">
 <input id="acctPass3" class="acct" type="password" autocomplete="new-password" maxlength="128">
+<div id="acctTip"></div>
 <script>
   var canvas = document.getElementById('canvas');
   var Module = {
@@ -71,9 +79,38 @@
     window.addEventListener(kind, function (e) {
       if (!e.target || !e.target.classList || !e.target.classList.contains('acct')) return;
       e.stopImmediatePropagation();
-      if (kind === 'keydown' && e.key === 'Enter') Module.sumerAcctEnter = 1;
+      if (kind !== 'keydown' || e.key !== 'Enter') return;
+      // Enter goes on to the next field while it is empty; at the last one it asks the game to go on.
+      var shown = Array.prototype.filter.call(document.querySelectorAll('input.acct'), function (f) { return f.style.display === 'block'; });
+      var next = shown[shown.indexOf(e.target) + 1];
+      if (next && !next.value) { e.preventDefault(); next.focus(); }
+      else Module.sumerAcctEnter = 1;
     }, true);
   });
+  var touchy = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+  var tip = document.getElementById('acctTip');
+  var placeTyping = function () {
+    var top = window.visualViewport ? window.visualViewport.offsetTop : 0;
+    tip.style.top = top + 'px';
+    document.documentElement.style.setProperty('--typing-top', (top + 32) + 'px');
+  };
+  Array.prototype.forEach.call(document.querySelectorAll('input.acct'), function (f) {
+    f.addEventListener('focus', function () {
+      if (!touchy) return;
+      f.classList.add('typing');
+      tip.textContent = f.placeholder;
+      tip.style.display = 'block';
+      placeTyping();
+    });
+    f.addEventListener('blur', function () {
+      f.classList.remove('typing');
+      tip.style.display = 'none';
+    });
+  });
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', placeTyping);
+    window.visualViewport.addEventListener('scroll', placeTyping);
+  }
   // F5 saves the game here instead of reloading the page.
   window.addEventListener('keydown', function (e) {
     if (e.key === 'F5' || e.key === 'F1') e.preventDefault();

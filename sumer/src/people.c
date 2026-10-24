@@ -51,8 +51,43 @@ static bool Near(const Body *b, Vector3 p, float r)
     return fabsf(p.y - b->pos.y) < 1.5f && dx * dx + dz * dz < (r + b->r) * (r + b->r);
 }
 
+// A circle player-sized things are kept out of.
+static Vector2 PushOutCircle(Vector2 p, float r, float cx, float cz, float cr)
+{
+    float dx = p.x - cx, dz = p.y - cz;
+    float d = sqrtf(dx * dx + dz * dz), min = r + cr;
+    if (d >= min) return p;
+    if (d < 1e-4f) {
+        dx = 1;
+        dz = 0;
+        d = 1;
+    }
+    return (Vector2){ cx + dx / d * min, cz + dz / d * min };
+}
+
+// Cows and sheep come to no harm, but no one walks through them: circles along each body, nose to tail
+// ('along' are the circles' places along it). Each machine's livestock wander on their own, so this is
+// for the player here only.
+static Vector2 PushOutHerd(Vector2 p, float r, const Wanderer *herd, int n, const float *along, int parts, float cr)
+{
+    for (int i = 0; i < n; i++) {
+        const Wanderer *w = &herd[i];
+        if (fabsf(w->pos.x - p.x) > 3.0f || fabsf(w->pos.z - p.y) > 3.0f) continue;
+        if (fabsf(G.player.pos.y - TerrainHeight(w->pos.x, w->pos.z)) > 1.5f) continue;
+        for (int k = 0; k < parts; k++)
+            p = PushOutCircle(p, r, w->pos.x + sinf(w->heading) * along[k], w->pos.z + cosf(w->heading) * along[k], cr);
+    }
+    return p;
+}
+
 Vector2 PushOutBodies(Vector2 p, float r, int self)
 {
+    static const float cow[3] = { -0.6f, 0.2f, 0.95f }, sheep[2] = { -0.25f, 0.3f };
+    if (self == OWNER_PLAYER + G.self) {
+        p = PushOutHerd(p, r, G.cows, MAX_COWS, cow, 3, 0.45f);
+        p = PushOutHerd(p, r, G.sheep, MAX_SHEEP, sheep, 2, 0.35f);
+        p = PushOutHerd(p, r, G.flock, MAX_FLOCK, sheep, 2, 0.35f);
+    }
     float y = G.player.pos.y;
 
     for (int i = 0; i < bodyCount; i++) {

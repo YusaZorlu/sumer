@@ -246,6 +246,10 @@ in `src/game.h`) holds the whole world.
   by `TrackGoods`; storage deposits count as kept).
 - **PvP rules** come from the room's kind (`ServeRoom`, sent in the welcome message): `G.pvp`, `G.combat`. The royale's
   best gear goes through the `Use*()` accessors in `items.c`, never by changing anyone's own records.
+  `UnlimitedArrows()` (royale or PvP) keeps the quiver full; in `Hurt` (combat.c) guards never take sides between
+  players (the user's wish: no wanted status from PvP; attacking NPCs still makes you wanted). Livestock (`G.cows`,
+  `G.sheep`, `G.flock`) cannot be hurt and are solid for the local player only (`PushOutHerd` in people.c), since
+  each machine's livestock wander on their own.
   In PvP the world also changes: `RemoveZigguratGuards()` (village.c) drops the three guards on the ziggurat's terrace (posts 5 m up or more; every gate keeps its pair) (host and
   guests both call it right after the rules are known, so their villager lists stay identical), and `CitySpawn()`
   picks where players start and come to after being brought down (the welcome message also carries the spawn).

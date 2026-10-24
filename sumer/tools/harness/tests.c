@@ -1418,6 +1418,21 @@ static float GuestBlow(float gx, float gz, float hx, float hz, int weapon)
 }
 
 // Players fighting players, as the host sees it: the host's rules, the guards, parries, arrows.
+// Cows and sheep are solid: walking into one leaves the player outside it.
+static void TestLivestock(void)
+{
+    Wanderer *cow = &G.cows[0];
+    G.player.pos = (Vector3){ cow->pos.x, TerrainHeight(cow->pos.x, cow->pos.z), cow->pos.z };
+    Vector2 out = PushOutBodies((Vector2){ cow->pos.x, cow->pos.z }, PLAYER_RADIUS, OWNER_PLAYER + G.self);
+    float d = hypotf(out.x - cow->pos.x, out.y - cow->pos.z);
+    Check(d > 0.6f, "walking into a cow leaves the player outside it (%.2f m from its middle)", d);
+    Wanderer *sheep = &G.flock[0];
+    G.player.pos = (Vector3){ sheep->pos.x, TerrainHeight(sheep->pos.x, sheep->pos.z), sheep->pos.z };
+    out = PushOutBodies((Vector2){ sheep->pos.x + 0.1f, sheep->pos.z }, PLAYER_RADIUS, OWNER_PLAYER + G.self);
+    d = hypotf(out.x - sheep->pos.x, out.y - sheep->pos.z);
+    Check(d > 0.4f, "and into one of the herders' sheep (%.2f m)", d);
+}
+
 static void TestPvp(void)
 {
     G.role = NET_HOST;
@@ -1436,12 +1451,17 @@ static void TestPvp(void)
     G.pvp = true;
     float lost = GuestBlow(3, 6, 3, 4.5f, 2);
     Check(lost > 0 && G.hurtBy == BY_PLAYER + 1, "PvP on: the guest's sword hurts the host (%.0f)", lost);
-    Check(G.peers[1].wanted > 0 && G.peers[0].wanted <= 0, "the guest started it by the temple gate: the guest is wanted, the host is not");
+    Check(G.peers[1].wanted <= 0 && G.peers[0].wanted <= 0, "the guest started it by the temple gate: the guards stay out of it, no one is wanted");
     RunCombat(3);
     int after = 0;
     for (int i = 0; i < G.villagerCount; i++)
         after += G.villagers[i].kind == NPC_GUARD && G.villagers[i].vit.hostile > 0 && G.villagers[i].vit.target == 1;
-    Check(after >= 1, "%d guards go after the guest", after);
+    Check(after == 0, "no guard goes after the guest (%d)", after);
+    int quiver = G.quiver = 0;
+    Check(UnlimitedArrows(), "PvP: arrows never run out");
+    G.pvp = false;
+    Check(!UnlimitedArrows() && G.quiver == quiver, "PvP off: they do (quiver %d)", G.quiver);
+    G.pvp = true;
 
     // The host hits back: self-defence.
     G.actor = 0;
@@ -2326,6 +2346,7 @@ static void RunTests(void)
     TestSave();
     TestHostWorld();
     TestPvp();
+    TestLivestock();
     TestPlayerMarks();
     TestHitLights();
     TestSixPlayers();

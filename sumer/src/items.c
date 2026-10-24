@@ -392,6 +392,12 @@ bool UseMace(void)
     return G.combat || G.hasMace;
 }
 
+// Arrows never run out in a battle royale or on a PvP server.
+bool UnlimitedArrows(void)
+{
+    return G.combat || G.pvp;
+}
+
 bool UseArrowheads(void)
 {
     return G.combat || (G.tools & TOOL_ARROWHEADS);
