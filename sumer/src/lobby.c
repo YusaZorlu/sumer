@@ -8,8 +8,9 @@
 
 static enum { LOBBY_MENU, LOBBY_CONNECT } stage;
 // The title's pages: the ways to play, then Sumer Survival's (alone, or a server) or Sumer Royale's.
-static enum { PAGE_MODES, PAGE_SURVIVAL, PAGE_ROYALE } page;
-static bool open, loaded, autoDone, createTab;
+// PAGE_ACCOUNT: changing the password, deleting the account.
+static enum { PAGE_MODES, PAGE_SURVIVAL, PAGE_ROYALE, PAGE_ACCOUNT } page;
+static bool open, loaded, autoDone, createTab, deleteArmed;
 static char note[200];
 static float connectT;
 
@@ -51,7 +52,7 @@ static void Enter(void)
 {
     open = false;
     G.quit = false;
-    AccountForm(false, false, (Rectangle){ 0 }, (Rectangle){ 0 }, (Rectangle){ 0 });
+    AccountForm(FORM_NONE, (Rectangle){ 0 }, (Rectangle){ 0 }, (Rectangle){ 0 });
     SetPanel(StyleChosen() || PageParam("auto")[0] ? PANEL_NONE : PANEL_LOOK);
     G.wasCaptured = false;
 }
@@ -225,6 +226,7 @@ void LobbyFrame(void)
     if (!in) {
         // The account: log in, or create one. The fields are the page's own, laid over these frames.
         bool busy = acc != ACC_OUT;
+        if (page == PAGE_ACCOUNT) page = PAGE_MODES;
         if (Tab((Rectangle){ cx - 205, y, 200, 32 }, "Log in", !createTab) && !busy) createTab = false;
         if (Tab((Rectangle){ cx + 5, y, 200, 32 }, "Create account", createTab) && !busy) createTab = true;
         y += 52;
@@ -239,7 +241,7 @@ void LobbyFrame(void)
             y += 48;
         }
         if (rows == 2) fields[2] = hidden;
-        AccountForm(acc != ACC_UNKNOWN, createTab, fields[0], fields[1], fields[2]);
+        AccountForm(acc == ACC_UNKNOWN ? FORM_NONE : createTab ? FORM_CREATE : FORM_LOGIN, fields[0], fields[1], fields[2]);
         y += 8;
         bool go = Choice((Rectangle){ cx - 125, y, 250, 44 }, createTab ? "Create account" : "Log in", !busy) || (!busy && AccountEnter());
         if (go) AccountSubmit(createTab);
@@ -251,9 +253,44 @@ void LobbyFrame(void)
                            : "Your level, K/D and things are kept with your account on the game's server.",
                  cx, panel.y + panel.height - 40, 15, dim);
     } else {
-        AccountForm(false, false, hidden, hidden, hidden);
+        if (page != PAGE_ACCOUNT) AccountForm(FORM_NONE, hidden, hidden, hidden);
         Rectangle row = { x, y, 250, 44 };
-        if (page == PAGE_MODES) {
+        if (page == PAGE_ACCOUNT) {
+            // The password, changed after the current one; or the account deleted (asked twice).
+            Label("Your account", x, y, 20, gold);
+            y += 32;
+            Rectangle fields[3];
+            const char *labels[3] = { "Current password", "New password", "New password again" };
+            for (int k = 0; k < 3; k++) {
+                fields[k] = (Rectangle){ x + 230, y, 380, 38 };
+                Label(labels[k], x + 20, y + 9, 20, text);
+                DrawRectangleRec(fields[k], (Color){ 58, 48, 38, 255 });
+                DrawRectangleLinesEx(fields[k], 1, AccountWaiting() ? dim : gold);
+                y += 48;
+            }
+            AccountForm(FORM_PASSWORD, fields[0], fields[1], fields[2]);
+            y += 8;
+            bool ready = menu && !AccountWaiting();
+            if (Choice((Rectangle){ cx - 260, y, 250, 44 }, "Change password", ready) || (ready && AccountEnter())) {
+                deleteArmed = false;
+                AccountChangePassword();
+            }
+            if (Choice((Rectangle){ cx + 10, y, 250, 44 }, deleteArmed ? "Delete for good" : "Delete account", ready)) {
+                if (deleteArmed) AccountDelete();
+                deleteArmed = !deleteArmed;
+            }
+            y += 56;
+            if (deleteArmed) Centered("Click \"Delete for good\" to delete your account, level, saves and things.", cx, y, 17, bad);
+            else if (AccountNote()[0]) Centered(AccountNote(), cx, y, 17, AccountWaiting() ? gold : text);
+            y += 28;
+            Centered("Deleting needs your current password and cannot be undone.", cx, y, 15, dim);
+            y += 26;
+            if (Choice((Rectangle){ x, y, 120, 26 }, "Back", menu)) {
+                page = PAGE_MODES;
+                deleteArmed = false;
+            }
+            y += 44;
+        } else if (page == PAGE_MODES) {
             // The ways to play. The third place is kept for one to come.
             if (Choice(row, "Sumer Survival", menu)) {
                 SetRoyale(false);
@@ -325,6 +362,12 @@ void LobbyFrame(void)
     if (Choice((Rectangle){ panel.x + panel.width - 214, panel.y + 12, 200, 26 }, lang, menu)) {
         SetLanguage(Language() == LANG_TR ? LANG_EN : LANG_TR);
         SaveLanguage();
+    }
+    if (Choice((Rectangle){ panel.x + panel.width - 214, panel.y + 44, 200, 26 }, "Privacy", menu)) OpenPrivacy();
+    if (in && page != PAGE_ACCOUNT && Choice((Rectangle){ panel.x + panel.width - 214, panel.y + 76, 200, 26 }, "Your account", menu)) {
+        page = PAGE_ACCOUNT;
+        deleteArmed = false;
+        AccountNoteClear();
     }
     UiEnd();
     EndDrawing();

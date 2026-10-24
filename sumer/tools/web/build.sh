@@ -15,4 +15,5 @@ emcc -std=gnu99 -O2 -Wall -Wextra @tools/same-world.flags -DSUMER_TEST -o "$OUT/
 cc -std=gnu99 -O2 -Wall -Wextra @tools/same-world.flags -DSUMER_TEST -o "$OUT/sumer-host" host/main.c tools/web/hosthooks.c $(ls src/*.c | grep -v '/main.c$') \
     -Isrc -Iraylib-linux/src raylib-linux/src/libraylib.a -lm -lpthread -ldl
 cp server.py "$OUT/server.py"
+cp web/privacy.html "$OUT/web/privacy.html"
 echo "Built $OUT"

@@ -217,6 +217,18 @@ class Store:
             return None
         return row[0]
 
+    def set_password(self, name, salt, digest):
+        """A new password: every session the account had ends with the old one."""
+        self.db.execute("UPDATE accounts SET salt = ?, hash = ? WHERE name = ?", (salt, digest, name))
+        self.db.execute("DELETE FROM sessions WHERE name = ?", (name,))
+        self.db.commit()
+
+    def delete(self, name):
+        """The account and everything kept with it (the daily backups lose it within a week)."""
+        for table in ("accounts", "sessions", "saves"):
+            self.db.execute("DELETE FROM %s WHERE name = ?" % table, (name,))
+        self.db.commit()
+
     def end_session(self, token):
         self.db.execute("DELETE FROM sessions WHERE token = ?", (hashlib.sha256(token.encode()).hexdigest(),))
         self.db.commit()
@@ -580,6 +592,33 @@ async def api(req):
         return "200 OK", text("bye\n"), session_cookie(req, "", 0)
     if name is None:
         return "401 Unauthorized", text("Not logged in."), None
+    if path in ("/api/password", "/api/delete") and method == "POST":
+        # Changing the password or deleting the account: the current password first.
+        try:
+            form = json.loads(req.body.decode("utf-8"))
+            password, new = str(form.get("password", "")), str(form.get("newPassword", ""))
+        except (ValueError, UnicodeDecodeError, AttributeError):
+            return "400 Bad Request", text("The server could not read that."), None
+        if not LIMITS.allow("login:" + req.ip, 10, 900) or not LIMITS.allow("login:" + name.lower(), 10, 900):
+            return "429 Too Many Requests", text("Too many tries. Wait a few minutes and try again."), None
+        loop = asyncio.get_event_loop()
+        row = STORE.account(name)
+        digest = await loop.run_in_executor(None, password_hash, password, row[1] if row else b"0" * 16)
+        if not row or not hmac.compare_digest(digest, row[2]):
+            LIMITS.note("login:" + req.ip)
+            LIMITS.note("login:" + name.lower())
+            return "401 Unauthorized", text("Wrong password."), None
+        if path == "/api/password":
+            if not 6 <= len(new) <= 128:
+                return "400 Bad Request", text("A password needs at least 6 characters."), None
+            salt = secrets.token_bytes(16)
+            STORE.set_password(name, salt, await loop.run_in_executor(None, password_hash, new, salt))
+            return "200 OK", STORE.profile(name), session_cookie(req, STORE.new_session(name), SESSION_DAYS)
+        if name.lower() in PLAYING:
+            return "409 Conflict", text("Leave the game you are playing first."), None
+        STORE.delete(name)
+        log("account %s deleted" % name)
+        return "200 OK", text("deleted\n"), session_cookie(req, "", 0)
     if path == "/api/me" and method == "GET":
         return "200 OK", STORE.profile(name), None
     if path == "/api/saves" and method == "GET":

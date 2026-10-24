@@ -137,7 +137,10 @@ in `src/game.h`) holds the whole world.
   so the password never enters the game; their key events are kept from GLFW's handlers (a capture listener on window
   registered before GLFW's, `stopImmediatePropagation`), or Backspace would not work in them. A new account first gets
   a challenge and finds a number whose SHA-256 (with the challenge and the name) starts with `--work` zero bits
-  (`WorkDone` in `sha256.c`, a slice per frame in `AccountFrame`). Singleplayer saves go to the account after every
+  (`WorkDone` in `sha256.c`, a slice per frame in `AccountFrame`). The title's `PAGE_ACCOUNT` changes the password
+  (`/api/password`, ends the account's other sessions) or deletes the account (`/api/delete`, refused while it plays;
+  `AccountForm(FORM_PASSWORD, ..)` lays `#acctPass`, `#acctPass2`, `#acctPass3` over it). `web/privacy.html` is the
+  privacy page (owner Yuşa Zorlu; keep it true when what is kept changes). Singleplayer saves go to the account after every
   `SaveGame` (`AccountSaved`) and come back from it at login (`TakeSaves`, replacing the browser's). An account with
   no saves on the server takes up the browser's own instead (made before accounts), unless `sumer.owner` (whose
   saves the browser holds, written at each login) names another account.

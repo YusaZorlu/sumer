@@ -1,10 +1,11 @@
 // The title screen by real clicks and typing: creating an account (and the mistakes it catches), logging
-// out and back in, then the server lists: Sumer Royale > Royale makes one battle royale, and Sumer Survival >
-// Survival 1 is a game apart.
+// out and back in, the password changed, then the server lists: Sumer Royale > Royale makes one battle royale, and Sumer Survival >
+// Survival 1 is a game apart. Last, an account deleted, and the privacy page.
 const { BASE, RUN, launch, open, info, waitFor, sleep } = require('./lib.js');
 // The title's panel is 720 x 530 at (120, 8) in a 960 x 540 page; these are offsets in it.
 async function click(p, dx, dy) { await p.mouse.click(120 + dx, 8 + dy); await sleep(1500); }
 const TAB_LOGIN = [255, 136], TAB_CREATE = [465, 136], GO_LOGIN = [360, 298], GO_CREATE = [360, 346];
+const ACCOUNT = [606, 89], PRIVACY = [606, 57], CHANGE = [225, 326], DELETE = [495, 326], BACK = [100, 427];
 const SURVIVAL = [165, 142], ROYALE = [165, 200], ROOM_1 = [165, 218], ROYALE_1 = [165, 188], LOG_OUT = [620, 503];
 let fails = 0; const check = (ok, w) => { console.log((ok ? 'PASS: ' : 'FAIL: ') + w); if (!ok) fails++; };
 
@@ -48,6 +49,30 @@ let fails = 0; const check = (ok, w) => { console.log((ok ? 'PASS: ' : 'FAIL: ')
   const cookie = (await ann.context().cookies()).find(c => c.name === 'sumer');
   check(!!cookie && cookie.httpOnly && cookie.sameSite === 'Strict', 'the session is a cookie the page\'s scripts cannot read');
 
+  // Your account: a new password after the current one (a wrong one is refused), then logging in with it.
+  await click(ann, ...ACCOUNT);
+  check(await ann.isVisible('#acctPass3') && !await ann.isVisible('#acctName'), 'Your account asks for the current password and the new one twice');
+  await ann.screenshot({ path: __dirname + '/shots/menu-account.png' });
+  await ann.fill('#acctPass', 'not-it');
+  await ann.fill('#acctPass2', 'secret-new');
+  await ann.fill('#acctPass3', 'secret-new');
+  await click(ann, ...CHANGE);
+  a = await waitFor(ann, 'the wrong password', i => /Wrong password/.test(i.note), 20000).catch(e => null);
+  check(!!a, `the wrong current password is refused: "${a ? a.note : (await info(ann)).note}"`);
+  await ann.fill('#acctPass', 'secret-one');
+  await click(ann, ...CHANGE);
+  a = await waitFor(ann, 'the password changed', i => /password is changed/.test(i.note), 20000).catch(e => null);
+  check(!!a && await ann.inputValue('#acctPass') === '', `the password is changed and the fields wiped: "${a ? a.note : (await info(ann)).note}"`);
+  await click(ann, ...BACK);
+  await click(ann, ...LOG_OUT);
+  await waitFor(ann, 'logged out', i => i.accState === 1, 20000).catch(e => null);
+  await click(ann, ...TAB_LOGIN);
+  await ann.fill('#acctName', name);
+  await ann.fill('#acctPass', 'secret-new');
+  await ann.press('#acctPass', 'Enter');
+  a = await waitFor(ann, 'in with the new password', i => i.accState === 3 && i.account === name, 20000).catch(e => null);
+  check(!!a, 'the new password logs in');
+
   // The server lists, by clicks.
   const bob = await open(browser, 'Bob' + RUN, BASE);
   const cem = await open(browser, 'Cem' + RUN, BASE);
@@ -68,6 +93,26 @@ let fails = 0; const check = (ok, w) => { console.log((ok ? 'PASS: ' : 'FAIL: ')
   let b = await waitFor(bob, 'Bob joined', i => i.lobby === 0 && i.role === 2, 90000).catch(e => null);
   check(!!b && b.royale.on === 1 && b.peers.some(p => p.name === name) && !b.peers.some(p => p.name === 'Cem' + RUN),
         `Sumer Royale > Royale puts Bob in Ann's battle royale, not Cem's game (${b && b.peers.map(p => p.name)})`);
+
+  // An account deleted (asked twice), by real clicks; then the privacy page from the title screen.
+  const del = await open(browser, 'Del' + RUN, BASE);
+  await waitFor(del, 'Del logged in', i => i.accState === 3, 60000);
+  await click(del, ...ACCOUNT);
+  await del.fill('#acctPass', 'sumer-test');
+  await click(del, ...DELETE);
+  let d = await info(del);
+  check(d.accState === 3, 'the first click on Delete account only asks again');
+  await del.screenshot({ path: __dirname + '/shots/menu-delete.png' });
+  await click(del, ...DELETE);
+  d = await waitFor(del, 'the account deleted', i => i.accState === 1 && /deleted/.test(i.note), 20000).catch(e => null);
+  const me = await del.evaluate(() => fetch('/api/me').then(r => r.status));
+  check(!!d && me === 401, `the second deletes it, back at the login page: "${d ? d.note : (await info(del)).note}"`);
+  await click(del, ...PRIVACY);
+  await del.waitForURL(/privacy\.html$/, { timeout: 20000 }).catch(e => null);
+  const page = await del.textContent('body').catch(e => '');
+  check(/Yuşa Zorlu/.test(page) && /netcup/.test(page) && /Cloudflare/.test(page), 'Privacy opens the privacy page: owner, netcup, Cloudflare');
+  await del.screenshot({ path: __dirname + '/shots/privacy.png', fullPage: true });
+
   await browser.close();
   console.log(fails ? fails + ' FAILED' : 'ALL PASSED');
   process.exit(fails ? 1 : 0);

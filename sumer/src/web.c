@@ -374,17 +374,20 @@ int ApiDone(int id, unsigned char *buf, int size, int *len)
 #endif
 }
 
-// The account fields (shell.html) laid over the title screen at these places (in the UI's units), or hidden.
-void AccountForm(bool show, bool create, Rectangle name, Rectangle pass, Rectangle pass2)
+// The account fields (shell.html) laid over the title screen at these places (in the UI's units), or hidden
+// (FORM_NONE): the name, the password and (FORM_CREATE) the password again; or (FORM_PASSWORD) the current
+// password and the new one twice.
+void AccountForm(int form, Rectangle a, Rectangle b, Rectangle c)
 {
 #if defined(__EMSCRIPTEN__)
-    static float last[13];
+    static float last[12];
     float k = UiScale() / PixelRatio();
-    float now[13] = { show ? 1.0f : 0.0f, create ? 1.0f : 0.0f, k, name.x, name.y, name.width, name.height, pass.x, pass.y, pass2.x, pass2.y, pass.width, pass.height };
+    float now[12] = { (float)form, k, a.x, a.y, a.width, a.height, b.x, b.y, c.x, c.y, 0, 0 };
     if (memcmp(now, last, sizeof(now)) == 0) return;
     memcpy(last, now, sizeof(now));
     EM_ASM({
-        var k = $2;
+        var form = $0;
+        var k = $1;
         var place = function (id, x, y, w, h, on) {
             var e = document.getElementById(id);
             if (!e) return;
@@ -395,15 +398,17 @@ void AccountForm(bool show, bool create, Rectangle name, Rectangle pass, Rectang
             e.style.height = (h * k) + 'px';
             e.style.fontSize = Math.max(12, h * k * 0.5) + 'px';
         };
-        place('acctName', $3, $4, $5, $6, $0);
-        place('acctPass', $7, $8, $5, $6, $0);
-        place('acctPass2', $9, $10, $5, $6, $0 && $1);
+        var pw = form == 3;
+        place('acctName', $2, $3, $4, $5, form == 1 || form == 2);
+        place('acctPass', pw ? $2 : $6, pw ? $3 : $7, $4, $5, form > 0);
+        place('acctPass2', pw ? $6 : $8, pw ? $7 : $9, $4, $5, form >= 2);
+        place('acctPass3', $8, $9, $4, $5, pw);
         var p = document.getElementById('acctPass');
-        if (p) p.setAttribute('autocomplete', $1 ? 'new-password' : 'current-password');
-        if (!$0 && document.activeElement && document.activeElement.classList.contains('acct')) document.activeElement.blur();
-    }, show, create, k, name.x, name.y, name.width, name.height, pass.x, pass.y, pass2.x, pass2.y);
+        if (p) p.setAttribute('autocomplete', form == 2 ? 'new-password' : 'current-password');
+        if (!form && document.activeElement && document.activeElement.classList.contains('acct')) document.activeElement.blur();
+    }, form, k, a.x, a.y, a.width, a.height, b.x, b.y, c.x, c.y);
 #else
-    (void)show; (void)create; (void)name; (void)pass; (void)pass2;
+    (void)form; (void)a; (void)b; (void)c;
 #endif
 }
 
@@ -455,6 +460,54 @@ int AccountFieldCheck(bool create)
 #endif
 }
 
+// The password page: 0 when it will do; 1 when the current password is too short to be it, 3 when the new
+// one is too short, 2 when the two new ones differ. 'change' false: only the current one counts.
+int AccountPasswordCheck(bool change)
+{
+#if defined(__EMSCRIPTEN__)
+    return EM_ASM_INT({
+        var get = function (n) { var e = document.getElementById(n); return e ? e.value : ""; };
+        if (get('acctPass').length < 6) return 1;
+        if (!$0) return 0;
+        if (get('acctPass2').length < 6) return 3;
+        return get('acctPass2') !== get('acctPass3') ? 2 : 0;
+    }, change);
+#else
+    (void)change;
+    return 1;
+#endif
+}
+
+// The current password (and the new one) to server.py: path is /api/password or /api/delete. The request's
+// number, for ApiDone.
+int AccountSendPassword(const char *path)
+{
+#if defined(__EMSCRIPTEN__)
+    return EM_ASM_INT({
+        var id = Module.sumerApiNext = (Module.sumerApiNext | 0) + 1;
+        Module.sumerApi = Module.sumerApi || {};
+        var get = function (n) { var e = document.getElementById(n); return e ? e.value : ""; };
+        var body = ({ password: get('acctPass'), newPassword: get('acctPass2') });
+        fetch(UTF8ToString($0), { method: 'POST', credentials: 'same-origin', cache: 'no-store',
+                                  headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(function (r) {
+            return r.arrayBuffer().then(function (b) { Module.sumerApi[id] = ({ status: r.status, data: new Uint8Array(b) }); });
+        }).catch(function () { Module.sumerApi[id] = ({ status: -1, data: new Uint8Array(0) }); });
+        return id;
+    }, path);
+#else
+    (void)path;
+    return -1;
+#endif
+}
+
+// The privacy page (web/privacy.html), in place of the game; its link leads back.
+void OpenPrivacy(void)
+{
+#if defined(__EMSCRIPTEN__)
+    EM_ASM({ window.location.href = 'privacy.html'; });
+#endif
+}
+
 // The page sends the name and password typed (and for a new account, the work done for it) to server.py.
 // The request's number, for ApiDone.
 int AccountSend(bool create, const char *challengeHex, unsigned nonce)
@@ -483,7 +536,7 @@ void AccountFieldsClear(void)
 {
 #if defined(__EMSCRIPTEN__)
     EM_ASM({
-        (['acctPass', 'acctPass2']).forEach(function (n) { var e = document.getElementById(n); if (e) e.value = ""; });
+        (['acctPass', 'acctPass2', 'acctPass3']).forEach(function (n) { var e = document.getElementById(n); if (e) e.value = ""; });
     });
 #endif
 }
