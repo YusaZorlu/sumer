@@ -1306,7 +1306,7 @@ static const char *ZigguratHint(void)
 const char *RulesText(void)
 {
     if (Royale()) return L("Battle royale: best gear and unlimited arrows, no guards or raiders, houses of no use. The last one standing wins.");
-    return L(G.pvp ? "PvP on: unlimited arrows, and the guards stay out of fights between players." : "PvP off: players cannot hurt each other.");
+    return L(G.pvp ? "PvP on: the best gear and unlimited arrows, and the guards stay out of fights between players." : "PvP off: players cannot hurt each other.");
 }
 
 // The server program's game (host/main.c): a world of its own for room 'room', with no player in it.
@@ -1326,7 +1326,7 @@ void ServeRoom(int mode, const char *room)
     LoadNetGame();
     G.recordCount = 0;   // the players' things are kept with their accounts
     G.pvp = mode != ROOM_SURVIVAL;
-    G.combat = mode == ROOM_ROYALE;
+    G.combat = G.pvp;   // PvP and the royale: everyone fights with the best of everything
     if (G.pvp) RemoveZigguratGuards();
     UpdateSky();
     NetOpen(NULL);

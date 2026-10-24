@@ -640,7 +640,7 @@ static void DrawHelpPanel(void)
         "landing close send prey running and bring wolves down on you.",
         "Playing together: pick one of the game's servers on the title screen, up to six players each, every one with a house "
         "in their own color. The world never pauses, and the night passes when everyone lies in bed. The farm, the coop and the "
-        "eggs are shared. On a PvP server players can hurt each other, arrows never run out and the guards stay out of it "
+        "eggs are shared. On a PvP server players can hurt each other with the best gear, arrows never run out and the guards stay out of it "
         "(everyone starts somewhere in the city, the ziggurat is unguarded).",
         "Experience: 1 for a beast or a townsman brought down, 3 for a guard, raider, barbarian or bandit, 10 for another player, "
         "and 10 for every player in a battle royale round you win. Level 1 takes 100 to reach level 2, level 2 another 200, "
@@ -773,7 +773,7 @@ static void DrawStatus(void)
     DrawRectangle(bx, 101, 200, 14, Fade(BLACK, 0.5f));
     DrawRectangle(bx, 101, (int)(200 * Clamp(G.health, 0, HEALTH_MAX) / HEALTH_MAX), 14, G.health < 35 ? C_BAD : C_GOOD);
     DrawRectangleLines(bx, 101, 200, 14, Fade(BLACK, 0.6f));
-    if (UnlimitedArrows()) Text(G.combat ? "Arrows: unlimited (battle royale)" : "Arrows: unlimited (PvP)", 24, 124, 18, C_TEXT);
+    if (UnlimitedArrows()) Text(Royale() ? "Arrows: unlimited (battle royale)" : "Arrows: unlimited (PvP)", 24, 124, 18, C_TEXT);
     else Text(TextFormat(L("Arrows %d/%d   +%d carried"), G.quiver, G.quiverMax, BagCount(IT_ARROWS)), 24, 124, 18, C_TEXT);
     Text(TextFormat(L("In hand: %s%s"), EquipName(G.equip), G.player.crouching ? L("  |  crouching") : ""), 24, 146, 18,
          G.player.crouching ? C_GOOD : C_TEXT);

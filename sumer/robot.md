@@ -246,7 +246,7 @@ in `src/game.h`) holds the whole world.
   by `TrackGoods`; storage deposits count as kept).
 - **PvP rules** come from the room's kind (`ServeRoom`, sent in the welcome message): `G.pvp`, `G.combat`. The royale's
   best gear goes through the `Use*()` accessors in `items.c`, never by changing anyone's own records.
-  `UnlimitedArrows()` (royale or PvP) keeps the quiver full; in `Hurt` (combat.c) guards never take sides between
+  PvP servers set `G.combat` too (the best gear, as the old combat mode); `UnlimitedArrows()` keeps the quiver full; in `Hurt` (combat.c) guards never take sides between
   players (the user's wish: no wanted status from PvP; attacking NPCs still makes you wanted). Livestock (`G.cows`,
   `G.sheep`, `G.flock`) cannot be hurt and are solid for the local player only (`PushOutHerd` in people.c), since
   each machine's livestock wander on their own.
