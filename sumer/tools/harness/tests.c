@@ -893,65 +893,6 @@ static void TestBandits(void)
 }
 
 // The dev console's commands do what they say.
-static void TestConsole(void)
-{
-    G.self = G.actor = 0;
-    G.devTools = false;
-    G.hour = 12;
-    ConsoleRun("hour 22");
-    Check(fabsf(G.hour - 12) < 0.01f && strstr(ConsoleLine(ConsoleLines() - 1), "off") != NULL,
-          "console: does nothing while dev tools are off (\"%s\")", ConsoleLine(ConsoleLines() - 1));
-    G.devTools = true;
-    ConsoleRun("tp 120 -40");
-    Check(XZDist(G.player.pos, (Vector3){ 120, 0, -40 }) < 0.1f, "console: tp 120 -40 moves you there (%.1f, %.1f)", G.player.pos.x, G.player.pos.z);
-    ConsoleRun("tp hunters");
-    Check(XZDist(G.player.pos, VillageCenter(VIL_HUNTERS)) < 12, "console: tp hunters takes you to the hunters' village");
-    ConsoleRun("tp band2");
-    float nearest = 1e9f;
-    for (int i = 0; i < MAX_RAIDERS; i++)
-        if (RaiderBandit(i)) nearest = fminf(nearest, XZDist(G.raiders[i].pos, G.player.pos));
-    Check(nearest < 40, "console: tp band2 puts you within sight of a bandit band (%.0f m)", nearest);
-    ConsoleRun("tp 120 -40");
-
-    G.health = 40;
-    ConsoleRun("heal");
-    Check(G.health == HEALTH_MAX && G.food == FOOD_MAX, "console: heal fills health and food");
-    ConsoleRun("god");
-    HurtPlayer(30, BY_WOLF);
-    Check(G.health == HEALTH_MAX, "console: god, and a bite does nothing (%.0f)", G.health);
-    ConsoleRun("god");
-    HurtPlayer(10, BY_WOLF);
-    Check(G.health < HEALTH_MAX, "console: god again, and it hurts again (%.0f)", G.health);
-    G.health = HEALTH_MAX;
-
-    int dates = BagCount(IT_DATES);
-    ConsoleRun("give dates 5");
-    Check(BagCount(IT_DATES) == dates + 5, "console: give dates 5 (%d -> %d)", dates, BagCount(IT_DATES));
-    ConsoleRun("hour 22");
-    Check(fabsf(G.hour - 22) < 0.01f, "console: hour 22 (%.2f)", G.hour);
-    ConsoleRun("hour 12");
-
-    G.player.yaw = 0;
-    ConsoleRun("spawn wolf 3");
-    int near = 0;
-    for (int i = 0; i < G.animalCount; i++)
-        near += G.animals[i].type == AN_WOLF && G.animals[i].active && G.animals[i].state != ST_DEAD && XZDist(G.animals[i].pos, G.player.pos) < 20;
-    Check(near >= 3, "console: spawn wolf 3 brings three wolves near you (%d)", near);
-    ConsoleRun("kill 25");
-    near = 0;
-    for (int i = 0; i < G.animalCount; i++)
-        near += G.animals[i].type == AN_WOLF && G.animals[i].active && G.animals[i].state != ST_DEAD && XZDist(G.animals[i].pos, G.player.pos) < 20;
-    Check(near == 0 && strstr(ConsoleLine(ConsoleLines() - 1), "beasts") != NULL, "console: kill 25 brings them down (\"%s\")",
-          ConsoleLine(ConsoleLines() - 1));
-    ConsoleRun("nonsense");
-    Check(strstr(ConsoleLine(ConsoleLines() - 1), "Unknown") != NULL, "console: an unknown command says so");
-    ConsoleRun("speed 1");
-    G.devSpeed = 0;
-    G.devTools = false;
-    RespawnPeople();
-    G.health = HEALTH_MAX;
-    PlaceAt(3, 4, 0);
-}
 
 // The ziggurat is lived in: people at work in its rooms, and the guards off duty stay in a PvP game.
 static void TestTempleLife(void)
@@ -2261,7 +2202,6 @@ static void RunTests(void)
     TestGuardRound();
     TestWolfWays();
     TestBandits();
-    TestConsole();
     TestTempleLife();
     TestWilds();
     TestPartridges();

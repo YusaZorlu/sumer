@@ -23,7 +23,7 @@ const away = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 
   // Chat before the round: the host's Enter sends the line and does not start the round.
   await ann.keyboard.press('t');
-  await waitFor(ann, 'Ann chatting', i => i.panel === 10, 10000).catch(e => null);
+  await waitFor(ann, 'Ann chatting', i => i.panel === 9, 10000).catch(e => null);
   await ann.keyboard.type('Ready?', { delay: 150 });
   await ann.keyboard.press('Enter');
   let b0 = await waitFor(bob, 'Bob hears Ann', i => i.chat === 'Ann: Ready?', 30000).catch(e => null);
@@ -69,7 +69,7 @@ const away = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
   a = await waitFor(ann, 'Cem out at the host', i => { const p = i.peers.find(q => q.name === 'Cem'); return p && (p.flags & 512); }, 60000).catch(e => null);
   check(!!a && a.royale.alive === 2, `the host counts two still standing (${a ? a.royale.alive : '?'})`);
   await cem.keyboard.press('t');
-  await waitFor(cem, 'Cem chatting', i => i.panel === 10, 10000).catch(e => null);
+  await waitFor(cem, 'Cem chatting', i => i.panel === 9, 10000).catch(e => null);
   await cem.keyboard.type('gg', { delay: 150 });
   await cem.keyboard.press('Enter');
   b = await waitFor(bob, 'Bob hears Cem', i => i.chat === 'Cem: gg', 30000).catch(e => null);

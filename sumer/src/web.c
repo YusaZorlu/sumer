@@ -190,9 +190,14 @@ void PageFrame(void)
     });
     static int setW, setH;
     int w = (int)((float)iw * pixelRatio + 0.5f), h = (int)((float)ih * pixelRatio + 0.5f);
-    if (w > 0 && h > 0 && (w != setW || h != setH || GetScreenWidth() != w || GetScreenHeight() != h)) {
+    int cw = EM_ASM_INT({ return Module.canvas.width | 0; }), ch = EM_ASM_INT({ return Module.canvas.height | 0; });
+    if (w > 0 && h > 0 && (w != setW || h != setH || GetScreenWidth() != w || GetScreenHeight() != h || cw != w || ch != h)) {
         setW = w;
         setH = h;
+        // GLFW passes a size on to raylib only when it differs from the last one GLFW saw, and the canvas
+        // can change behind its back (full screen, the page resized): a step aside first, so raylib always
+        // hears of the size it is to draw at. Otherwise it draws a small picture in a corner of the canvas.
+        SetWindowSize(w + 1, h);
         SetWindowSize(w, h);
     }
     // Every key pressed since the last frame, even one already let go again.

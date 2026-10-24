@@ -11,7 +11,7 @@
 static enum { LOBBY_MENU, LOBBY_CONNECT } stage;
 // The title's pages: the ways to play, then Sumer Survival's (alone, together, PvP) or Sumer Royale's.
 static enum { PAGE_MODES, PAGE_SURVIVAL, PAGE_ROYALE } page;
-static bool open, loaded, autoDone, confirmNew, pvp = true, combat, dev;
+static bool open, loaded, autoDone, confirmNew, pvp = true, combat;
 static char name[NAME_LEN], room[32], note[200];
 static float connectT;
 
@@ -66,7 +66,6 @@ void OpenLobby(const char *why)
         if (given[0]) snprintf(name, sizeof(name), "%s", given);
         if (strcmp(PageParam("pvp"), "0") == 0) pvp = false;
         if (strcmp(PageParam("combat"), "1") == 0) combat = true;
-        if (strcmp(PageParam("dev"), "1") == 0) dev = true;
         if (Royale()) page = PAGE_ROYALE;   // ?mode=br: straight to the battle royale
     }
     open = true;
@@ -117,7 +116,6 @@ static void PlayAlone(void)
         Say("Welcome back. Day %d. Slot %d was loaded.", G.day, SaveSlot() + 1);
         G.msgT = 6.0f;
     }
-    G.devTools = dev;
     Enter();
 }
 
@@ -126,7 +124,7 @@ static void Connect(bool host)
     SaveName();
     note[0] = '\0';
     connectT = 0;
-    NetRules(pvp, combat, dev);
+    NetRules(pvp, combat);
     if (NetBegin(host, PlayerName(), room)) stage = LOBBY_CONNECT;
     else snprintf(note, sizeof(note), "%s", NetFailure());
 }
@@ -290,10 +288,7 @@ void LobbyFrame(void)
         if (Choice((Rectangle){ x, y, 250, 44 }, "Join a game", menu && named)) Connect(false);
         Label("Joins the game hosted in this room, by its rules.", x + 270, y + 14, 15, dim);
         y += 52;
-        // Dev tools go for playing alone too: the dev console (Tab, then its button, or `).
         if (Choice((Rectangle){ x, y, 120, 26 }, "Back", menu)) page = PAGE_MODES;
-        if (Choice((Rectangle){ x + 140, y, 190, 26 }, dev ? "Dev tools: on" : "Dev tools: off", menu)) dev = !dev;
-        Label("The dev console, alone or hosting.", x + 345, y + 6, 13, dim);
         y += 38;
     } else {
         // A battle royale: no saves, no rules to pick. The host starts each round when everyone is in.
@@ -305,8 +300,6 @@ void LobbyFrame(void)
         Label("Joins the battle royale hosted in this room.", x + 270, y + 14, 15, dim);
         y += 58;
         if (Choice((Rectangle){ x, y, 120, 26 }, "Back", menu)) page = PAGE_MODES;
-        if (Choice((Rectangle){ x + 140, y, 190, 26 }, dev ? "Dev tools: on" : "Dev tools: off", menu)) dev = !dev;
-        Label("The dev console, when you host.", x + 345, y + 6, 13, dim);
         y += 50;
     }
 

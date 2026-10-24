@@ -1,4 +1,4 @@
-const { launch, open, info, cmd, consoleCmd, waitFor, sleep } = require('./lib.js');
+const { launch, open, info, cmd, waitFor, sleep } = require('./lib.js');
 const SHOTS = __dirname + '/shots/';
 (async () => {
   const browser = await launch();
@@ -14,26 +14,15 @@ const SHOTS = __dirname + '/shots/';
   console.log('frames per second (headless software GL):', fps.toFixed(1));
   await page.screenshot({ path: SHOTS + 'solo.png' });
 
-  // The dev console, opened and typed into with real keys, and driven from a test.
+  // The developer tools are gone: the keys that opened the dev console do nothing.
   let failed = 0;
   const check = (ok, what) => { console.log((ok ? 'PASS: ' : 'FAIL: ') + what); if (!ok) failed++; };
   await page.mouse.click(640, 360);
   await sleep(300);
   await page.keyboard.press('Backquote');
-  await sleep(300);
-  check((await info(page)).panel === 8, 'the ` key opens the dev console');
-  await page.keyboard.type('hour 22');
-  await page.keyboard.press('Enter');
-  await sleep(300);
-  const h = (await info(page)).hour;
-  check(Math.abs(h - 22) < 0.2, `typing "hour 22" and Enter sets the hour (${h.toFixed(2)})`);
-  await page.screenshot({ path: SHOTS + 'console.png' });
-  await page.keyboard.press('Escape');
-  await sleep(300);
-  check((await info(page)).panel === 0, 'Esc closes it');
-  const said = await consoleCmd(page, 'tp 50 60');
-  const at = await info(page);
-  check(Math.abs(at.x - 50) < 0.5 && Math.abs(at.z - 60) < 0.5, `TestConsole("tp 50 60") moves the player: "${said}"`);
+  await page.keyboard.press('F2');
+  await sleep(600);
+  check((await info(page)).panel === 0, 'no dev console: ` and F2 open nothing');
   console.log(failed ? failed + ' FAILED' : 'ALL PASSED');
   await browser.close();
   if (failed) process.exit(1);

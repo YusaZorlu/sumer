@@ -1098,7 +1098,7 @@ static void HostHello(int net, Reader *r)
     W8(&w, (unsigned)slot);
     W32(&w, (unsigned)worldSign);
     WStr(&w, myRoom);
-    W8(&w, (G.pvp ? 1u : 0u) | (G.combat ? 2u : 0u) | (RoyalePhase() == RP_RUN ? 4u : 0u) | (G.devTools ? 8u : 0u));
+    W8(&w, (G.pvp ? 1u : 0u) | (G.combat ? 2u : 0u) | (RoyalePhase() == RP_RUN ? 4u : 0u));
     W8(&w, rec ? 1u : 0u);
     if (rec) WriteRecord(&w, rec);
     WF(&w, p->pos.x);
@@ -1230,13 +1230,12 @@ static void Drop(const char *why)
 }
 
 // The rules the host picked on the title screen for the game it opens.
-static bool rulePvp = true, ruleCombat, ruleDev;
+static bool rulePvp = true, ruleCombat;
 
-void NetRules(bool pvp, bool combat, bool dev)
+void NetRules(bool pvp, bool combat)
 {
     rulePvp = pvp;
     ruleCombat = pvp && combat;
-    ruleDev = dev;
 }
 
 // A player's kills and deaths at other players' hands, and the ratio: "K/D 3/1 (3.0)".
@@ -1275,7 +1274,6 @@ static void StartHosting(void)
     if (mine) ApplyRecord(mine);
     G.pvp = rulePvp || Royale();
     G.combat = ruleCombat || Royale();
-    G.devTools = ruleDev;
     if (G.pvp) {
         RemoveZigguratGuards();
         G.player.pos = CitySpawn(0);
@@ -1316,7 +1314,6 @@ static void StartGuest(Reader *r)
     G.pvp = (rules & 1u) != 0;
     G.combat = (rules & 2u) != 0;
     RoyaleJoinLate((rules & 4u) != 0);
-    G.devTools = (rules & 8u) != 0;
     G.self = G.actor = slot;
     memset(G.peers, 0, sizeof(G.peers));
     G.peers[slot] = (Peer){ .active = true };

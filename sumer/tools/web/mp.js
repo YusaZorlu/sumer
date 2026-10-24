@@ -99,7 +99,7 @@ async function press(page, key) { await page.keyboard.down(key); await sleep(250
 
   // Chat: T opens a line (the T is not typed into it), Enter sends it, and the host passes it on to everyone.
   await bob.keyboard.press('t');
-  b = await waitFor(bob, 'the chat line open', i => i.panel === 10, 10000).catch(e => null);
+  b = await waitFor(bob, 'the chat line open', i => i.panel === 9, 10000).catch(e => null);
   check(!!b, 'T opens the chat line');
   await bob.keyboard.type('Hello Ann', { delay: 150 });
   await bob.keyboard.press('Enter');
@@ -108,7 +108,7 @@ async function press(page, key) { await page.keyboard.down(key); await sleep(250
   b = await waitFor(bob, 'Bob sees his own line', i => i.chat === 'Bob: Hello Ann' && i.panel === 0, 15000).catch(e => null);
   check(!!h && !!c && !!b, `Bob's line reaches everyone: "${(h || await info(host)).chat}"`);
   await host.keyboard.press('t');
-  await waitFor(host, 'the host chat line open', i => i.panel === 10, 10000).catch(e => null);
+  await waitFor(host, 'the host chat line open', i => i.panel === 9, 10000).catch(e => null);
   await host.keyboard.type('Hi Bob', { delay: 150 });
   await host.keyboard.press('Enter');
   b = await waitFor(bob, 'Bob hears Ann', i => i.chat === 'Ann: Hi Bob', 15000).catch(e => null);

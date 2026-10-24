@@ -174,8 +174,7 @@ The controls show on a phone or tablet, and on any other screen once a finger to
 | E / F | Use, talk, pick up, climb a ladder, search a body, fill or pour a bucket, open the coop / alternate action (plant a date) |
 | R | Refill quiver from carried arrow baskets |
 | B | Torch on/off (it burns from 17:00, brighter as dusk turns to night; also a button in Tab, see Combat) |
-| Tab | Baskets (inventory), equipment and armor; with dev tools on, its "Dev console" button opens the dev console |
-| ` or F2 | Dev console, when dev tools are on (see below) |
+| Tab | Baskets (inventory), equipment and armor |
 | T (hold) | Fast-forward time (playing alone) |
 | T | Chat, in a shared game or a battle royale (the dead watching too): type a line, Enter sends it to everyone, Esc puts it away |
 | F5 | Save |
@@ -190,28 +189,6 @@ The controls show on a phone or tablet, and on any other screen once a finger to
 Panels also take number keys (barter offer N, with 0, - and = for offers 10-12; use basket N; coop actions
 1-4), so nothing depends on a click landing. The game pauses when the window loses focus (a screenshot tool, switching apps);
 Resume or Esc takes the mouse back.
-
-## Dev console
-
-For testing. It is there only when **Dev tools** were turned on on the title screen before playing alone or
-hosting (a rule like PvP and Combat mode, off by default; `?dev=1` in the address turns it on too). Then
-everyone in that game can open it: Tab, then the "Dev console" button, or the ` key (F2 on keyboards without
-it). Type a command and press Enter; the up arrow brings back the last one, Tab or Esc closes. Buttons below
-do the usual ones.
-
-| Command | Does |
-|---|---|
-| `where` | Where you are, the day and hour, the nearest village |
-| `tp <x> <z>` / `tp <place>` | Moves you; places: city, ziggurat, hunters, herders, fishers, camp1-4, band1, band2, wolf |
-| `heal`, `god`, `gear`, `arrows` | Full health and food; nothing hurts you (again to stop); the best bow, sword, war mace and bronze armor; a full quiver |
-| `give <item> [n]` | Puts things in your baskets, by the start of their English name (`give bread 5`) |
-| `speed <x>` | Walking and running that many times as fast |
-| `hour <h>`, `rain on/off` | Sets the time of day; starts or stops rain (host) |
-| `spawn <beast> [n]` | Brings that many calm gazelles, onagers, boars, geese, wolves or snakes in front of you (host) |
-| `kill [m]` | Brings down every foe and beast within m metres, 20 if not given (host) |
-| `calm` | Beasts and fighters let you be, and you are no longer wanted (host) |
-
-In a joined game the world commands (marked host) are the host's.
 
 ## Game settings
 

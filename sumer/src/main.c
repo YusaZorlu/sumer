@@ -56,7 +56,9 @@ static void Frame(void)
 
 int main(void)
 {
-    SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_RESIZABLE);
+    // Not resizable for raylib: on a page resize it would set the canvas to the page's size itself, behind
+    // GLFW's back; PageFrame (web.c) sizes it, to the screen's own pixels.
+    SetConfigFlags(FLAG_MSAA_4X_HINT);
     InitWindow(1280, 720, "Sumer");
     SetExitKey(KEY_NULL);
     rlSetClipPlanes(0.1, 1200.0);

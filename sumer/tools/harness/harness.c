@@ -365,12 +365,6 @@ static void ShotPanel(const char *out, int panel, int lang, int trader)
     BagAdd(IT_BREAD, 3);
     G.herbT = 12.0f;
     G.trader = trader;
-    if (panel == PANEL_CONSOLE) {
-        G.devTools = true;
-        ConsoleRun("help");
-        ConsoleRun("where");
-        ConsoleRun("give dates 5");
-    }
     G.msgT = 0;
     for (int f = 0; f < 3; f++) {
         G.panel = (Panel)panel;

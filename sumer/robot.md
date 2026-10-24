@@ -56,8 +56,6 @@ All from the repository root. `tools/out/` is for build products and is git-igno
 | Every guard's post, alone and after PvP takes the ziggurat's away | `tools/out/harness guards` |
 | Things standing on the ground that hang above it as drawn (worst first, and how many) | `tools/out/harness floaters [min gap]` (0 or 1 expected) |
 | A screenshot standing on an upper floor (the ziggurat's middle terrace: 8) | `SHOT_FLOOR=8 tools/out/harness shotin out.png x z yaw pitch dist hour` |
-| The dev console, as panel 8 (runs help, where and give first) | `tools/out/harness ui out.png 8 <lang 0/1>` |
-| Run a dev console command from a browser test | `consoleCmd(page, "tp band1")` in `tools/web/lib.js` (hook `TestConsole` in `testhooks.c`) |
 | Free patches in the city (for placing a house) | `tools/out/harness spots x0 z0 x1 z1 step half [skip]`; also test a spot against what is built before the city houses (see the sixth house's history in `git log`) |
 
 The harness has more modes (`shot`, `citymap`, `textmap`, `wetways`, `canals`, `pvp`, `archers`, `aim`,
@@ -190,10 +188,6 @@ in `src/game.h`) holds the whole world.
   Every torch burns while `TorchesLit()` (`G.torchGlow`, from 17:00, brightening to full by 20:00 or with the dark);
   the world shader's `night` uniform is that glow, as it only scales torchlight there.
   Bodies: `STYLE_WOMAN` (256) in the 16-bit style. First person: `ViewModel()` in `player.c`.
-- **Dev console** (`src/console.c`, panel `PANEL_CONSOLE` drawn in `ui.c`): only when `G.devTools` (the "Dev tools" rule
-  on the title screen, sent to guests as rules bit 4). `ConsoleRun(text)` parses and runs a command and writes its
-  answer to a 14-line scrollback. World commands check `Host()`. Add a command as one more `else if` in `ConsoleRun`, a line in `Help()`, a row in the README's
-  table, Turkish for its answers, and a check in `TestConsole()`.
 - **Ground as drawn** (`SettleOnGround` in `world.c`, after `BuildTerrain`): things are placed on `TerrainHeight`, but the
   ground is drawn as 6 m triangles (`GroundSurface`/`MeshHeight`), which sag below it over hills. The pass extends
   whatever stands on the land down to the drawn ground (boxes and cylinders grow down, blobs and cones sink). Anything

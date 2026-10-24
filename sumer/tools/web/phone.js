@@ -130,6 +130,13 @@ const BASE = process.env.BASE || 'http://localhost:8123/';
   check(!!(await waitFor(page, 'the baskets', i => i.panel === 1, 20000).catch(e => null)), 'Bag opens the baskets');
   await tap(MENU);
   await waitFor(page, 'closed', i => i.panel === 0, 20000).catch(e => null);
+  // The browser resizes the page (a phone's keyboard, the name box, full screen): the picture keeps filling the
+  // screen, raylib's idea of its size matching the canvas.
+  await page.evaluate(() => window.dispatchEvent(new Event('resize')));
+  await sleep(2500);
+  const rs = await info(page);
+  check(rs.screen[0] === rs.canvas[0] && rs.screen[1] === rs.canvas[1] && rs.canvas[0] > 844,
+        `after a resize the game still fills the canvas (screen ${rs.screen}, canvas ${rs.canvas})`);
   check((await info(page)).fpsLimit === 60, 'frames are limited to 60 a second unless the settings say otherwise');
 
   // Left-handed: the thumb's buttons on the left, the stick on the right half.

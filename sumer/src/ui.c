@@ -281,53 +281,10 @@ static void DrawBagPanel(void)
                     G.coopEggs, G.coopWater, G.farmWater), x0, y, 18, C_TEXT);
     Text(hoverText[0] ? hoverText : "Click or 1-6: eat / drink / chew herbs / refill quiver    Right-click or X: drop    Tab: close",
          x0, r.y + r.height - 34, 16, hoverText[0] ? C_GOLD : C_DIM);
-    if (G.devTools && Button((Rectangle){ r.x + r.width - 164, r.y + 14, 144, 30 }, "Dev console", true, 0)) SetPanel(PANEL_CONSOLE);
     if (Button((Rectangle){ r.x + r.width - 344, r.y + 14, 170, 30 }, G.torchOn ? "Torch: on (B)" : "Torch: off (B)", true, 0)) {
         G.torchOn = !G.torchOn;
         Say(G.torchOn ? "You take up your torch (B). It burns from the evening on." : "You put your torch away (B).");
     }
-}
-
-// The dev console: what the commands said, the line being typed, and buttons for the usual ones.
-static void DrawConsolePanel(void)
-{
-    static char line[120];
-    static const char *const quick[][2] = {
-        { "Heal", "heal" }, { "God", "god" }, { "Gear", "gear" }, { "Calm", "calm" }, { "Noon", "hour 12" }, { "Night", "hour 22" },
-        { "Rain", "rain on" }, { "Where", "where" }, { "Help", "help" },
-    };
-    Rectangle r = PanelRect(fminf(940.0f, UiWidth() - 20.0f), 470);
-    float x0 = r.x + 20, y = r.y + 16;
-    int c, n = (int)strlen(line);
-
-    Text("Dev console", x0, y, 24, C_GOLD);
-    Text("Type a command and press Enter. Tab or Esc closes.", x0 + (float)Measure(L("Dev console"), 24) + 20, y + 6, 15, C_DIM);
-    y += 40;
-    for (int i = 0; i < ConsoleLines(); i++) {
-        const char *s = ConsoleLine(i);
-        DrawTextEx(GameFont(), s, (Vector2){ x0, y + 21.0f * (float)i }, FontSize(16), (float)((int)FontSize(16) / 10), s[0] == '>' ? C_GOLD : C_TEXT);
-    }
-
-    while ((c = GetCharPressed()) > 0)
-        if (c >= 32 && c < 127 && c != '`' && n < (int)sizeof(line) - 1) {
-            line[n++] = (char)c;
-            line[n] = '\0';
-        }
-    if ((KeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && n > 0) line[--n] = '\0';
-    if (KeyPressed(KEY_UP)) snprintf(line, sizeof(line), "%s", ConsoleLast());
-    if ((KeyPressed(KEY_ENTER) || KeyPressed(KEY_KP_ENTER)) && line[0]) {
-        ConsoleRun(line);
-        line[0] = '\0';
-    }
-
-    float iy = r.y + r.height - 92;
-    DrawRectangleRec((Rectangle){ x0, iy, r.width - 40, 30 }, (Color){ 30, 26, 22, 255 });
-    DrawRectangleLinesEx((Rectangle){ x0, iy, r.width - 40, 30 }, 1, C_EDGE);
-    DrawTextEx(GameFont(), TextFormat("> %s%s", line, fmodf((float)GetTime(), 1.0f) < 0.5f ? "_" : ""), (Vector2){ x0 + 8, iy + 6 }, FontSize(18),
-               (float)((int)FontSize(18) / 10), C_TEXT);
-    float bw = (r.width - 40 - 8.0f * 8) / 9;
-    for (int k = 0; k < 9; k++)
-        if (Button((Rectangle){ x0 + (bw + 8) * (float)k, r.y + r.height - 50, bw, 32 }, quick[k][0], true, 0)) ConsoleRun(quick[k][1]);
 }
 
 static void DrawStoragePanel(void)
@@ -658,7 +615,6 @@ static void DrawHelpPanel(void)
         { "R", "refill the quiver" }, { "B", "torch on/off (from evening)" }, { "Z", "arrow camera on/off" }, { "Tab", "baskets and equipment" },
         { "M", "map zoom" }, { "N", "music: off, low, medium, high" }, { "G", "graphics: auto, high, low, classic" }, { "T (hold)", "fast-forward time (alone)" }, { "T", "chat (in a shared game)" }, { "F5", "save" },
         { "F11", "fullscreen" }, { "Esc", "pause, save slots, game settings, your look" }, { "H", "this window" },
-        { "` or F2", "dev console (when dev tools are on)" },
     };
     static const char *const tips[] = {
         "Parry: a yellow mark means a blow is coming, over a person or a player swinging at you (a player gives you less "
@@ -1199,7 +1155,6 @@ void DrawUI(void)
     case PANEL_HELP:    DrawHelpPanel(); break;
     case PANEL_COOP:    DrawCoopPanel(); break;
     case PANEL_LOOK:    DrawLookPanel(); break;
-    case PANEL_CONSOLE: DrawConsolePanel(); break;
     case PANEL_SETTINGS: DrawSettingsPanel(); break;
     default: break;
     }

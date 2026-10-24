@@ -55,7 +55,8 @@ EMSCRIPTEN_KEEPALIVE const char *TestInfo(void)
                       first ? "" : ",", s, name, p->pos.x, p->pos.z, p->flags, p->health, p->wanted, p->kills, p->deaths, p->mark);
         first = 0;
     }
-    n += snprintf(buf + n, sizeof(buf) - (size_t)n, "],\"fpsLimit\":%d,\"aim\":%d,\"moving\":%d,\"stick\":[%.2f,%.2f],\"touch\":%d,\"fp\":%d,\"crouch\":%d,\"parry\":%.2f,\"buttons\":[", FpsLimit(), G.player.aiming, G.player.moving, TouchStick().x, TouchStick().y, TouchOn(), G.firstPerson,
+    n += snprintf(buf + n, sizeof(buf) - (size_t)n, "],\"screen\":[%d,%d],\"canvas\":[%d,%d],\"fpsLimit\":%d,\"aim\":%d,\"moving\":%d,\"stick\":[%.2f,%.2f],\"touch\":%d,\"fp\":%d,\"crouch\":%d,\"parry\":%.2f,\"buttons\":[", GetScreenWidth(), GetScreenHeight(),
+                  EM_ASM_INT({ return Module.canvas.width | 0; }), EM_ASM_INT({ return Module.canvas.height | 0; }), FpsLimit(), G.player.aiming, G.player.moving, TouchStick().x, TouchStick().y, TouchOn(), G.firstPerson,
                   G.player.crouching, G.parryT + G.parryCool);
     for (int b = 0; b < TB_COUNT; b++) {
         Vector2 c;
@@ -147,8 +148,3 @@ EMSCRIPTEN_KEEPALIVE void TestCommand(int cmd, float a, float b)
 }
 
 // Runs a dev console command (see src/console.c) and returns what it said last.
-EMSCRIPTEN_KEEPALIVE const char *TestConsole(const char *cmd)
-{
-    ConsoleRun(cmd);
-    return ConsoleLines() ? ConsoleLine(ConsoleLines() - 1) : "";
-}
