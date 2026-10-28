@@ -958,7 +958,7 @@ static void TestFaster(void)
             bool in = fabsf(x - b->pos.x) <= b->size.x / 2 && fabsf(z - b->pos.z) <= b->size.z / 2;
             float top = b->pos.y + b->size.y / 2;
             if (in && top > h && top <= y + STEP_HEIGHT) h = top;
-            if (fabsf(x - b->pos.x) <= b->size.x / 2 + 0.5f && fabsf(z - b->pos.z) <= b->size.z / 2 + 0.5f && top > TerrainHeight(x, z) + 0.6f) solid = true;
+            if (!b->over && fabsf(x - b->pos.x) <= b->size.x / 2 + 0.5f && fabsf(z - b->pos.z) <= b->size.z / 2 + 0.5f && top > TerrainHeight(x, z) + 0.6f) solid = true;
         }
         wrong += GroundHeight(x, z, y) != h || SolidAt(x, z, 0.5f) != solid;
     }
@@ -1035,6 +1035,30 @@ static void TestDawn(void)
 
 bool StepTowardForTest(Vitals *v, Vector3 goal, float speed, float dt);
 
+// Whether something solid stands within 0.3 m of (x, z) for someone at height y.
+static bool BlockedHere(float x, float z, float y)
+{
+    int n;
+    const int *near = BoxesNear(x - 0.3f, z - 0.3f, x + 0.3f, z + 0.3f, &n);
+    for (int k = 0; k < n; k++) {
+        const Box *b = &G.boxes[near[k]];
+        if (IsBlocking(b, y) && fabsf(x - b->pos.x) <= b->size.x / 2 + 0.3f && fabsf(z - b->pos.z) <= b->size.z / 2 + 0.3f) return true;
+    }
+    return false;
+}
+
+// The open ground nearest p (within 3 m): where someone could stand to set off from.
+static Vector3 OpenNear(Vector3 p)
+{
+    for (float r = 0; r <= 3.0f; r += 0.5f)
+        for (int a = 0; a < 12; a++) {
+            float x = p.x + cosf((float)a * PI / 6) * r, z = p.z + sinf((float)a * PI / 6) * r;
+            if (!SolidAt(x, z, 0.35f) && !InWater(x, z)) return (Vector3){ x, GroundHeight(x, z, TerrainHeight(x, z) + 0.3f), z };
+            if (r == 0) break;
+        }
+    return p;
+}
+
 // Someone shut in a U of walls with the one they want behind its closed end walks out of the open end and
 // round, instead of pressing into the wall that is in the straight line; a way is found in good time.
 static void TestPaths(void)
@@ -1057,11 +1081,66 @@ static void TestPaths(void)
 
     PathNewFrame();
     Vector3 out[PATH_MAX];
+
     double t0 = GetTime();
     int n = FindPath((Vector3){ cx, 0, cz }, (Vector3){ cx + 300, 0, cz + 300 }, out, PATH_MAX);
     double ms = (GetTime() - t0) * 1000.0;
+
     Check(n > 0 && ms < 40.0, "the longest search takes %.1f ms and still points the way (%d corners)", ms, n);
     G.boxCount = first;
+
+    // Up stairs from the street, as anyone after someone up there goes: every house's onto its roof (but
+    // where a room on the roof stands at their head), and each gate tower's to its roof.
+    Vector3 foot, head;
+    int stairs = HouseStairs(-1, &foot, &head), up = 0, tried = 0;
+    for (int k = 0; k < stairs; k++) {
+        HouseStairs(k, &foot, &head);
+        if (BlockedHere(head.x, head.z, head.y)) continue;
+        Vitals w = { 0 };
+        w.at = OpenNear(foot);
+        bool top = false;
+        for (float s = 0; s < 30 && !top; s += 0.05f) {
+            PathNewFrame();
+            top = StepTowardForTest(&w, head, 3.0f, 0.05f) && fabsf(w.at.y - head.y) < 0.3f;
+        }
+        up += top;
+        tried++;
+        if (!top) printf("  stairs %d: from (%.1f, %.1f) to (%.1f, %.1f, %.1f), stopped at (%.1f, %.1f, %.1f)\n", k, foot.x, foot.z, head.x, head.y, head.z, w.at.x, w.at.y, w.at.z);
+    }
+    Check(tried > 40 && up == tried, "up a house's stairs onto its roof: %d of %d", up, tried);
+    // Every house is roofed (none open to fall into); the awnings and roof shades are stood on, walked
+    // under and in no one's way on the ground.
+    int roofed = 0, overs = 0, good = 0;
+    for (int k = 0; k < RoofCount(); k++) {
+        Vector3 r = RoofSpot(k);
+        roofed += GroundHeight(r.x, r.z, r.y + 0.2f) >= r.y - 0.01f;
+    }
+    Check(RoofCount() > 150 && roofed == RoofCount(), "every house in the city has a roof to stand on (%d of %d)", roofed, RoofCount());
+    for (int i = 0; i < G.boxCount; i++) {
+        const Box *b = &G.boxes[i];
+        if (!b->over) continue;
+        float top = b->pos.y + b->size.y / 2, bottom = b->pos.y - b->size.y / 2, under = GroundHeight(b->pos.x, b->pos.z, bottom - 0.5f);
+        overs++;
+        bool street = under < TerrainHeight(b->pos.x, b->pos.z) + 0.1f;   // an awning (a shade stands on its roof)
+        good += b->solid && GroundHeight(b->pos.x, b->pos.z, top + 0.2f) >= top - 0.01f && bottom - under > 2.1f && (!street || !SolidAt(b->pos.x, b->pos.z, 0.5f));
+    }
+    Check(overs > 40 && good == overs, "awnings and roof shades: %d, stood on, walked under, no obstacle below (%d)", overs, good);
+    int towers = 0;
+    for (int k = 0; k < GateTowerCount(); k++) {
+        float face;
+        Vector3 c, t, nn, roof = GateTowerPost(k, 0, &face);
+        GateTowerFrame(k, &c, &t, &nn);
+        Vitals w = { 0 };
+        w.at = OpenNear((Vector3){ c.x + nn.x * 6.0f, 0, c.z + nn.z * 6.0f });   // in the street before its door
+        bool top = false;
+        for (float s = 0; s < 90 && !top; s += 0.05f) {
+            PathNewFrame();
+            top = StepTowardForTest(&w, roof, 3.0f, 0.05f) && fabsf(w.at.y - roof.y) < 0.4f;
+        }
+        towers += top;
+        if (!top) printf("  tower %d: to (%.1f, %.1f, %.1f), stopped at (%.1f, %.1f, %.1f)\n", k, roof.x, roof.y, roof.z, w.at.x, w.at.y, w.at.z);
+    }
+    Check(towers == GateTowerCount(), "in at a gate tower's door and up its stairs to the roof: %d of %d", towers, GateTowerCount());
 }
 
 // The alehouse by the potters' quarter: townsfolk sit talking at its tables; weapons go away at the door
@@ -2349,11 +2428,36 @@ static void TestParty(void)
             Check(PartyRound(0) == r0 + 6 && PartyRound(1) == r1 - 2, "a kill: +6 for the archer, -2 for the one brought down");
             PartyScore(0, -6);
             PartyScore(1, 2);
+            // A stray arrow into the townsfolk: they take it, and no one turns on the archer.
+            CollectFighters();
+            int folk = -1;
+            for (int i = 0; i < FighterCount() && folk < 0; i++) {
+                Vector3 pos;
+                float hp, maxHp;
+                const char *name;
+                bool hostile, dead;
+                if (FighterInfo(i, &pos, &hp, &maxHp, &name, &hostile, &dead) && !dead && strstr(name, "Raider") == NULL && strstr(name, "Barbarian") == NULL && strstr(name, "Bandit") == NULL) folk = i;
+            }
+            G.actor = 0;
+            if (folk >= 0) DamagePerson(folk, 5.0f);
+            int angry = 0;
+            for (int i = 0; i < FighterCount(); i++) {
+                Vector3 pos;
+                float hp, maxHp;
+                const char *name;
+                bool hostile, dead;
+                if (FighterInfo(i, &pos, &hp, &maxHp, &name, &hostile, &dead) && hostile) angry++;
+            }
+            Check(folk >= 0 && angry == 0, "one-shot archers: an arrow into the townsfolk turns no one on the archer (%d hostile)", angry);
         }
         if (g == PG_DEFENCE) {
-            int outside = 0, foe = -1;
-            for (int i = 0; i < MAX_RAIDERS; i++) outside += !G.raiders[i].vit.dead && !InsideWalls(G.raiders[i].pos.x, G.raiders[i].pos.z, 0.0f);
-            Check(outside == MAX_RAIDERS, "city defence: every barbarian, raider and bandit starts outside the walls (%d of %d)", outside, MAX_RAIDERS);
+            int outside = 0, home = 0, foe = -1;
+            for (int i = 0; i < MAX_RAIDERS; i++) {
+                bool near = XZDist(G.raiders[i].pos, (Vector3){ 0, 0, CITY_Z }) < CITY_A + 60.0f;
+                outside += !G.raiders[i].vit.dead && !InsideWalls(G.raiders[i].pos.x, G.raiders[i].pos.z, 0.0f) && near && !RaiderBenched(i);
+                home += RaiderBenched(i) && !near;
+            }
+            Check(outside == 16 && home == 8, "city defence for two: the barbarians and bandits start just outside the walls (%d), the raiders stay at their camps (%d)", outside, home);
             CollectFighters();
             for (int i = 0; i < FighterCount() && foe < 0; i++) {
                 Vector3 pos;

@@ -135,7 +135,9 @@ enum { SHAPE_BOX, SHAPE_CYL, SHAPE_BLOB, SHAPE_CONE };
 typedef struct { int in1, n1, in2, n2; OutKind kind; int out, nOut; int in3, n3; } Offer;
 
 // 'built' marks walls, houses and other works of people, drawn in finer detail up close than plants are.
-typedef struct { Vector3 pos, size; Color color; bool solid, water, glow; float torch; unsigned char shape; bool built; } Box;
+// 'over' marks something solid high overhead (an awning, a shade on a roof): stood on, walked under, and
+// no obstacle to anyone on the ground (SolidAt).
+typedef struct { Vector3 pos, size; Color color; bool solid, water, glow; float torch; unsigned char shape; bool built, over; } Box;
 
 typedef enum { RES_PALM, RES_REEDS, RES_TREE, RES_CLAY, RES_ORE, RES_FISH, RES_HERB, RES_KINDS } ResKind;
 typedef struct { Vector3 pos; ResKind kind; float regrow, spin; bool farm; } Resource;
@@ -615,6 +617,7 @@ Vector3 GateTowerStair(int i, int k);
 void GateTowerFrame(int i, Vector3 *centre, Vector3 *t, Vector3 *n);
 int HouseClimbCount(void);
 int RoofCount(void);
+int HouseStairs(int k, Vector3 *foot, Vector3 *head);
 Vector3 RoofSpot(int i);
 void PlayerStep(Vector3 dir, float dt);
 Vector3 GateTowerPost(int i, int who, float *face);
@@ -896,6 +899,7 @@ bool StorageReady(void);
 void SyncStorage(void);
 void WantPointer(bool captured);
 bool PointerCaptured(void);
+void NoGrab(const Rectangle *r, int n);
 void WatchClicks(void);
 void PageFrame(void);
 bool MousePressed(int button);
@@ -1159,7 +1163,8 @@ void PartyUpdate(float dt);
 void PartyBegin(Vector3 at, int kind);
 bool PartyFall(const char *how);
 bool InLava(Vector3 pos);
-void StormCity(void);
+void StormCity(int players);
+bool RaiderBenched(int i);
 int PartySeeker(void);
 bool PartyHider(int s);
 bool PartyMayHurt(int a, int s);

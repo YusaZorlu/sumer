@@ -499,14 +499,12 @@ void BuildCity(void)
     Field(36, -150, 90, -122);
 }
 
-static void CourtyardHouse(float x, float z, float w, float d, float h, Color c)
+// Something solid overhead, to stand on and walk under (see Box.over).
+static void AddOverhead(float x, float y0, float z, float w, float h, float d, Color c)
 {
-    const float t = 0.6f;
-    AddBox(x, 0, z - d / 2 + t / 2, w, h, t, c, true);
-    AddBox(x, 0, z + d / 2 - t / 2, w, h, t, c, true);
-    AddBox(x - w / 2 + t / 2, 0, z, t, h, d - 2 * t, c, true);
-    AddBox(x + w / 2 - t / 2, 0, z, t, h, d - 2 * t, c, true);
-    AddBox(x, 0, z, w - 2 * t, 0.03f, d - 2 * t, COL_BRICK, false);
+    int first = G.boxCount;
+    AddBox(x, y0, z, w, h, d, c, true);
+    for (int i = first; i < G.boxCount; i++) G.boxes[i].over = true;
 }
 
 // The houses built, for the ways up onto their roofs (HouseClimbs).
@@ -514,6 +512,17 @@ typedef struct { float x, z, w, d, h; int door, ix, iz; } HouseSpot;
 #define MAX_HOUSE_SPOTS 700
 static HouseSpot houseSpots[MAX_HOUSE_SPOTS];
 static int houseSpotCount, climbCount;
+// Each house's stairs: the ground at their foot and the roof at their head (for tests and anyone who asks).
+static Vector3 stairFoot[MAX_HOUSE_SPOTS], stairHead[MAX_HOUSE_SPOTS];
+static int stairCount;
+
+int HouseStairs(int k, Vector3 *foot, Vector3 *head)
+{
+    if (k < 0 || k >= stairCount) return stairCount;
+    *foot = stairFoot[k];
+    *head = stairHead[k];
+    return stairCount;
+}
 
 int HouseClimbCount(void)
 {
@@ -532,13 +541,25 @@ Vector3 RoofSpot(int i)
     return (Vector3){ hs->x, hs->h, hs->z + hs->d / 4 };
 }
 
+// Whether anything overhead (an awning) is over (x, z), within r.
+static bool Overhead(float x, float z, float r)
+{
+    int n;
+    const int *near = BoxesNear(x - r, z - r, x + r, z + r, &n);
+    for (int k = 0; k < n; k++) {
+        const Box *b = &G.boxes[near[k]];
+        if (b->over && fabsf(x - b->pos.x) <= b->size.x / 2 + r && fabsf(z - b->pos.z) <= b->size.z / 2 + r) return true;
+    }
+    return false;
+}
+
 // Whether a strip of ground from (x0, z0) to (x1, z1) is clear for something 'r' wide: no street, water,
-// building or wall.
+// building or wall, and nothing overhead for stairs to climb into.
 static bool ClearStrip(float x0, float z0, float x1, float z1, float r)
 {
     for (int k = 0; k <= 4; k++) {
         float x = x0 + (x1 - x0) * (float)k / 4, z = z0 + (z1 - z0) * (float)k / 4;
-        if (!InsideWalls(x, z, 4.0f + r) || InKeepOut(x, z, r) || InWater(x, z) || SolidAt(x, z, r)) return false;
+        if (!InsideWalls(x, z, 4.0f + r) || InKeepOut(x, z, r) || InWater(x, z) || SolidAt(x, z, r) || Overhead(x, z, r)) return false;
     }
     return true;
 }
@@ -549,6 +570,7 @@ static bool ClearStrip(float x0, float z0, float x1, float z1, float r)
 static void HouseClimbs(void)
 {
     climbCount = 0;
+    stairCount = 0;
     for (int i = 0; i < houseSpotCount; i++) {
         const HouseSpot *hs = &houseSpots[i];
         float roll = Hash2(hs->ix + 211, hs->iz + 97);
@@ -575,6 +597,10 @@ static void HouseClimbs(void)
                     AddBox(bx + ax * along, 0, bz + az * along, ax != 0 ? step + 0.02f : 0.95f, top, az != 0 ? step + 0.02f : 0.95f,
                            j & 1 ? COL_MUD_PALE : Mix(COL_MUD_PALE, COL_HOUSE_DARK, 0.3f), true);
                 }
+                float lo = -dir * (len / 2 + 0.9f), hi = dir * (len / 2 - step / 2);
+                stairFoot[stairCount] = (Vector3){ bx + ax * lo, 0, bz + az * lo };
+                stairFoot[stairCount].y = TerrainHeight(stairFoot[stairCount].x, stairFoot[stairCount].z);
+                stairHead[stairCount++] = (Vector3){ bx + ax * hi - ox * 1.7f, hs->h, bz + az * hi - oz * 1.7f };
             } else {
                 // A crate to step on, and a pile of them a metre higher: up on the roof from the pile.
                 if (hs->h > 3.2f || !ClearStrip(fx + ox * 0.1f - ax * 1.2f, fz + oz * 0.1f - az * 1.2f, fx + ox * 0.1f + ax * 1.2f, fz + oz * 0.1f + az * 1.2f, 0.5f))
@@ -591,10 +617,31 @@ static void HouseClimbs(void)
     }
 }
 
+// A cloth awning over a door: up where it is walked under, and stood on (dropped onto from the roof). Put
+// up only where the street before the door is clear, so none reaches into the house across the way.
+typedef struct { float x, z, ox, oz; int cloth; } Awning;
+#define MAX_AWNINGS 160
+static Awning awnings[MAX_AWNINGS];
+static int awningCount;
+
+static void Awnings(void)
+{
+    static const Color cloths[4] = { { 222, 210, 180, 255 }, { 160, 70, 52, 255 }, { 70, 92, 130, 255 }, { 190, 150, 80, 255 } };
+    for (int i = 0; i < awningCount; i++) {
+        const Awning *a = &awnings[i];
+        float mx = a->x + a->ox * 0.75f, mz = a->z + a->oz * 0.75f, ax = a->oz, az = a->ox;   // its middle; along the wall
+        if (SolidAt(mx + ax * 0.6f, mz + az * 0.6f, 0.55f) || SolidAt(mx - ax * 0.6f, mz - az * 0.6f, 0.55f)) continue;
+        AddOverhead(a->x + a->ox * 0.65f, 2.65f, a->z + a->oz * 0.65f, a->ox != 0 ? 1.3f : 2.0f, 0.1f, a->oz != 0 ? 1.3f : 2.0f, cloths[a->cloth]);
+        for (int k = -1; k <= 1; k += 2)
+            AddBox(a->x + a->ox * 1.25f + ax * 0.95f * (float)k, 0, a->z + a->oz * 1.25f + az * 0.95f * (float)k, 0.08f, 2.65f, 0.08f, COL_WOOD, false);
+    }
+}
+
 // Fills every free cell inside the walls; a cell that touches a street tries a smaller, shifted house first.
 void BuildCityHouses(void)
 {
     houseSpotCount = 0;
+    awningCount = 0;
     const float cell = 7.0f;
     const Color tones[4] = { COL_HOUSE, COL_HOUSE_DARK, COL_WALL, COL_MUD_PALE };
     static const float tries[5][3] = { { 0, 0, 1.0f }, { 0, 2.0f, 0.8f }, { 0, -2.0f, 0.8f }, { 2.0f, 0, 0.8f }, { -2.0f, 0, 0.8f } };
@@ -624,28 +671,26 @@ void BuildCityHouses(void)
 
             float h = 2.8f + 1.8f * Hash2(ix + 7, iz + 3);
             Color c = tones[(int)(Hash2(ix + 19, iz + 23) * 3.99f)];
-            bool court = w > 5.6f && d > 5.6f && Hash2(ix + 41, iz + 43) < 0.3f;
-            if (court) CourtyardHouse(cx, cz, w, d, h, c);
-            else AddBox(cx, 0, cz, w, h, d, c, true);
+            // Every house is roofed: none open to fall into and be shut in.
+            AddBox(cx, 0, cz, w, h, d, c, true);
             Color trim = Mix(c, COL_MUD_DARK, 0.35f), base = Mix(c, COL_MUD_DARK, 0.5f);
-            if (court) {
-                for (int k = -1; k <= 1; k += 2) {
-                    AddBox(cx, h - 0.06f, cz + (float)k * (d / 2 - 0.3f), w + 0.16f, 0.2f, 0.76f, trim, false);
-                    AddBox(cx + (float)k * (w / 2 - 0.3f), h - 0.06f, cz, 0.76f, 0.2f, d - 0.6f, trim, false);
-                }
-            } else {
-                AddBox(cx, h - 0.06f, cz, w + 0.16f, 0.2f, d + 0.16f, trim, false);
-                AddBox(cx, 0, cz, w + 0.1f, 0.35f, d + 0.1f, base, false);
-            }
+            AddBox(cx, h - 0.06f, cz, w + 0.16f, 0.2f, d + 0.16f, trim, false);
+            AddBox(cx, 0, cz, w + 0.1f, 0.35f, d + 0.1f, base, false);
 
-            // A room up on the roof, and a crate beside it to climb onto it from the roof.
+            // A room up on the roof, and a crate beside it to climb onto it from the roof; on some, a reed
+            // shade beside the room, a step up from its top and high enough to walk under.
             if (Hash2(ix + 13, iz + 29) < 0.4f) {
                 float ox = (Hash2(ix, iz + 61) < 0.5f ? -1.0f : 1.0f) * w / 4;
-                AddBox(cx + ox, h, cz - d / 4, w / 2, 2.0f, d / 2, tones[(int)(Hash2(ix + 3, iz + 71) * 3.99f)], !court);
-                if (!court) AddBox(cx + ox, h, cz + 0.5f, 0.9f, 1.0f, 0.9f, COL_WOOD, true);
+                AddBox(cx + ox, h, cz - d / 4, w / 2, 2.0f, d / 2, tones[(int)(Hash2(ix + 3, iz + 71) * 3.99f)], true);
+                AddBox(cx + ox, h, cz + 0.5f, 0.9f, 1.0f, 0.9f, COL_WOOD, true);
+                if (Hash2(ix + 71, iz + 19) < 0.4f) {
+                    float sx = cx + ox, sz = cz + d / 4 + 0.15f;
+                    for (int k = 0; k < 4; k++) AddBox(sx + ((k & 1) ? 0.9f : -0.9f), h, sz + ((k & 2) ? 0.9f : -0.9f), 0.08f, 2.3f, 0.08f, COL_WOOD, false);
+                    AddOverhead(sx, h + 2.3f, sz, 2.1f, 0.12f, 2.1f, COL_STRAW);
+                }
             }
             int side = (int)(Hash2(ix + 77, iz + 5) * 3.99f);
-            if (!court && houseSpotCount < MAX_HOUSE_SPOTS) houseSpots[houseSpotCount++] = (HouseSpot){ cx, cz, w, d, h, side, ix, iz };
+            if (houseSpotCount < MAX_HOUSE_SPOTS) houseSpots[houseSpotCount++] = (HouseSpot){ cx, cz, w, d, h, side, ix, iz };
             float dx = (side == 0) ? -w / 2 : (side == 1) ? w / 2 : 0.0f;
             float dz = (side == 2) ? -d / 2 : (side == 3) ? d / 2 : 0.0f;
             AddBox(cx + dx, 0, cz + dz, dx != 0 ? 0.12f : 1.0f, 2.0f, dz != 0 ? 0.12f : 1.0f, COL_DOORWAY, false);
@@ -654,7 +699,7 @@ void BuildCityHouses(void)
                 float along = 0.9f * (float)k;
                 AddBox(cx + dx * 1.04f + (dz != 0 ? along : 0), h - 0.42f, cz + dz * 1.04f + (dx != 0 ? along : 0), 0.13f, 0.13f, 0.13f, COL_PALM_TRUNK, false);
             }
-            if (!court && h > 3.4f) {
+            if (h > 3.4f) {
                 int wside = (side + 1 + (int)(Hash2(ix + 9, iz + 31) * 2.99f)) % 4;
                 float wx = (wside == 0) ? -w / 2 : (wside == 1) ? w / 2 : 0.0f;
                 float wz = (wside == 2) ? -d / 2 : (wside == 3) ? d / 2 : 0.0f;
@@ -662,13 +707,9 @@ void BuildCityHouses(void)
             }
             // Life at the door and on the roof: a cloth awning, jars and baskets, a reed shade up top.
             float ox = (float)((dx > 0) - (dx < 0)), oz = (float)((dz > 0) - (dz < 0));   // out of the door
-            if (Hash2(ix + 61, iz + 7) < 0.35f) {
-                static const Color cloths[4] = { { 222, 210, 180, 255 }, { 160, 70, 52, 255 }, { 70, 92, 130, 255 }, { 190, 150, 80, 255 } };
-                Color cl = cloths[(int)(Hash2(ix + 2, iz + 66) * 3.99f)];
-                AddBox(cx + dx + ox * 0.6f, 2.35f, cz + dz + oz * 0.6f, ox != 0 ? 1.2f : 2.0f, 0.05f, oz != 0 ? 1.2f : 2.0f, cl, false);
-                for (int k = -1; k <= 1; k += 2)
-                    AddBox(cx + dx + ox * 1.15f + oz * 0.95f * (float)k, 0, cz + dz + oz * 1.15f + ox * 0.95f * (float)k, 0.08f, 2.4f, 0.08f, COL_WOOD, false);
-            }
+            // A cloth awning over the door at some (put up once every house stands: Awnings).
+            if (Hash2(ix + 61, iz + 7) < 0.15f && awningCount < MAX_AWNINGS)
+                awnings[awningCount++] = (Awning){ cx + dx, cz + dz, ox, oz, (int)(Hash2(ix + 2, iz + 66) * 3.99f) };
             int jars = (int)(Hash2(ix + 33, iz + 12) * 3.99f) - 1;
             for (int k = 0; k < jars; k++) {
                 float along = (k == 0 ? -1.0f : 1.0f) * (0.95f + 0.35f * (float)(k / 2)), out = 0.35f;
@@ -676,16 +717,12 @@ void BuildCityHouses(void)
                 if (Hash2(ix + k, iz + 44) < 0.6f) AddShape(px, -0.05f, pz, 0.48f, 0.62f, 0.48f, COL_POT, false, SHAPE_BLOB);
                 else AddShape(px, 0, pz, 0.55f, 0.42f, 0.55f, COL_STRAW, false, SHAPE_CYL);
             }
-            if (!court && Hash2(ix + 71, iz + 19) < 0.3f) {
-                float sx = cx - (Hash2(ix, iz + 61) < 0.5f ? -1.0f : 1.0f) * w / 4, sz = cz + d / 4;
-                for (int k = 0; k < 4; k++) AddBox(sx + ((k & 1) ? 0.9f : -0.9f), h, sz + ((k & 2) ? 0.9f : -0.9f), 0.08f, 1.6f, 0.08f, COL_WOOD, false);
-                AddBox(sx, h + 1.6f, sz, 2.1f, 0.08f, 2.1f, COL_STRAW, false);
-            }
             if (Hash2(ix + 5, iz + 91) < 0.16f) {
                 float nx = (dx > 0) - (dx < 0), nz = (dz > 0) - (dz < 0);
                 AddTorch(cx + dx + nx * 0.2f + nz * 0.9f, 2.3f, cz + dz + nz * 0.2f + nx * 0.9f, false);
             }
         }
     }
+    Awnings();
     HouseClimbs();
 }

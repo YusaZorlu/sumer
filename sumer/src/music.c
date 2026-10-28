@@ -909,7 +909,8 @@ static void ChooseMood(float dt)
     if (G.health < lastHealth - 0.01f && G.hurtT > 0.2f) combatT = 12.0f;
     lastHealth = G.health;
     if (Threatened()) combatT = fmaxf(combatT, 12.0f);
-    if (G.sleeping) combatT = 0;
+    // Hide and seek: the fight's drums would tell the seeker a hider is near.
+    if (G.sleeping || PartyGame() == PG_HIDE) combatT = 0;
     combatT = fmaxf(0, combatT - dt);
     mood = combatT > 0 ? MOOD_COMBAT : nightNow ? MOOD_NIGHT : MOOD_DAY;
 }

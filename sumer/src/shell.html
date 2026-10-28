@@ -48,9 +48,12 @@
       'Sumer WebGL 2 ister: lütfen tarayıcını güncelle.';
   }
   // The game asks for the mouse (Module.sumerWantLock); a browser hands it over only during a click.
-  canvas.addEventListener('mousedown', function () {
+  canvas.addEventListener('mousedown', function (e) {
     canvas.focus();
-    if (Module.sumerWantLock && !document.pointerLockElement) {
+    // A click on one of the game's own buttons shown over the game (Module.sumerNoGrab) stays a click.
+    var fx = e.offsetX / canvas.clientWidth, fy = e.offsetY / canvas.clientHeight;
+    var onButton = (Module.sumerNoGrab || []).some(function (r) { return fx >= r[0] && fx <= r[2] && fy >= r[1] && fy <= r[3]; });
+    if (Module.sumerWantLock && !document.pointerLockElement && !onButton) {
       try {
         var p = canvas.requestPointerLock();
         if (p && p.catch) p.catch(function () {});

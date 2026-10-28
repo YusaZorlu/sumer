@@ -82,8 +82,8 @@ minigames, below). Sumer Survival offers:
   are of no use: beds, storerooms, querns, troughs, workbenches and ovens do nothing. Nothing is kept
   between rounds: everyone starts each one with the best of everything (bronze sickle-sword, the war mace,
   the best bow with bronze arrowheads, bronze armor) and arrows that never run out.
-- **A round** starts once everyone in (two or more) is ready: press Enter, or Ready in the Esc menu (Enter
-  again: not ready). Ten seconds later the round begins (the line at the top of the screen counts down;
+- **A round** starts once everyone in (two or more) is ready: press Enter, Ready in the Esc menu, or the
+  Ready button under the line at the top while the mouse is free (Enter again: not ready). Ten seconds later the round begins (the line at the top of the screen counts down;
   someone becoming unready, or joining, stops it). Anyone not ready who does not move for three minutes is
   sent back to the title screen; those who are ready are left alone. Each player is set down somewhere out in the land,
   240-420 m from the city and far from the others, with full health.
@@ -110,9 +110,11 @@ minigames, below). Sumer Survival offers:
 - **The map**: the city and its lands with no guards and no caravans. Food stays full, houses are of no
   use (more players than houses), and nothing is kept: everyone plays with the party's own gear (the best
   of everything, unlimited arrows) and anything gathered stays in the party. The streets are busier than
-  usual: three times as many townsfolk walk them.
-- **Starting**: as in Sumer Royale, everyone in (two or more) presses Enter or Ready in the Esc menu, and
-  ten seconds later the party begins. Anyone not ready who does not move for three minutes is sent away.
+  usual: three times as many townsfolk walk them. The townsfolk and villagers never fight back or
+  raise the alarm in a party: arrows fly about in its games.
+- **Starting**: as in Sumer Royale, everyone in (two or more) presses Enter, Ready in the Esc menu or the
+  Ready button under the line at the top (shown with the vote's while the mouse is free, as you join and on
+  a phone), and ten seconds later the party begins. Anyone not ready who does not move for three minutes is sent away.
 - **The vote**: while waiting, the Esc menu's **Vote a game out** (V) lists the five minigames. Each player
   may vote one out (and take the vote back); the one with the most votes is left out (a tie, or no votes:
   one of them by chance) and the other four are played in a random order.
@@ -134,12 +136,14 @@ The five minigames:
   their dates but comes back in the city.
 - **One-shot archers**: bows only, and one arrow brings anyone down. +6 a kill, -2 a death.
 - **City defence**: every raider, barbarian and bandit comes at the city from just outside its walls,
-  after the nearest player; one brought down is back outside the walls a minute later. +2 for each one
-  you bring down. Players cannot hurt each other.
+  after the nearest player; one brought down is back outside the walls a minute later. With fewer than four
+  players the raiders stay at their camps and only the barbarians and bandits come. +2 for each one you
+  bring down. Players cannot hurt each other.
 - **Hide and seek**: one player (by chance, never the same twice in a row) seeks with the party's gear;
   the others hide among the townsfolk, who hurry about the streets. Hiders look like townsfolk, wear no
   armor, carry nothing, cannot run, cannot hurt the seeker, and lose health outside the city's walls;
-  nobody's name shows over their head, and the map shows no players. One blow or arrow from the seeker
+  nobody's name shows over their head, the map shows no players, no one carries a torch and the fight's
+  music never plays (it would say who is near). One blow or arrow from the seeker
   finds a hider, who is sent to the village farthest from the city to hold out against the wild beasts
   until the game ends. A hider gains a point for every half minute hidden (8 at most) and 6 more for never
   being found; the seeker gains 6 for each hider found, but loses the game by bringing down 5 townsfolk.
@@ -390,9 +394,12 @@ fields outside. Gates: south (main road), east, west, north, plus the harbor wat
   way stays open until dawn. Behind it: the priests' halls inside the second stage, then the shrine of
   Nanna on top, where the priest blesses you once a day: full health and, for 24 hours, running and
   attacking 20% faster
-- City houses: some have a cloth awning over the door, jars and baskets by it, or a reed sun shade on the roof.
-  The roofs are for running across: many houses have mud-brick stairs up one side or a crate by a pile of
-  crates to climb from, and a room up on a roof has a crate beside it to get on top of it
+- City houses: every one roofed. Some have a cloth awning over the door (high enough to walk under, and
+  solid: drop onto it from the roof), jars and baskets by it. The roofs are for running across: many houses
+  have mud-brick stairs up one side or a crate by a pile of crates to climb from, and a room up on a roof
+  has a crate beside it to get on top of it; beside some such rooms a reed sun shade stands on four posts,
+  a step up from the room's top and solid to walk on. Anyone after you (guards, raiders, barbarians) comes
+  up the stairs of houses and gate towers too
 - Craft quarter (west, by the harbor): potters, kiln, smelter, smith
 - Caravans walk the southern trade road and set up stalls in the temple courtyard for a while; each
   travels with two spear-armed guards

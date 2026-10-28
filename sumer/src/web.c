@@ -79,6 +79,21 @@ void WantPointer(bool captured)
 #endif
 }
 
+// Places on the screen (as fractions of it) where a click is for the game's own buttons, not for taking
+// the mouse: the page leaves the mouse free for a click there (shell.html). n = 0 clears them.
+void NoGrab(const Rectangle *r, int n)
+{
+#if defined(__EMSCRIPTEN__)
+    float w = UiWidth(), h = UiHeight();
+    EM_ASM({ Module.sumerNoGrab = []; }, 0);
+    for (int i = 0; i < n; i++)
+        EM_ASM({ Module.sumerNoGrab.push([$0, $1, $2, $3]); }, r[i].x / w, r[i].y / h, (r[i].x + r[i].width) / w, (r[i].y + r[i].height) / h);
+#else
+    (void)r;
+    (void)n;
+#endif
+}
+
 bool PointerCaptured(void)
 {
 #if defined(__EMSCRIPTEN__)
@@ -264,12 +279,16 @@ bool MouseHeld(int button)
     return IsMouseButtonDown(button) && GetTouchPointCount() == 0;
 }
 
-// The mouse taken by the game (raylib asks the browser for it on the next click) or given back; a phone keeps it.
+// The mouse taken by the game or given back; a phone keeps it. In a browser the game never asks for it
+// itself: the page takes it on the next click (shell.html, while WantPointer says so). raylib's own request
+// goes through whenever the page saw a click or a key in the last few seconds, so a menu closed with Esc
+// could take the mouse a moment later, and Firefox spends the next Esc giving it back, which reads as the
+// game's own Esc (the menu then opened instead of closed, some presses in a row).
 void LockMouse(bool lock)
 {
     if (OnWeb() && OnPhone()) return;
-    if (lock) DisableCursor();
-    else EnableCursor();
+    if (!lock) EnableCursor();
+    else if (!OnWeb()) DisableCursor();
 }
 
 // A line typed into the browser's own box, the way to a phone's keyboard; false if cancelled.

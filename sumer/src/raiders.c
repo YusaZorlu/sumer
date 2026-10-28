@@ -381,8 +381,17 @@ static void Idle(Raider *r, int i, float dt)
 
 // City defence (a party game): every raider, barbarian and bandit comes at the city from just outside
 // its walls, after the nearest player (see SpotPlayer); one brought down is back outside a minute later.
+// With fewer than four players the raiders stay home at their camps (benched), and only the barbarians
+// and the bandits come.
 #define DEFENCE_BACK 60.0f
+#define DEFENCE_FULL 4
 static float downFor[MAX_RAIDERS];
+static bool benched[MAX_RAIDERS];
+
+bool RaiderBenched(int i)
+{
+    return PartyGame() == PG_DEFENCE && i >= 0 && i < MAX_RAIDERS && benched[i];
+}
 
 static Vector3 OutsideWalls(void)
 {
@@ -405,17 +414,27 @@ static void Muster(Raider *r, int i)
     downFor[i] = 0;
 }
 
-// The host, as city defence begins: everyone of them outside the walls.
-void StormCity(void)
+// The host, as city defence begins with so many players: everyone of them outside the walls.
+void StormCity(int players)
 {
-    for (int i = 0; i < MAX_RAIDERS; i++) Muster(&G.raiders[i], i);
+    for (int i = 0; i < MAX_RAIDERS; i++) {
+        Raider *r = &G.raiders[i];
+        benched[i] = players < DEFENCE_FULL && !RaiderBandit(i) && r->camp < EAST_CAMPS;
+        if (!benched[i]) {
+            Muster(r, i);
+            continue;
+        }
+        r->vit = (Vitals){ .used = false };
+        r->pos = r->home = (Vector3){ CAMP_POS[r->camp][0], Ground(CAMP_POS[r->camp][0], CAMP_POS[r->camp][1]), CAMP_POS[r->camp][1] };
+        r->moving = false;
+    }
 }
 
 static void Defence(float dt)
 {
     for (int i = 0; i < MAX_RAIDERS; i++) {
         Raider *r = &G.raiders[i];
-        if (r->vit.dead && (downFor[i] += dt) >= DEFENCE_BACK) Muster(r, i);
+        if (!benched[i] && r->vit.dead && (downFor[i] += dt) >= DEFENCE_BACK) Muster(r, i);
     }
 }
 

@@ -78,8 +78,9 @@ static void UpdateTorch(float dt, bool input)
     }
     bool aimWanted = G.equip == EQ_BOW && input && ((G.cursorLocked && MouseHeld(MOUSE_BUTTON_LEFT)) || TouchDown(TB_ATTACK));
     bool bow = G.equip == EQ_BOW && (p->aiming || aimWanted);
-    bool goal = G.torchOn && G.climb == 0 && !G.sleeping && !bow;
-    if (bow) G.torchHeld = false;
+    // Hide and seek has no torches: a light in the dark would give anyone away.
+    bool hide = PartyGame() == PG_HIDE, goal = G.torchOn && G.climb == 0 && !G.sleeping && !bow && !hide;
+    if (bow || hide) G.torchHeld = false;
     if (goal == G.torchHeld) {
         G.torchT = 0;
         return;

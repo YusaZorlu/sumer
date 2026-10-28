@@ -198,9 +198,19 @@ in `src/game.h`) holds the whole world.
   in a fight) go straight while `PathClear` says the line is walkable (looked along every 0.5 s); when it is not,
   `PathWay` follows corners from `FindPath`, A* on a 1 m grid that follows the ground's height (stairs, terraces,
   bridges; a step up of `STEP_HEIGHT`, down of 1.3 m), crosses canals narrow enough to jump (wet cells cost a
-  little more; `JumpWater` does the jump) and not the river, harbor or ponds. At most 2 searches a frame
-  (`PathNewFrame` in `UpdateCombat`), 4000 cells each (about 2 ms); a goal beyond that gets the way to the
-  nearest place found, looked for again in 3 s. `TestPaths` has a U of walls the old steering never left.
+  little more; `JumpWater` does the jump) and not the river, harbor or ponds. Stairs: each move between cells
+  is checked in quarter steps (`StepTo`; bare ground takes a fast path), a cell may be stood in off its middle
+  (`Stand`, for stairs narrower than a cell), and a cell is known by the height stood on there (the floor
+  under stairs and the step above are two). On stairs and roofs every cell's point is kept and no corner is
+  cut (`Built`), corners there are passed within 0.25 m, `PathClear` wants the goal's height too, and
+  `StepToward` (combat.c) neither counts someone under a goal on a roof as there nor checks walls before
+  stepping up (`BlockedAt` at the height stepped to, 0.25 m clear like the search). At most 2 searches a
+  frame (`PathNewFrame` in `UpdateCombat`), 4000 cells each (10-17 ms for the longest in `TestPaths`); a goal
+  beyond that gets the way to the nearest place found, looked for again in 3 s. `TestPaths` has a U of walls
+  the old steering never left, every house's stairs (`HouseStairs` in city.c) and each gate tower's roof.
+- **Overhead boxes** (`Box.over`, `AddOverhead` in city.c): awnings and roof shades are solid to stand on and
+  walk under but no obstacle on the ground (`SolidAt` skips them; `ClearStrip` keeps stairs from under them).
+  `Awnings()` puts them up after every house stands, only where the street before the door is clear.
 - **Speed** (measured with `harness stats` and a `-pg` build of the harness): `BoxesNear()` in `world.c` is an
   8 m grid of the boxes; `GroundHeight`, `SolidAt`, the player's and NPCs' collisions, the camera and the aim ray
   ask it instead of scanning every box (update went from 0.87 to 0.06 ms a frame). New boxes join it before
@@ -332,6 +342,13 @@ in `src/game.h`) holds the whole world.
   `Hittable`, `PartyDisguise` for looks, no tags or map dots, `PartyNpcKill`, `HideUpdate`, `BY_STRAY`, `FarVillage`).
   Tests: `TestParty` and `TestHide` (harness; `PartySeekerForTest`), `tools/web/party.js` and `tools/web/hide.js`
   (`party-*` rooms; host cmd 30 the party's clock, 31 the seeker finds a player).
+  Waiting to begin, `DrawStartButtons` (ui.c) shows Ready (and the vote) while the mouse is free, turning
+  `WantPointer` off over them so the click stays a click. In a party townsfolk never fight back
+  (`DamagePerson`); in hide and seek no torch (`UpdateTorch`) and no fight music (`ChooseMood`); city defence
+  with under 4 players benches the raiders (`RaiderBenched`). In a browser the game never asks for the mouse
+  itself (`LockMouse` only gives it back): the page takes it on a click while `WantPointer` is on, since
+  raylib's own request could go through a moment after a menu closed with Esc and make Firefox spend the
+  next Esc on it.
 - **Music** (`src/music.c`): see its own section below.
 - **Drawing**: see "Graphics: how drawing works" below.
 - **Web specifics:** `src/web.c` (storage in IndexedDB: call `SyncStorage()` after writing a file; requests to `/api`),
