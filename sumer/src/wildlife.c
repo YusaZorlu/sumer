@@ -1021,7 +1021,8 @@ void UpdateArrows(float dt)
         int person = PersonOnSegment(prev, ar->pos), player = G.pvp ? PlayerOnSegment(prev, ar->pos, ar->owner) : -1;
         if (player >= 0) {
             Vector3 pp = G.peers[player].pos;
-            HitPlayer(player, (float)ar->damage, prev, false);
+            // One-shot archers: any arrow that finds a player brings them down.
+            HitPlayer(player, PartyGame() == PG_ARCHERS ? 1000.0f : (float)ar->damage, prev, false);
             ShowImpact((Vector3){ pp.x, pp.y + 1.2f, pp.z });
             Spend(ar);
             continue;

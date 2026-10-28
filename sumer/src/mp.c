@@ -11,7 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define NET_VERSION   15
+#define NET_VERSION   16
 #define RECORD_FORMAT 1        // the first byte of a player's things as server.py keeps them
 #define STATUS_EVERY  2.0f
 #define SNAP_EVERY    0.1f
@@ -26,7 +26,7 @@
 #define MAX_ARGS      REQ_ARGS
 
 enum { M_HELLO = 1, M_WELCOME, M_ROSTER, M_SNAP, M_STATE, M_REQ, M_REPLY, M_EVENT, M_RECORD, M_KICK, M_CHAT };
-enum { EV_HURT = 1, EV_SAY, EV_HIT, EV_IMPACT, EV_SKIP, EV_PARRIED, EV_STUNNED, EV_LANDED, EV_ROUND, EV_CHAT, EV_PROGRESS };
+enum { EV_HURT = 1, EV_SAY, EV_HIT, EV_IMPACT, EV_SKIP, EV_PARRIED, EV_STUNNED, EV_LANDED, EV_ROUND, EV_CHAT, EV_PROGRESS, EV_PARTY };
 
 typedef struct { int id, kind, args[MAX_ARGS], nargs; float age; } Pending;
 typedef struct { Vector3 pos; Color color; int count; float speed; bool ring; } Effect;
@@ -233,6 +233,7 @@ static void WriteSnapshot(Writer *w, bool slow)
     WF(w, G.rainEnd);
     W16(w, (unsigned)G.seasonSeen);
     if (Royale()) WriteRoyale(w);
+    if (Party()) WriteParty(w);
 
     for (int s = 0; s < MAX_PLAYERS; s++) {
         const Peer *p = &G.peers[s];
@@ -381,6 +382,7 @@ static void ReadSnapshot(Reader *r)
     G.rainEnd = RF(r);
     G.seasonSeen = (int)R16(r);
     if (Royale()) ReadRoyale(r);
+    if (Party()) ReadParty(r);
 
     for (int s = 0; s < MAX_PLAYERS; s++) {
         Peer *p = &G.peers[s];
@@ -887,6 +889,18 @@ void NetImpact(int slot, Vector3 at)
     SendGuest(slot, &w);
 }
 
+// A party's game begins (kind 1) or a break (0): the guest is set down at 'at'.
+void NetParty(int slot, Vector3 at, int kind)
+{
+    Writer w = Begin(M_EVENT);
+    W8(&w, EV_PARTY);
+    WF(&w, at.x);
+    WF(&w, at.y);
+    WF(&w, at.z);
+    W8(&w, (unsigned)kind);
+    SendGuest(slot, &w);
+}
+
 // A battle royale round begins: the guest is set down at (x, z).
 void NetRound(int slot, float x, float z)
 {
@@ -1060,6 +1074,13 @@ static void Kick(int net, const char *why)
     NetSend(net, w.d, w.n);
 }
 
+// Sends player s away from the game, saying why (the host).
+void KickSlot(int s, const char *why)
+{
+    if (s < 0 || s >= MAX_PLAYERS || !G.peers[s].active) return;
+    Kick(G.peers[s].net, L(why));
+}
+
 static void Snapshot(int slotOrAll, bool slow)
 {
     Writer w = Begin(M_SNAP);
@@ -1113,7 +1134,8 @@ static void HostHello(int net, Reader *r)
     Announce("%s joined the game.", name);
 
     Peer *p = &G.peers[slot];
-    *p = (Peer){ .active = true, .net = net, .health = HEALTH_MAX, .flags = PF_GROUND | (RoyalePhase() == RP_RUN ? PF_OUT : 0) };
+    bool running = RoyalePhase() == RP_RUN || PartyPhase() == PP_GAME;
+    *p = (Peer){ .active = true, .net = net, .health = HEALTH_MAX, .flags = PF_GROUND | (running ? PF_OUT : 0) };
     snprintf(p->name, NAME_LEN, "%s", name);
     // In PvP everyone starts somewhere else in the city; otherwise a returning player is where they left.
     p->pos = p->shown = G.pvp ? CitySpawn(slot) : rec ? rec->pos : G.houses[HouseOf(slot)].door;
@@ -1122,7 +1144,7 @@ static void HostHello(int net, Reader *r)
     W8(&w, (unsigned)slot);
     W32(&w, (unsigned)worldSign);
     WStr(&w, myRoom);
-    W8(&w, (G.pvp ? 1u : 0u) | (G.combat ? 2u : 0u) | (RoyalePhase() == RP_RUN ? 4u : 0u));
+    W8(&w, (G.pvp ? 1u : 0u) | (G.combat ? 2u : 0u) | (RoyalePhase() == RP_RUN ? 4u : 0u) | (PartyPhase() == PP_GAME ? 8u : 0u));
     W8(&w, rec ? 1u : 0u);
     if (rec) WriteRecord(&w, rec);
     WF(&w, p->pos.x);
@@ -1160,6 +1182,7 @@ static void HostState(int slot, Reader *r)
     float facing = RAngle(r), stride = RF(r), draw = (float)R8(r) / 255.0f, health = (float)R8(r), swing = (float)R8(r) / 200.0f;
     int flags = (int)R16(r), equip = (int)R8(r), weapon = (int)R8(r), bow = (int)R8(r), armor = (int)R8(r);
     unsigned short style = (unsigned short)R16(r);
+    int dates = (int)R8(r);
     if (r->bad || !isfinite(pos.x) || fabsf(pos.x) > WORLD_HALF + 5 || fabsf(pos.z) > WORLD_HALF + 5) return;
     PeerMoved(p, pos);
     p->facing = facing;
@@ -1173,6 +1196,7 @@ static void HostState(int slot, Reader *r)
     p->bow = bow;
     p->armor = armor;
     p->style = style;
+    p->dates = dates;
 }
 
 // A player's things, sent along now and then and as they leave: server.py keeps them with their account
@@ -1180,7 +1204,7 @@ static void HostState(int slot, Reader *r)
 static void HostRecord(int slot, Reader *r)
 {
     PlayerRecord rec;
-    if (!ReadRecord(r, &rec) || Royale()) return;
+    if (!ReadRecord(r, &rec) || Match()) return;
     snprintf(rec.name, NAME_LEN, "%s", G.peers[slot].name);
     rec.slot = slot;
     Writer w = Begin(H_STORE);
@@ -1214,7 +1238,7 @@ static void SendStatus(void)
 {
     Writer w = Begin(H_STATUS);
     W8(&w, (unsigned)PlayerCount());
-    W8(&w, (unsigned)RoyalePhase());
+    W8(&w, (unsigned)(PartyPhase() == PP_GAME || PartyPhase() == PP_BREAK ? RP_RUN : RoyalePhase()));
     W8(&w, (unsigned)RoyaleAlive());
     SendServer(&w);
 }
@@ -1232,6 +1256,7 @@ static void SendState(void)
     W16(&w, (unsigned)p->flags);
     W8(&w, (unsigned)p->equip); W8(&w, (unsigned)p->weapon); W8(&w, (unsigned)p->bow); W8(&w, (unsigned)p->armor);
     W16(&w, (unsigned)p->style);
+    W8(&w, (unsigned)Byte((float)p->dates));
     SendHost(&w);
 }
 
@@ -1306,6 +1331,7 @@ static const char *ZigguratHint(void)
 const char *RulesText(void)
 {
     if (Royale()) return L("Battle royale: best gear and unlimited arrows, no guards or raiders, houses of no use. The last one standing wins.");
+    if (Party()) return L("Sumer Party: four minigames of four minutes; points in each, and +10, +6, +3 for each one's top three. Food stays full.");
     return L(G.pvp ? "PvP on: the best gear and unlimited arrows, and the guards stay out of fights between players." : "PvP off: players cannot hurt each other.");
 }
 
@@ -1315,6 +1341,7 @@ void ServeRoom(int mode, const char *room)
 {
     dedicated = true;
     SetRoyale(mode == ROOM_ROYALE);
+    SetParty(mode == ROOM_PARTY);
     ResetSession();
     snprintf(myRoom, sizeof(myRoom), "%s", room);
     memset(arrivals, 0, sizeof(arrivals));
@@ -1325,8 +1352,8 @@ void ServeRoom(int mode, const char *room)
     memset(G.peers, 0, sizeof(G.peers));
     LoadNetGame();
     G.recordCount = 0;   // the players' things are kept with their accounts
-    G.pvp = mode != ROOM_SURVIVAL;
-    G.combat = G.pvp;   // PvP and the royale: everyone fights with the best of everything
+    G.pvp = mode == ROOM_PVP || mode == ROOM_ROYALE;
+    G.combat = G.pvp || mode == ROOM_PARTY;   // PvP and the royale: everyone fights with the best of everything
     if (G.pvp) RemoveZigguratGuards();
     UpdateSky();
     NetOpen(NULL);
@@ -1356,6 +1383,7 @@ static void StartGuest(Reader *r)
     G.pvp = (rules & 1u) != 0;
     G.combat = (rules & 2u) != 0;
     RoyaleJoinLate((rules & 4u) != 0);
+    PartyJoinLate((rules & 8u) != 0);
     G.self = G.actor = slot;
     memset(G.peers, 0, sizeof(G.peers));
     G.peers[slot] = (Peer){ .active = true };
@@ -1375,7 +1403,8 @@ static void StartGuest(Reader *r)
     UpdateSky();
     FollowCamera(1.0f);
     phase = PHASE_PLAYING;
-    if (Royale()) Say("%s %s", L("You joined the battle royale. A round starts once two or more players are here."), RulesText());
+    if (Royale()) Say("%s %s", L("You joined the battle royale. Press Enter when you are ready: a round starts once everyone (two or more) is."), RulesText());
+    else if (Party()) Say("%s %s", L("You joined Sumer Party. Press Enter when you are ready; Esc to vote a game out."), RulesText());
     else Say("%s %s%s", TextFormat(L(hasRecord ? "Welcome back. Your home has the %s lintel." : "You joined the game. Your home has the %s lintel."), PlayerColorName(slot)),
              RulesText(), ZigguratHint());
     G.msgT = 9.0f;
@@ -1405,7 +1434,7 @@ int NetLobby(void)
         } else if (m.kind == S_HOSTLEFT) {
             Fail("The server stopped this game. Try again in a moment.");
         } else if (m.kind == S_FULL) {
-            Fail(Royale() ? "The game is full: twenty players already." : "The game is full: six players already.");
+            Fail(Royale() ? "The game is full: twenty players already." : Party() ? "The game is full: twelve players already." : "The game is full: six players already.");
         } else if (m.kind == S_DATA && m.len > 0) {
             Reader r = { m.data, m.len, 1, false };
             if (m.data[0] == M_WELCOME) {
@@ -1577,6 +1606,12 @@ static void ClientEvent(Reader *r)
     case EV_ROUND: {
         float x = RF(r), z = RF(r);
         if (!r->bad) RoyaleBegin(x, z);
+        break;
+    }
+    case EV_PARTY: {
+        float x = RF(r), y = RF(r), z = RF(r);
+        int kind = (int)R8(r);
+        if (!r->bad) PartyBegin((Vector3){ x, y, z }, kind);
         break;
     }
     case EV_SKIP: {

@@ -379,9 +379,53 @@ static void Idle(Raider *r, int i, float dt)
     r->pos.y = Ground(r->pos.x, r->pos.z);
 }
 
+// City defence (a party game): every raider, barbarian and bandit comes at the city from just outside
+// its walls, after the nearest player (see SpotPlayer); one brought down is back outside a minute later.
+#define DEFENCE_BACK 60.0f
+static float downFor[MAX_RAIDERS];
+
+static Vector3 OutsideWalls(void)
+{
+    Vector3 at = { CITY_A + 30.0f, 0, CITY_Z };
+    for (int k = 0; k < 40; k++) {
+        float a = RandF(-PI, PI), x = cosf(a) * (CITY_A + 30.0f), z = CITY_Z + sinf(a) * (CITY_B + 30.0f);
+        if (InWater(x, z) || SolidAt(x, z, 0.5f) || InsideWalls(x, z, 0.0f)) continue;
+        at = (Vector3){ x, 0, z };
+        break;
+    }
+    at.y = Ground(at.x, at.z);
+    return at;
+}
+
+static void Muster(Raider *r, int i)
+{
+    r->vit = (Vitals){ .used = false };
+    r->pos = r->home = OutsideWalls();
+    r->moving = false;
+    downFor[i] = 0;
+}
+
+// The host, as city defence begins: everyone of them outside the walls.
+void StormCity(void)
+{
+    for (int i = 0; i < MAX_RAIDERS; i++) Muster(&G.raiders[i], i);
+}
+
+static void Defence(float dt)
+{
+    for (int i = 0; i < MAX_RAIDERS; i++) {
+        Raider *r = &G.raiders[i];
+        if (r->vit.dead && (downFor[i] += dt) >= DEFENCE_BACK) Muster(r, i);
+    }
+}
+
 void UpdateRaiders(float dt)
 {
-    if (Royale()) return;
+    if (RaidersAway()) return;
+    if (PartyGame() == PG_DEFENCE) {
+        Defence(dt);
+        return;
+    }
     if (G.hour >= 6.0f && G.stashDay != G.day) {
         G.stashDay = G.day;
         for (int c = 0; c < CAMPS; c++) Restock(c);
@@ -405,7 +449,7 @@ void UpdateRaiders(float dt)
 
 void DrawRaiders(void)
 {
-    if (Royale()) return;
+    if (RaidersAway()) return;
     float time = (float)GetTime();
 
     for (int i = 0; i < MAX_RAIDERS; i++) {

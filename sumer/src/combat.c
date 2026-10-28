@@ -120,7 +120,7 @@ void CollectFighters(void)
         }
     }
     // A battle royale has no raiders or barbarians.
-    for (int i = 0; i < (Royale() ? 0 : MAX_RAIDERS); i++) {
+    for (int i = 0; i < (RaidersAway() ? 0 : MAX_RAIDERS); i++) {
         Raider *r = &G.raiders[i];
         bool bandit = RaiderBandit(i), west = !bandit && r->camp >= EAST_CAMPS, bow = RaiderBowman(i);
         Add(&r->vit, bandit ? ROLE_BANDIT : west ? ROLE_BARBARIAN : ROLE_RAIDER, r->pos, r->face, OWNER_RAIDER + i,
@@ -484,7 +484,9 @@ static int SpotPlayer(const Fighter *f, Vector3 pos)
         if (!PlayerAwake(s) || (f->kind == FK_CITY_GUARD && (G.peers[s].wanted <= 0 || !InReach(f, G.peers[s].pos)))) continue;
         Vector3 p = G.peers[s].pos;
         float d = XZDist(pos, p);
-        if (d < SightOf(f->role, s) && fabsf(pos.y - p.y) < (f->perch ? 14.0f : 6.0f) && d < bestD) {
+        // City defence: the attackers know where everyone is.
+        bool storm = PartyGame() == PG_DEFENCE && IsRaider(f->role);
+        if ((storm || (d < SightOf(f->role, s) && fabsf(pos.y - p.y) < (f->perch ? 14.0f : 6.0f))) && d < bestD) {
             best = s;
             bestD = d;
         }
@@ -744,6 +746,8 @@ void DamagePerson(int i, float dmg)
         v->foeT = 0;
         Say("%s killed. Search the body with E.", L(f->name));
         AwardXp(G.actor, KillXp(f->role), 0, 0);
+        if (IsRaider(f->role) && PartyGame() == PG_DEFENCE) PartyScore(G.actor, 2);
+        if (!IsRaider(f->role)) PartyNpcKill(G.actor);
     }
 }
 
@@ -868,7 +872,7 @@ void CalmPeople(int slot)
 // Players who can be hurt by another player's blow or arrow: up and about, not lying in bed.
 static bool Hittable(int s, int skip)
 {
-    return s != skip && PlayerAwake(s) && !(G.peers[s].flags & PF_BED);
+    return s != skip && PlayerAwake(s) && !(G.peers[s].flags & PF_BED) && PartyMayHurt(skip, s);
 }
 
 int PlayerOnSegment(Vector3 a, Vector3 b, int skip)
@@ -1016,6 +1020,7 @@ void HitPlayer(int s, float dmg, Vector3 from, bool melee)
     int a = G.actor;
     (void)from;
     if (!G.pvp || !Hittable(s, a) || !PlayerIn(a)) return;
+    if (PartyGame() == PG_HIDE) dmg = 1000.0f;   // hide and seek: one blow from the seeker finds a hider
     if (melee) StartBlow(a, s, dmg);
     else Hurt(a, s, dmg, false, false);
 }

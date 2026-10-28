@@ -10,7 +10,7 @@ WebSockets, and it passes their messages to their room's program and back. Needs
     python3 server.py                                # http://localhost:8000
     python3 server.py --port 9000 --data /opt/sumer/data
 
-The rooms (--rooms): two Survival servers, two PvP servers and a battle royale, of which at most five run
+The rooms (--rooms): two Survival servers, two PvP servers, a battle royale and a party, of which at most six run
 at once (--max-active; on a small machine 2 or 3: a room that cannot start says so in the list).
 
 Accounts keep only a name, a hash of the password (scrypt) and the game: level, K/D, the singleplayer
@@ -47,9 +47,9 @@ S_HELLO, S_JOIN, S_LEAVE, S_FULL, S_NOHOST, S_TAKEN, S_HOSTLEFT, S_BUSY, S_LOGIN
 S_TEST = 32
 TO_SERVER, TO_ALL = 254, 255
 H_STORE, H_PROGRESS, H_STATUS, H_TEST = 1, 2, 3, 4
-MODES = {"survival": 0, "pvp": 1, "royale": 2}
-MAX_PLAYERS = {"survival": 6, "pvp": 6, "royale": 20}
-DEFAULT_ROOMS = "survival-1:survival:Survival 1,survival-2:survival:Survival 2,pvp-1:pvp:PvP 1,pvp-2:pvp:PvP 2,royale:royale:Royale"
+MODES = {"survival": 0, "pvp": 1, "royale": 2, "party": 3}
+MAX_PLAYERS = {"survival": 6, "pvp": 6, "royale": 20, "party": 12}
+DEFAULT_ROOMS = "survival-1:survival:Survival 1,survival-2:survival:Survival 2,pvp-1:pvp:PvP 1,pvp-2:pvp:PvP 2,royale:royale:Royale,party:party:Party"
 NAME_RE = re.compile(r"^[A-Za-z0-9_.-]{3,15}$")
 
 TYPES = {
@@ -331,7 +331,7 @@ class Room:
     def state(self):
         if not self.running():
             return 3 if active_rooms() >= ARGS.max_active else 0
-        return 2 if self.mode == "royale" and self.phase == 2 else 1
+        return 2 if self.mode in ("royale", "party") and self.phase == 2 else 1
 
     async def start(self):
         folder = os.path.join(ARGS.data, "rooms", self.id)
@@ -393,7 +393,7 @@ class Room:
             n = body[1]
             name = body[2:2 + n].decode("latin1")
             rest = body[2 + n:]
-            if kind == H_STORE and self.mode != "royale" and rest:
+            if kind == H_STORE and self.mode in ("survival", "pvp") and rest:
                 STORE.keep(name, self.mode, rest)
             elif kind == H_PROGRESS and len(rest) >= 8:
                 xp, kills, deaths = struct.unpack("<IHH", rest[:8])
@@ -445,7 +445,7 @@ async def serve_player(conn, room, name):
     room.guests[gid] = guest
     PLAYING[name.lower()] = room.id
     conn.send(bytes([S_HELLO, gid]))
-    things = STORE.load(name, room.mode) if room.mode != "royale" else b""
+    things = STORE.load(name, room.mode) if room.mode in ("survival", "pvp") else b""
     raw = name.encode()
     room.send(bytes([S_JOIN, gid, len(raw)]) + raw + struct.pack("<H", len(things)) + things)
     log("room %s: %s joined (%d here)" % (room.id, name, len(room.guests)))
@@ -697,8 +697,8 @@ async def handle(reader, writer):
             await writer.drain()
             conn = Conn(reader, writer)
             rid = req.query.get("room", [""])[0]
-            # Test servers make rooms on demand: survival-*, pvp-*, royale-*, each suite's own.
-            test_room = re.match(r"^(survival|pvp|royale)-[a-z0-9-]{1,20}$", rid)
+            # Test servers make rooms on demand: survival-*, pvp-*, royale-*, party-*, each suite's own.
+            test_room = re.match(r"^(survival|pvp|royale|party)-[a-z0-9-]{1,20}$", rid)
             if ARGS.test and rid not in ROOMS and test_room:
                 ROOMS[rid] = Room(rid, test_room.group(1), rid)
             await serve_player(conn, ROOMS.get(rid), req.account())
@@ -767,7 +767,7 @@ def parse_rooms(spec):
     for item in spec.split(","):
         parts = [p.strip() for p in item.split(":", 2)]
         if len(parts) != 3 or parts[1] not in MODES or not re.match(r"^[a-z0-9-]{1,23}$", parts[0]):
-            raise SystemExit("--rooms: each room is id:survival|pvp|royale:Title (id: lower-case letters, digits and -), not %r" % item)
+            raise SystemExit("--rooms: each room is id:survival|pvp|royale|party:Title (id: lower-case letters, digits and -), not %r" % item)
         rooms[parts[0]] = Room(parts[0], parts[1], parts[2][:39])
     return rooms
 
@@ -779,8 +779,8 @@ async def main():
     parser.add_argument("--bind", default="0.0.0.0", help="address to listen on (default: all)")
     parser.add_argument("--data", default=os.path.join(HERE, "data"), help="where the accounts and the rooms' worlds are kept")
     parser.add_argument("--host-bin", default=os.path.join(HERE, "host", "sumer-host"), help="the game's server program (build-host.sh)")
-    parser.add_argument("--rooms", default=DEFAULT_ROOMS, help="the servers: id:survival|pvp|royale:Title, separated by commas")
-    parser.add_argument("--max-active", type=int, default=5, help="how many servers may run at once (default 5)")
+    parser.add_argument("--rooms", default=DEFAULT_ROOMS, help="the servers: id:survival|pvp|royale|party:Title, separated by commas")
+    parser.add_argument("--max-active", type=int, default=6, help="how many servers may run at once (default 6)")
     parser.add_argument("--idle", type=int, default=300, help="seconds an empty server keeps running (default 300)")
     parser.add_argument("--work", type=int, default=18, help="zero bits of work a new account costs (default 18)")
     parser.add_argument("--test", action="store_true", help="for the test suites: no work or limits, /test/host on")

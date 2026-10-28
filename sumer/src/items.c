@@ -384,6 +384,7 @@ int UseWeapon(void)
 
 int UseArmor(void)
 {
+    if (PartyHider(G.self)) return ARMOR_NONE;
     return G.combat ? ARMOR_BRONZE : G.armor;
 }
 

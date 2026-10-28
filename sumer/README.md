@@ -46,14 +46,15 @@ only shown, never spent, and the same level counts for every way to play:
 - 1 for a beast or a townsman brought down, 3 for a guard, raider, barbarian or bandit;
 - 10 for another player brought down (also counted in your K/D: players brought down / times brought down
   by a player);
-- winning a battle royale round: 10 for every player the round began with.
+- winning a battle royale round: 10 for every player the round began with;
+- finishing a Sumer Party in the top three: 10, 5 or 2 for every player in it.
 
 "+3 XP" rises over the crosshair as you gain it, and reaching a level is news.
 
 ## Ways to play
 
-After logging in: **Sumer Survival**, **Sumer Royale** (the battle royale, below), and a third place kept for
-a way to play still to come. Sumer Survival offers:
+After logging in: **Sumer Survival**, **Sumer Royale** (the battle royale, below) and **Sumer Party** (five
+minigames, below). Sumer Survival offers:
 
 - **Singleplayer**: your own world, in three save slots. They are kept in the browser and with your
   account, so another browser logged in to it plays on from the same saves.
@@ -76,13 +77,15 @@ a way to play still to come. Sumer Survival offers:
 
 **Sumer Royale** on the title screen, then **Royale**. Up to twenty players.
 
-- **The map**: the same land with no city guards, village guards, raiders, barbarians, bandits or caravans;
+- **The map**: the same land with no guards anywhere (city, villages or gate towers), raiders, barbarians, bandits or caravans;
   the townsfolk, villagers, traders and wild animals (partridges too) stay. About 150 more trees stand out in the land. Houses
   are of no use: beds, storerooms, querns, troughs, workbenches and ovens do nothing. Nothing is kept
   between rounds: everyone starts each one with the best of everything (bronze sickle-sword, the war mace,
   the best bow with bronze arrowheads, bronze armor) and arrows that never run out.
-- **A round** starts by itself half a minute after two or more players are in (the line at the top of the
-  screen counts down; one player alone waits). Each player is set down somewhere out in the land,
+- **A round** starts once everyone in (two or more) is ready: press Enter, or Ready in the Esc menu (Enter
+  again: not ready). Ten seconds later the round begins (the line at the top of the screen counts down;
+  someone becoming unready, or joining, stops it). Anyone not ready who does not move for three minutes is
+  sent back to the title screen; those who are ready are left alone. Each player is set down somewhere out in the land,
   240-420 m from the city and far from the others, with full health.
 - **The sandstorm**: a wall of dust that closes in on the city in stages. It waits a minute, closes to
   380 m (4 minutes in), rests, to 190 m, rests, to 90 m, rests, and ends 25 m round the middle of the city
@@ -96,9 +99,51 @@ a way to play still to come. Sumer Survival offers:
   bow), Enlil's +5% running speed, or Gula's +10% healing. Blessings add up.
 - **Out**: whoever is brought down is out for the round and watches someone still in it (click or Space:
   the next one). Someone who joins while a round is on watches too. The last one standing wins, is
-  congratulated, and gains 10 experience for every player the round began with; half a minute later the
-  next round starts.
+  congratulated, and gains 10 experience for every player the round began with; the next round starts
+  when everyone is ready again.
 - The Esc menu lists everyone in two columns with their kills and who is out.
+
+### Sumer Party (minigames)
+
+**Sumer Party** on the title screen, then **Party**. Two to twelve players.
+
+- **The map**: the city and its lands with no guards and no caravans. Food stays full, houses are of no
+  use (more players than houses), and nothing is kept: everyone plays with the party's own gear (the best
+  of everything, unlimited arrows) and anything gathered stays in the party. The streets are busier than
+  usual: three times as many townsfolk walk them.
+- **Starting**: as in Sumer Royale, everyone in (two or more) presses Enter or Ready in the Esc menu, and
+  ten seconds later the party begins. Anyone not ready who does not move for three minutes is sent away.
+- **The vote**: while waiting, the Esc menu's **Vote a game out** (V) lists the five minigames. Each player
+  may vote one out (and take the vote back); the one with the most votes is left out (a tie, or no votes:
+  one of them by chance) and the other four are played in a random order.
+- **The games**: four minutes each, with half a minute back in the city between them. The line at the top
+  says which game is on, its rule and the time left; the board at the right always shows the best three
+  (and you, if you are not among them) with this game's points and the party's total. Each game's top
+  three gain +10, +6 and +3 more. Someone brought down is back in the game 5 seconds later and keeps what
+  they carry. Someone who joins during a game watches and plays from the next one, with 0 points.
+- **The end**: after the fourth game the party's top three gain experience (10, 5 and 2 for every player
+  in it), and the scores start again from nothing for the next party.
+
+The five minigames:
+
+- **Floor is lava**: everyone starts on a roof, apart. Anything lower than half a metre above the ground
+  is lava (shown red, in this game only) and burns 8 health a second. Players can fight: +6 for bringing
+  someone down, -2 for being brought down; back on a roof 5 seconds later.
+- **Date stashing**: gather dates (palms, bodies) and keep them: at the end, a point for every 5 dates you
+  carry, 30 at most (the board counts them as you go). Players can fight; whoever is brought down keeps
+  their dates but comes back in the city.
+- **One-shot archers**: bows only, and one arrow brings anyone down. +6 a kill, -2 a death.
+- **City defence**: every raider, barbarian and bandit comes at the city from just outside its walls,
+  after the nearest player; one brought down is back outside the walls a minute later. +2 for each one
+  you bring down. Players cannot hurt each other.
+- **Hide and seek**: one player (by chance, never the same twice in a row) seeks with the party's gear;
+  the others hide among the townsfolk, who hurry about the streets. Hiders look like townsfolk, wear no
+  armor, carry nothing, cannot run, cannot hurt the seeker, and lose health outside the city's walls;
+  nobody's name shows over their head, and the map shows no players. One blow or arrow from the seeker
+  finds a hider, who is sent to the village farthest from the city to hold out against the wild beasts
+  until the game ends. A hider gains a point for every half minute hidden (8 at most) and 6 more for never
+  being found; the seeker gains 6 for each hider found, but loses the game by bringing down 5 townsfolk.
+  The game ends early once every hider is found.
 
 ### Playing together
 
@@ -144,9 +189,9 @@ few percent of one core with six players in it.
 
 - `--data`: where the accounts (`sumer.db`, SQLite; a copy in `backups/` each day, the last seven kept)
   and the servers' worlds (`rooms/<id>/sumer-mp.sav`) are kept. By default `data/` next to `server.py`.
-- `--rooms`: the servers, as `id:kind:Title` separated by commas, kind `survival`, `pvp` or `royale`. The
-  default is `survival-1:survival:Survival 1,survival-2:survival:Survival 2,pvp-1:pvp:PvP 1,pvp-2:pvp:PvP 2,royale:royale:Royale`.
-- `--max-active` (default 5): how many servers may run at once. On a small machine set 2 or 3: the first
+- `--rooms`: the servers, as `id:kind:Title` separated by commas, kind `survival`, `pvp`, `royale` or `party`. The
+  default is `survival-1:survival:Survival 1,survival-2:survival:Survival 2,pvp-1:pvp:PvP 1,pvp-2:pvp:PvP 2,royale:royale:Royale,party:party:Party`.
+- `--max-active` (default 6): how many servers may run at once. On a small machine set 2 or 3: the first
   ones to open run, and the rest show "cannot open now: all servers busy" until one empties.
 - `--host-bin`: the game's server program, if not `host/sumer-host`.
 - `--work` (default 18): how many zero bits the proof of work for a new account must find (each one more
@@ -224,6 +269,7 @@ The controls show on a phone or tablet, and on any other screen once a finger to
 | Tab | Baskets (inventory), equipment and armor |
 | T (hold) | Fast-forward time (playing alone) |
 | T | Chat, in a shared game or a battle royale (the dead watching too): type a line, Enter sends it to everyone, Esc puts it away |
+| Enter | Battle royale and party, between rounds: ready / not ready |
 | F5 | Save |
 | F11 or Alt+Enter | Borderless fullscreen on/off |
 | M | Map zoom (whole world, x2.5, x6 around you); the map shows the main roads, both villages and the camps |

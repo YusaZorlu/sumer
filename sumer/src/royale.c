@@ -1,5 +1,5 @@
 // Battle royale: up to twenty players on a map with no guards, raiders or barbarians, where houses
-// are of no use. A round starts by itself half a minute after two or more players are in: everyone is
+// are of no use. A round starts ten seconds after every player in (two or more) says they are ready: everyone is
 // set down somewhere across the map, far from the others, with the best gear. A sandstorm closes in on the city in stages and hurts
 // whoever is caught in it. Fifteen statues of the gods stand about the land; praying at one gives a
 // blessing for the rest of the round (+5% attack speed, +5% running speed or +10% healing), the first
@@ -15,7 +15,7 @@ enum { BOON_ATTACK, BOON_RUN, BOON_HEAL, BOONS };
 
 typedef struct { Vector3 pos; int kind; const char *god; } Statue;
 
-#define ROUND_WAIT 30.0f   // seconds from two players being in to the round's start
+#define ROUND_WAIT 10.0f   // seconds from everyone being ready to the round's start
 
 static bool mode, modeKnown;
 static Statue statues[STATUES];
@@ -63,9 +63,10 @@ int RoyalePhase(void)
     return Royale() ? rnd.phase : RP_OFF;
 }
 
-bool RoyaleOut(void)
+// Out of the round under way (a battle royale's, or a party's game): watching the others.
+bool OutOfRound(void)
 {
-    return Royale() && out;
+    return (Royale() && out) || PartyOut();
 }
 
 // Test tools only: jump the round's clock, or the wait for the next round.
@@ -383,21 +384,34 @@ static void NextWatched(int step)
     watched = -1;
 }
 
+// Out of the round: the camera follows someone still in it (click or Space: the next one).
+void UpdateWatch(void)
+{
+    if (!OutOfRound()) {
+        watched = -1;
+        return;
+    }
+    if (watched < 0 || !G.peers[watched].active || (G.peers[watched].flags & PF_OUT)) NextWatched(1);
+    if ((MousePressed(MOUSE_BUTTON_LEFT) || KeyPressed(KEY_SPACE)) && G.panel == PANEL_NONE) NextWatched(1);
+}
+
 void RoyaleUpdate(float dt)
 {
     if (!Royale()) return;
     if (rnd.phase == RP_RUN) rnd.t += dt;
-    if (out && (watched < 0 || !G.peers[watched].active || (G.peers[watched].flags & PF_OUT))) NextWatched(1);
-    if (out && (MousePressed(MOUSE_BUTTON_LEFT) || KeyPressed(KEY_SPACE)) && G.panel == PANEL_NONE) NextWatched(1);
+    // A new round wants everyone to say they are ready again.
+    if (rnd.phase == RP_RUN && MatchReady()) ToggleReady();
 
     bool host = G.role != NET_CLIENT;
     if (!host) {
         if (rnd.countdown > 0) rnd.countdown = fmaxf(0.0f, rnd.countdown - dt);
         return;
     }
-    // Between rounds: half a minute once two or more are in, then the round begins.
+    // Between rounds: ten seconds once everyone in (two or more) is ready, then the round begins.
     if (rnd.phase != RP_RUN) {
-        if (PlayerCount() < 2) rnd.countdown = -1;
+        UpdateIdle(dt);
+        int players, ready = ReadyCount(&players);
+        if (players < 2 || ready < players) rnd.countdown = -1;
         else if (rnd.countdown < 0) rnd.countdown = ROUND_WAIT;
         else if ((rnd.countdown -= dt) <= 0) RoyaleStart();
         return;
@@ -458,7 +472,7 @@ void ReadRoyale(Reader *r)
 // A watcher's camera rides behind the player they watch; true when it did.
 bool RoyaleCamera(void)
 {
-    if (!RoyaleOut() || watched < 0) return false;
+    if (!OutOfRound() || watched < 0) return false;
     const Peer *p = &G.peers[watched];
     const Player *me = &G.player;
     Vector3 at = { p->shown.x, p->shown.y + 1.6f, p->shown.z };
@@ -530,8 +544,11 @@ void DrawRoyaleHUD(float sw, float sh)
     if (rnd.phase == RP_WAIT || rnd.phase == RP_OVER) {
         const char *done = rnd.phase == RP_OVER ? (rnd.winner >= 0 ? TextFormat(L("%s won the round. "), G.peers[rnd.winner].name)
                                                                            : L("The storm won the round. ")) : "";
-        line = rnd.countdown >= 0 ? TextFormat(L("%sBattle royale: %d players here. The round starts in %d s."), done, players, (int)ceilf(rnd.countdown))
-                                  : TextFormat(L("%sBattle royale: %d players here. A round starts once two or more players are here."), done, players);
+        int ready = ReadyCount(NULL);
+        line = rnd.countdown >= 0 ? TextFormat(L("%sBattle royale: everyone is ready. The round starts in %d s."), done, (int)ceilf(rnd.countdown))
+             : players < 2        ? TextFormat(L("%sBattle royale: a round needs two or more players (%d here)."), done, players)
+             : TextFormat(L("%sBattle royale: %d of %d ready. %s"), done, ready, players,
+                          L(MatchReady() ? "Waiting for the others (Enter: not ready)." : "Press Enter when you are ready."));
     } else {
         float wait = StormWait(rnd.t);
         line = wait > 0 ? TextFormat(L("%d of %d standing. The storm moves in %d:%02d."), alive, rnd.started, (int)wait / 60, (int)wait % 60)

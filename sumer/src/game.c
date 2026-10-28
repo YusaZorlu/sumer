@@ -45,6 +45,7 @@ void GameInit(void)
     BuildWorld();
     BuildCaravans();
     ShapeRoyale();
+    ShapeParty();
     // The world comes from a fixed seed; animals and weather differ every game.
     SetRandomSeed((unsigned int)time(NULL));
     InitWildlife();
@@ -176,8 +177,8 @@ void TrackGoods(void)
     G.safeDay = G.day;
 }
 
-// What brought the player down, in a PvP game: nobody carries them home, they come to somewhere in the city.
-static const char *BroughtDownInCity(int by)
+// What brought the player down, in a few words.
+static const char *WhatBroughtDown(int by)
 {
     const char *what;
     switch (by) {
@@ -192,12 +193,20 @@ static const char *BroughtDownInCity(int by)
     case BY_BOAR: what = L("A boar brought you down."); break;
     case BY_SNAKE: what = L("A snake's venom brought you down."); break;
     case BY_STORM: what = L("The sandstorm brought you down."); break;
+    case BY_LAVA: what = L("The lava burned you down."); break;
+    case BY_STRAY: what = L("Out of the city, a hider wastes away."); break;
     default:
         if (by >= BY_PLAYER && by < BY_PLAYER + MAX_PLAYERS && G.peers[by - BY_PLAYER].name[0])
             what = TextFormat(L("%s beat you down."), G.peers[by - BY_PLAYER].name);
         else what = L("You were brought down.");
     }
-    return TextFormat("%s %s", what, L("You came to somewhere else in the city."));
+    return what;
+}
+
+// In a PvP game nobody carries them home: they come to somewhere in the city.
+static const char *BroughtDownInCity(int by)
+{
+    return TextFormat("%s %s", WhatBroughtDown(by), L("You came to somewhere else in the city."));
 }
 
 // What brought the player down, in a sentence.
@@ -231,6 +240,15 @@ static void Collapse(void)
     float hours = (G.hour < 7.0f) ? 7.0f - G.hour : 31.0f - G.hour;
     char how[200], lost[200] = "";
 
+    // In a party nothing is lost: the fallen are back in the game in a moment.
+    if (Party()) {
+        int by = G.hurtBy;
+        G.hurtBy = BY_NONE;
+        G.waitBed = false;
+        Act(RQ_COLLAPSE, &by, 1);
+        PartyFall(WhatBroughtDown(by));
+        return;
+    }
     snprintf(how, sizeof(how), "%s", BroughtDown(G.hurtBy));
     TrackGoods();
     for (int i = 1; i < IT_COUNT; i++) {
@@ -519,6 +537,8 @@ static void HandleMenus(bool paused)
             G.cursorLocked = false;
             G.escQuiet = 0.4f;
         }
+    } else if (KeyPressed(KEY_ENTER) && !IsKeyDown(KEY_LEFT_ALT) && !IsKeyDown(KEY_RIGHT_ALT) && G.panel == PANEL_NONE && LobbyWaiting()) {
+        ToggleReady();
     } else if (KeyPressed(KEY_H) && (G.panel == PANEL_NONE || G.panel == PANEL_PAUSE || G.panel == PANEL_HELP)) {
         SetPanel(G.panel == PANEL_HELP ? PANEL_NONE : PANEL_HELP);
     } else if (KeyPressed(KEY_T) && Online() && G.panel == PANEL_NONE && !G.sleeping) {
@@ -608,7 +628,7 @@ void GameUpdate(void)
         return;
     }
 
-    bool play = G.panel == PANEL_NONE && !G.sleeping && !G.waitBed && !RoyaleOut();
+    bool play = G.panel == PANEL_NONE && !G.sleeping && !G.waitBed && !OutOfRound();
     CollectBodies();
     UpdatePlayer(dt, play && !menu);
     TrackGoods();
@@ -616,6 +636,8 @@ void GameUpdate(void)
     FollowCamera(dt);
     UpdateWorld(dt);
     RoyaleUpdate(dt);
+    PartyUpdate(dt);
+    UpdateWatch();
     UpdateClock(dt);
     UpdateSleep(dt);
     if (IsClient()) {
@@ -683,6 +705,7 @@ void ServerTick(float dt)
     CollectBodies();
     UpdateWorld(dt);
     RoyaleUpdate(dt);
+    PartyUpdate(dt);
     UpdateTime(dt / HOUR_SECONDS);
     UpdateDawn();
     UpdateWeather();

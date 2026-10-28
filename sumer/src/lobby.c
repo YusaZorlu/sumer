@@ -9,7 +9,7 @@
 static enum { LOBBY_MENU, LOBBY_CONNECT } stage;
 // The title's pages: the ways to play, then Sumer Survival's (alone, or a server) or Sumer Royale's.
 // PAGE_ACCOUNT: changing the password, deleting the account.
-static enum { PAGE_MODES, PAGE_SURVIVAL, PAGE_ROYALE, PAGE_ACCOUNT } page;
+static enum { PAGE_MODES, PAGE_SURVIVAL, PAGE_ROYALE, PAGE_PARTY, PAGE_ACCOUNT } page;
 static bool open, loaded, autoDone, createTab, deleteArmed;
 static char note[200];
 static float connectT;
@@ -24,6 +24,7 @@ void OpenLobby(const char *why)
     if (!loaded) {
         loaded = true;
         if (Royale()) page = PAGE_ROYALE;   // ?mode=br: straight to the battle royale
+        if (Party()) page = PAGE_PARTY;     // ?mode=party: straight to the party
         AccountStart();
     }
     open = true;
@@ -68,6 +69,7 @@ void LobbyAgain(void)
 static void PlayAlone(void)
 {
     SetRoyale(false);
+    SetParty(false);
     SetSaveSlot(LastSlot());
     GameInit();
     if (LoadGame()) {
@@ -83,6 +85,7 @@ static void Join(const char *id, int mode)
     note[0] = '\0';
     connectT = 0;
     SetRoyale(mode == ROOM_ROYALE);
+    SetParty(mode == ROOM_PARTY);
     if (NetBegin(AccountName(), id)) stage = LOBBY_CONNECT;
     else snprintf(note, sizeof(note), "%s", NetFailure());
 }
@@ -122,7 +125,8 @@ static bool Tab(Rectangle r, const char *label, bool on)
 // Where a server stands, in a few words.
 static const char *RoomLine(int mode, int players, int max, int state)
 {
-    const char *kind = L(mode == ROOM_PVP ? "PvP: players can fight" : mode == ROOM_ROYALE ? "Battle royale" : "Together, no PvP");
+    const char *kind = L(mode == ROOM_PVP ? "PvP: players can fight" : mode == ROOM_ROYALE ? "Battle royale" : mode == ROOM_PARTY ? "Party of minigames"
+                                                                                                                         : "Together, no PvP");
     if (state == 3) return TextFormat("%s - %s", kind, L("cannot open now: all servers busy"));
     if (state == 0) return TextFormat("%s - %s", kind, L("nobody here; joining opens it"));
     if (players >= max) return TextFormat("%s - %s", kind, L("full"));
@@ -130,13 +134,13 @@ static const char *RoomLine(int mode, int players, int max, int state)
 }
 
 // The servers of the kinds wanted, one row each from y on; returns where the rows end.
-static float RoomRows(float x, float y, bool survival, bool menu)
+static float RoomRows(float x, float y, int kind, bool menu)
 {
     char id[24], title[40];
     int mode, players, max, state, shown = 0;
     for (int i = 0; i < RoomCount(); i++) {
         if (!RoomInfo(i, id, (int)sizeof(id), title, (int)sizeof(title), &mode, &players, &max, &state)) continue;
-        if ((mode == ROOM_ROYALE) == survival) continue;
+        if (kind == ROOM_SURVIVAL ? mode != ROOM_SURVIVAL && mode != ROOM_PVP : mode != kind) continue;
         bool ok = menu && state != 3 && players < max;
         if (Choice((Rectangle){ x, y, 250, 36 }, title, ok)) Join(id, mode);
         Label(RoomLine(mode, players, max, state), x + 270, y + 10, 15, (Color){ 150, 140, 125, 255 });
@@ -170,7 +174,7 @@ static void AutoStart(void)
     AccountRooms();
     if (!RoomCount()) return;
     // A room not in the list (a test server's) is of the kind its name begins with.
-    int room = strncmp(want, "royale", 6) == 0 ? ROOM_ROYALE : strncmp(want, "pvp", 3) == 0 ? ROOM_PVP : ROOM_SURVIVAL;
+    int room = strncmp(want, "royale", 6) == 0 ? ROOM_ROYALE : strncmp(want, "party", 5) == 0 ? ROOM_PARTY : strncmp(want, "pvp", 3) == 0 ? ROOM_PVP : ROOM_SURVIVAL;
     for (int i = 0; i < RoomCount(); i++)
         if (RoomInfo(i, id, (int)sizeof(id), title, (int)sizeof(title), &kind, &players, &max, &state) && strcmp(id, want) == 0) room = kind;
     autoDone = true;
@@ -216,8 +220,8 @@ void LobbyFrame(void)
     DrawRectangleLinesEx(panel, 2, (Color){ 150, 120, 80, 255 });
     Centered("SUMER", cx, panel.y + 18, 50, gold);
     bool in = LoggedIn();
-    Centered(!in ? "Ur, c. 2100 BC" : page == PAGE_ROYALE ? "Sumer Royale" : page == PAGE_SURVIVAL ? "Sumer Survival" : "Ur, c. 2100 BC",
-             cx, panel.y + 74, 20, in && page == PAGE_ROYALE ? gold : text);
+    Centered(!in ? "Ur, c. 2100 BC" : page == PAGE_ROYALE ? "Sumer Royale" : page == PAGE_PARTY ? "Sumer Party" : page == PAGE_SURVIVAL ? "Sumer Survival" : "Ur, c. 2100 BC",
+             cx, panel.y + 74, 20, in && (page == PAGE_ROYALE || page == PAGE_PARTY) ? gold : text);
 
     float x = panel.x + 40, y = panel.y + 120;
     bool menu = stage == LOBBY_MENU;
@@ -294,6 +298,7 @@ void LobbyFrame(void)
             // The ways to play. The third place is kept for one to come.
             if (Choice(row, "Sumer Survival", menu)) {
                 SetRoyale(false);
+                SetParty(false);
                 page = PAGE_SURVIVAL;
             }
             Label("Alone or with others: farm, hunt, trade", x + 270, y + 4, 15, dim);
@@ -303,8 +308,9 @@ void LobbyFrame(void)
             Label("Battle royale for up to twenty players:", x + 270, y + 4, 15, dim);
             Label("the last one standing wins.", x + 270, y + 24, 15, dim);
             y += 58;
-            Choice((Rectangle){ x, y, 250, 44 }, "Coming soon", false);
-            Label("Another way to play is on its way.", x + 270, y + 14, 15, dim);
+            if (Choice((Rectangle){ x, y, 250, 44 }, "Sumer Party", menu)) page = PAGE_PARTY;
+            Label("Four minigames in a row for up to twelve:", x + 270, y + 4, 15, dim);
+            Label("points in each, the best three win.", x + 270, y + 24, 15, dim);
             y += 70;
         } else if (page == PAGE_SURVIVAL) {
             AccountRooms();
@@ -314,16 +320,25 @@ void LobbyFrame(void)
             y += 56;
             Label("Servers: the world goes on while you are away; your things come with you.", x, y, 15, text);
             y += 24;
-            y = RoomRows(x, y, true, menu);
+            y = RoomRows(x, y, ROOM_SURVIVAL, menu);
+            if (Choice((Rectangle){ x, y + 4, 120, 26 }, "Back", menu)) page = PAGE_MODES;
+            y += 44;
+        } else if (page == PAGE_PARTY) {
+            // A party: four of five minigames, once everyone in (two or more) is ready.
+            AccountRooms();
+            Label("Four minigames of four minutes, chosen from five (vote one out while you wait). Points", x, y, 15, text);
+            Label("in each game, +10, +6, +3 for its top three; the party's best three gain experience.", x, y + 20, 15, text);
+            y += 50;
+            y = RoomRows(x, y, ROOM_PARTY, menu);
             if (Choice((Rectangle){ x, y + 4, 120, 26 }, "Back", menu)) page = PAGE_MODES;
             y += 44;
         } else {
-            // A battle royale: a round starts by itself once two or more players are in.
+            // A battle royale: a round starts once everyone in (two or more) is ready.
             AccountRooms();
-            Label("A round starts by itself once two or more players are in. Everyone starts", x, y, 15, text);
-            Label("with the best gear; the winner gains 10 XP for every player in the round.", x, y + 20, 15, text);
+            Label("A round starts ten seconds after everyone in (two or more) is ready. Everyone", x, y, 15, text);
+            Label("starts with the best gear; the winner gains 10 XP for every player in the round.", x, y + 20, 15, text);
             y += 50;
-            y = RoomRows(x, y, false, menu);
+            y = RoomRows(x, y, ROOM_ROYALE, menu);
             if (Choice((Rectangle){ x, y + 4, 120, 26 }, "Back", menu)) page = PAGE_MODES;
             y += 44;
         }
