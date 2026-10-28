@@ -142,22 +142,253 @@ static void AddLadder(int i, const float *px, const float *pz, int n)
     KeepOut(l->base.x - 1.6f, l->base.z - 1.6f, l->base.x + 1.6f, l->base.z + 1.6f);
 }
 
+// The towers either side of each of the city's gates are hollow, and people go up them by stairs: a
+// door from the city at the foot, stairs round the inside walls, a middle floor level with the wall
+// walk (a door out onto it), and a roof with a parapet where an archer keeps watch. Each tower is square
+// and set along the world's axes: t runs along the wall away from the gate, n into the city.
+#define GT_HALF   3.5f
+#define GT_WALL   0.6f
+#define GT_MID    WALL_TOP
+#define GT_TOP    10.0f
+#define GT_STAIR  1.1f
+#define GT_LOW    16   // steps from the ground to the middle floor
+#define GT_HIGH   9    // and on to the roof
+#define MAX_GATE_TOWERS 12
+
+typedef struct { float cx, cz, tx, tz, nx, nz; } GateTower;
+static GateTower gateTowers[MAX_GATE_TOWERS];
+static int gateTowerCount;
+
+static float GX(const GateTower *g, float t, float n) { return g->cx + g->tx * t + g->nx * n; }
+static float GZ(const GateTower *g, float t, float n) { return g->cz + g->tz * t + g->nz * n; }
+
+// A box given in the tower's own axes: centre (t, n), size st x sn, from y0 up h.
+static void TBox(const GateTower *g, float t, float n, float y0, float st, float sn, float h, Color c, bool solid)
+{
+    AddBox(GX(g, t, n), y0, GZ(g, t, n), fabsf(g->tx) * st + fabsf(g->nx) * sn, h, fabsf(g->tz) * st + fabsf(g->nz) * sn, c, solid);
+}
+
+// The stairs run round the inside walls: a square landing step in each corner and six steps along each
+// wall between, from the corner by the door up the far wall, along the outer one, back along the gate's
+// side and over the door. Step k's middle (t, n), its half sizes and its top.
+#define GT_RUN 0.6f
+static void StairStep(int k, float *t, float *n, float *ht, float *hn, float *top)
+{
+    const float in = GT_HALF - GT_WALL - GT_STAIR / 2;
+    static const float corner[5][2] = { { 1, 1 }, { 1, -1 }, { -1, -1 }, { -1, 1 }, { 1, 1 } };
+    int side = k / 7, j = k % 7;
+    float ct = corner[side][0] * in, cn = corner[side][1] * in;
+    if (j == 0) {
+        *t = ct;
+        *n = cn;
+        *ht = *hn = GT_STAIR / 2;
+    } else {
+        float dt = (corner[side + 1][0] - corner[side][0]) / 2, dn = (corner[side + 1][1] - corner[side][1]) / 2;
+        float along = GT_STAIR / 2 + GT_RUN * ((float)j - 0.5f);
+        *t = ct + dt * along;
+        *n = cn + dn * along;
+        *ht = dt != 0 ? GT_RUN / 2 : GT_STAIR / 2;
+        *hn = dt != 0 ? GT_STAIR / 2 : GT_RUN / 2;
+    }
+    *top = k < GT_LOW ? GT_MID * (float)(k + 1) / GT_LOW : GT_MID + (GT_TOP - GT_MID) * (float)(k + 1 - GT_LOW) / GT_HIGH;
+}
+
+// A floor from y0 to y1 over the inside, in tiles, leaving open whatever lies over stairs a head below it.
+static void TowerFloor(const GateTower *g, float y0, float y1, Color c)
+{
+    enum { TILES = 10 };
+    const float inner = GT_HALF - GT_WALL, tile = 2 * inner / TILES;
+    for (int j = 0; j < TILES; j++) {
+        float n = -inner + tile * ((float)j + 0.5f);
+        int run = -1;
+        for (int i = 0; i <= TILES; i++) {
+            bool open = i == TILES;
+            float t = -inner + tile * ((float)i + 0.5f);
+            for (int k = 0; k < GT_LOW + GT_HIGH && !open; k++) {
+                float st, sn, ht, hn, top;
+                StairStep(k, &st, &sn, &ht, &hn, &top);
+                if (top > y0 - 2.2f && top < y1 - 0.01f && fabsf(t - st) < ht + tile / 2 - 0.05f && fabsf(n - sn) < hn + tile / 2 - 0.05f)
+                    open = true;
+            }
+            if (!open && run < 0) run = i;
+            if (open && run >= 0) {
+                float a = -inner + tile * (float)run, b = -inner + tile * (float)i;
+                TBox(g, (a + b) / 2, n, y0, b - a, tile, y1 - y0, c, true);
+                run = -1;
+            }
+        }
+    }
+}
+
+// One side of the tower: the wall at 'v' across, running along the other axis ('alongT': along t),
+// with up to two openings, each { from, to, bottom, top } along the wall.
+static void TowerSide(const GateTower *g, bool alongT, float v, const float (*holes)[4], int nh, Color c)
+{
+    float cuts[6] = { -GT_HALF, GT_HALF };
+    int nc = 2;
+    for (int h = 0; h < nh; h++) {
+        cuts[nc++] = holes[h][0];
+        cuts[nc++] = holes[h][1];
+    }
+    for (int a = 0; a < nc; a++)
+        for (int b = a + 1; b < nc; b++)
+            if (cuts[b] < cuts[a]) {
+                float x = cuts[a];
+                cuts[a] = cuts[b];
+                cuts[b] = x;
+            }
+    for (int a = 0; a + 1 < nc; a++) {
+        float u0 = cuts[a], u1 = cuts[a + 1], mid = (u0 + u1) / 2, y = 0;
+        if (u1 - u0 < 0.01f) continue;
+        for (int h = 0; h <= nh; h++) {
+            // Up from y to the next opening over this stretch (or to the top).
+            float lo = GT_TOP, hi = GT_TOP;
+            for (int k = 0; k < nh; k++)
+                if (mid > holes[k][0] && mid < holes[k][1] && holes[k][2] >= y - 0.01f && holes[k][2] < lo) {
+                    lo = holes[k][2];
+                    hi = holes[k][3];
+                }
+            if (lo > y + 0.01f) {
+                if (alongT) TBox(g, mid, v, y, u1 - u0, GT_WALL, lo - y, c, true);
+                else TBox(g, v, mid, y, GT_WALL, u1 - u0, lo - y, c, true);
+            }
+            y = hi;
+            if (y >= GT_TOP) break;
+        }
+    }
+}
+
+static void BuildGateTower(GateTower *g)
+{
+    const float in = GT_HALF - GT_WALL, wv = GT_HALF - GT_WALL / 2;
+    const Color wall = COL_HOUSE_DARK, floor = COL_BRICK;
+    // The door from the city; a window above it.
+    const float door[2][4] = { { -0.7f, 0.7f, 0.0f, 2.4f }, { -0.35f, 0.35f, GT_MID + 0.9f, GT_MID + 2.0f } };
+    TowerSide(g, true, wv, door, 2, wall);
+    // The door out onto the wall walk, on the far side from the gate.
+    const float walk[1][4] = { { -0.75f, 0.75f, GT_MID, GT_MID + 2.4f } };
+    TowerSide(g, false, wv, walk, 1, wall);
+    // Arrow slits looking out of the city, and the gate's side.
+    const float slits[2][4] = { { -1.4f, -1.15f, GT_MID + 0.7f, GT_MID + 2.0f }, { 1.15f, 1.4f, GT_MID + 0.7f, GT_MID + 2.0f } };
+    TowerSide(g, true, -wv, slits, 2, wall);
+    const float gate[1][4] = { { -0.15f, 0.15f, GT_MID + 0.7f, GT_MID + 2.0f } };
+    TowerSide(g, false, -wv, gate, 1, wall);
+
+    // Floors: the ground's bricks, the middle floor and the roof.
+    TBox(g, 0, 0, 0, 2 * in, 2 * in, 0.04f, floor, false);
+    TowerFloor(g, GT_MID - 0.3f, GT_MID, floor);
+    TowerFloor(g, GT_TOP - 0.3f, GT_TOP, COL_WALL);
+    // The stairs: solid mud brick up to the middle floor, then on it up to the roof.
+    for (int k = 0; k < GT_LOW + GT_HIGH; k++) {
+        float t, n, ht, hn, top;
+        StairStep(k, &t, &n, &ht, &hn, &top);
+        float base = k < GT_LOW ? 0.0f : GT_MID;
+        TBox(g, t, n, base, 2 * ht, 2 * hn, top - base, k & 1 ? COL_WALL : COL_MUD_PALE, true);
+    }
+    // The roof's parapet and its merlons.
+    for (int s = -1; s <= 1; s += 2) {
+        TBox(g, (float)s * (GT_HALF - 0.25f), 0, GT_TOP, 0.5f, 2 * GT_HALF, 0.9f, wall, true);
+        TBox(g, 0, (float)s * (GT_HALF - 0.25f), GT_TOP, 2 * GT_HALF - 1.0f, 0.5f, 0.9f, wall, true);
+        for (int m = -1; m <= 1; m++) {
+            TBox(g, (float)s * (GT_HALF - 0.25f), (float)m * 2.4f, GT_TOP + 0.9f, 0.55f, 0.8f, 0.5f, wall, false);
+            TBox(g, (float)m * 2.4f, (float)s * (GT_HALF - 0.25f), GT_TOP + 0.9f, 0.8f, 0.55f, 0.5f, wall, false);
+        }
+    }
+    // Life inside. At the foot: jars and sacks, a crate, a torch on the wall.
+    AddShape(GX(g, -2.3f, 2.3f), 0, GZ(g, -2.3f, 2.3f), 0.55f, 0.75f, 0.55f, COL_POT, true, SHAPE_BLOB);
+    AddShape(GX(g, -1.6f, 2.45f), 0, GZ(g, -1.6f, 2.45f), 0.45f, 0.6f, 0.45f, COL_POT, true, SHAPE_BLOB);
+    AddShape(GX(g, -2.35f, -0.2f), 0, GZ(g, -2.35f, -0.2f), 0.6f, 0.5f, 0.6f, COL_STRAW, true, SHAPE_CYL);
+    AddShape(GX(g, -2.35f, 0.5f), 0, GZ(g, -2.35f, 0.5f), 0.6f, 0.45f, 0.6f, COL_STRAW, true, SHAPE_CYL);
+    TBox(g, 1.0f, -1.0f, 0, 0.8f, 0.8f, 0.7f, COL_WOOD, true);
+    AddTorch(GX(g, -in + 0.1f, 1.2f), 2.4f, GZ(g, -in + 0.1f, 1.2f), false);
+    // The middle floor: the guards' room, a table, a sleeping mat, spears against the wall, a torch.
+    TBox(g, 0.8f, 1.0f, GT_MID, 0.9f, 0.7f, 0.75f, COL_WOOD, true);
+    AddShape(GX(g, 0.8f, 1.0f), GT_MID + 0.75f, GZ(g, 0.8f, 1.0f), 0.25f, 0.3f, 0.25f, COL_POT, false, SHAPE_BLOB);
+    TBox(g, -0.9f, 0.0f, GT_MID, 0.8f, 1.8f, 0.06f, COL_BLANKET, false);
+    for (int k = 0; k < 3; k++) TBox(g, 1.7f + 0.3f * (float)k, in - 0.12f, GT_MID, 0.06f, 0.06f, 2.2f, COL_WOOD, false);
+    TBox(g, 2.0f, in - 0.2f, GT_MID + 1.6f, 1.0f, 0.12f, 0.08f, COL_WOOD, false);
+    AddTorch(GX(g, 1.0f, in - 0.1f), GT_MID + 2.1f, GZ(g, 1.0f, in - 0.1f), false);
+    // The roof: a brazier.
+    AddShape(GX(g, 2.2f, 2.2f), GT_TOP, GZ(g, 2.2f, 2.2f), 0.6f, 0.45f, 0.6f, COL_CLAY_DARK, true, SHAPE_CYL);
+    AddFireLight(GX(g, 2.2f, 2.2f), GT_TOP + 0.7f, GZ(g, 2.2f, 2.2f));
+}
+
+// Where step k of tower i's stairs is (its middle, on its top).
+Vector3 GateTowerStair(int i, int k)
+{
+    float t, n, ht, hn, top;
+    StairStep(k, &t, &n, &ht, &hn, &top);
+    return (Vector3){ GX(&gateTowers[i], t, n), top, GZ(&gateTowers[i], t, n) };
+}
+
+int GateTowerCount(void)
+{
+    return gateTowerCount;
+}
+
+// Tower i's middle on the ground, the way along the wall away from its gate, and the way into the city.
+void GateTowerFrame(int i, Vector3 *centre, Vector3 *t, Vector3 *n)
+{
+    const GateTower *g = &gateTowers[i];
+    *centre = (Vector3){ g->cx, 0, g->cz };
+    *t = (Vector3){ g->tx, 0, g->tz };
+    *n = (Vector3){ g->nx, 0, g->nz };
+}
+
+// Where tower i's people are: 0 the archer on the roof, 1 the guard at the table on the middle floor;
+// 'face' which way they look.
+Vector3 GateTowerPost(int i, int who, float *face)
+{
+    const GateTower *g = &gateTowers[i];
+    if (who == 0) {
+        *face = atan2f(-g->nx, -g->nz);
+        return (Vector3){ GX(g, 1.0f, -1.6f), GT_TOP, GZ(g, 1.0f, -1.6f) };
+    }
+    *face = atan2f(-g->tx, -g->tz);
+    return (Vector3){ GX(g, 1.6f, 1.0f), GT_MID, GZ(g, 1.6f, 1.0f) };
+}
+
 static void BuildWalls(void)
 {
     enum { N = 240 };
     static const int ladders[] = { 15, 45, 75, 111, 159, 200, 225 };
     float px[N], pz[N];
-    bool gap[N];
+    bool gap[N], skip[N];
 
     for (int i = 0; i < N; i++) {
         float a = 2.0f * PI * (float)i / (float)N;
         px[i] = CITY_A * cosf(a);
         pz[i] = CITY_Z + CITY_B * sinf(a);
         gap[i] = GateGap(px[i], pz[i]);
+        skip[i] = false;
+    }
+    // A tower beside each gate, a little back from the gap so the way through stays as wide.
+    gateTowerCount = 0;
+    for (int i = 0; i < N && gateTowerCount < MAX_GATE_TOWERS; i++) {
+        int before = (i + N - 1) % N, after = (i + 1) % N;
+        if (gap[i] || (gap[before] == gap[after])) continue;
+        int away = gap[before] ? after : before;
+        float gx = px[i] / (CITY_A * CITY_A), gz = (pz[i] - CITY_Z) / (CITY_B * CITY_B);
+        GateTower g = { 0 };
+        if (fabsf(gx) * CITY_A > fabsf(gz) * CITY_B) {
+            g.nx = gx > 0 ? -1.0f : 1.0f;
+            g.tz = pz[away] > pz[i] ? 1.0f : -1.0f;
+        } else {
+            g.nz = gz > 0 ? -1.0f : 1.0f;
+            g.tx = px[away] > px[i] ? 1.0f : -1.0f;
+        }
+        g.cx = px[i] + g.tx * 1.0f;
+        g.cz = pz[i] + g.tz * 1.0f;
+        for (int k = 0; k < N; k++) {
+            float dt = (px[k] - g.cx) * g.tx + (pz[k] - g.cz) * g.tz, dn = (px[k] - g.cx) * g.nx + (pz[k] - g.cz) * g.nz;
+            // A plain stretch of wall reaches 1.7 m either side of its point, a wall tower 2.6 m.
+            if (fabsf(dt) < GT_HALF + (k % 12 == 0 ? 2.7f : 1.0f) && fabsf(dn) < 4.0f) skip[k] = true;
+        }
+        gateTowers[gateTowerCount++] = g;
     }
     for (int i = 0; i < N; i++) {
-        if (gap[i]) continue;
-        bool tower = gap[(i + N - 1) % N] || gap[(i + 1) % N] || i % 12 == 0;
+        if (gap[i] || skip[i]) continue;
+        bool tower = i % 12 == 0;
         if (tower) {
             AddBox(px[i], 0, pz[i], 5.2f, WALL_TOP + 0.5f, 5.2f, COL_HOUSE_DARK, true);
             AddBox(px[i], WALL_TOP + 0.4f, pz[i], 5.5f, 0.12f, 5.5f, COL_WALL, false);
@@ -169,9 +400,17 @@ static void BuildWalls(void)
             AddBox(px[i] + gx / gl * 1.45f, WALL_TOP, pz[i] + gz / gl * 1.45f, 0.7f, 0.8f, 0.7f, COL_WALL, true);
         }
     }
+    for (int k = 0; k < gateTowerCount; k++) {
+        GateTower *g = &gateTowers[k];
+        BuildGateTower(g);
+        // The wall walk joined to the tower's door.
+        TBox(g, GT_HALF + 1.2f, 0, 0, 2.6f, 3.4f, WALL_TOP, COL_WALL, true);
+        KeepOut(fminf(GX(g, -GT_HALF, -GT_HALF), GX(g, GT_HALF, GT_HALF)) - 0.5f, fminf(GZ(g, -GT_HALF, -GT_HALF), GZ(g, GT_HALF, GT_HALF)) - 0.5f,
+                fmaxf(GX(g, -GT_HALF, -GT_HALF), GX(g, GT_HALF, GT_HALF)) + 0.5f, fmaxf(GZ(g, -GT_HALF, -GT_HALF), GZ(g, GT_HALF, GT_HALF)) + 0.5f);
+    }
     G.ladderCount = 0;
     for (int k = 0; k < (int)(sizeof(ladders) / sizeof(ladders[0])); k++)
-        if (!gap[ladders[k]]) AddLadder(ladders[k], px, pz, N);
+        if (!gap[ladders[k]] && !skip[ladders[k]]) AddLadder(ladders[k], px, pz, N);
 }
 
 #define MAX_FIELDS 8
@@ -270,9 +509,80 @@ static void CourtyardHouse(float x, float z, float w, float d, float h, Color c)
     AddBox(x, 0, z, w - 2 * t, 0.03f, d - 2 * t, COL_BRICK, false);
 }
 
+// The houses built, for the ways up onto their roofs (HouseClimbs).
+typedef struct { float x, z, w, d, h; int door, ix, iz; } HouseSpot;
+#define MAX_HOUSE_SPOTS 700
+static HouseSpot houseSpots[MAX_HOUSE_SPOTS];
+static int houseSpotCount, climbCount;
+
+int HouseClimbCount(void)
+{
+    return climbCount;
+}
+
+// Whether a strip of ground from (x0, z0) to (x1, z1) is clear for something 'r' wide: no street, water,
+// building or wall.
+static bool ClearStrip(float x0, float z0, float x1, float z1, float r)
+{
+    for (int k = 0; k <= 4; k++) {
+        float x = x0 + (x1 - x0) * (float)k / 4, z = z0 + (z1 - z0) * (float)k / 4;
+        if (!InsideWalls(x, z, 4.0f + r) || InKeepOut(x, z, r) || InWater(x, z) || SolidAt(x, z, r)) return false;
+    }
+    return true;
+}
+
+// Ways up onto the roofs, for whoever likes to run along them: mud-brick stairs up the side of some houses
+// (as on many a house in Ur), and a crate by a pile of crates beside others. Added once every house
+// stands, so a house built later never stands in their way.
+static void HouseClimbs(void)
+{
+    climbCount = 0;
+    for (int i = 0; i < houseSpotCount; i++) {
+        const HouseSpot *hs = &houseSpots[i];
+        float roll = Hash2(hs->ix + 211, hs->iz + 97);
+        if (roll > 0.6f) continue;
+        bool stairs = roll < 0.38f;
+        int first = (int)(Hash2(hs->ix + 5, hs->iz + 151) * 3.99f);
+        for (int k = 0; k < 4; k++) {
+            int side = (first + k) % 4;
+            if (side == hs->door) continue;
+            // Along the wall on that side: 'ax', 'az' the way along it, 'ox', 'oz' out of the house.
+            float ox = side == 0 ? -1.0f : side == 1 ? 1.0f : 0.0f, oz = side == 2 ? -1.0f : side == 3 ? 1.0f : 0.0f;
+            float ax = oz != 0 ? 1.0f : 0.0f, az = ox != 0 ? 1.0f : 0.0f;
+            float half = ox != 0 ? hs->w / 2 : hs->d / 2, len = (ox != 0 ? hs->d : hs->w) - 0.4f;
+            float bx = hs->x + ox * (half + 0.5f), bz = hs->z + oz * (half + 0.5f);
+            // The free ground is looked for a little off the wall, clear of the house itself.
+            float fx = hs->x + ox * (half + 0.65f), fz = hs->z + oz * (half + 0.65f);
+            if (stairs) {
+                int n = (int)ceilf(hs->h / 0.45f);
+                float step = len / (float)n;
+                if (step < 0.42f || !ClearStrip(fx - ax * len / 2, fz - az * len / 2, fx + ax * len / 2, fz + az * len / 2, 0.45f)) continue;
+                float dir = Hash2(hs->ix + 3, hs->iz + 8) < 0.5f ? -1.0f : 1.0f;
+                for (int j = 0; j < n; j++) {
+                    float along = dir * (-len / 2 + step * ((float)j + 0.5f)), top = hs->h * (float)(j + 1) / (float)n;
+                    AddBox(bx + ax * along, 0, bz + az * along, ax != 0 ? step + 0.02f : 0.95f, top, az != 0 ? step + 0.02f : 0.95f,
+                           j & 1 ? COL_MUD_PALE : Mix(COL_MUD_PALE, COL_HOUSE_DARK, 0.3f), true);
+                }
+            } else {
+                // A crate to step on, and a pile of them a metre higher: up on the roof from the pile.
+                if (hs->h > 3.2f || !ClearStrip(fx + ox * 0.1f - ax * 1.2f, fz + oz * 0.1f - az * 1.2f, fx + ox * 0.1f + ax * 1.2f, fz + oz * 0.1f + az * 1.2f, 0.5f))
+                    continue;
+                bx += ox * 0.1f;
+                bz += oz * 0.1f;
+                AddBox(bx - ax * 0.65f, 0, bz - az * 0.65f, 1.0f, 1.0f, 1.0f, COL_WOOD, true);
+                AddBox(bx + ax * 0.5f, 0, bz + az * 0.5f, 1.1f, 2.0f, 1.1f, Mix(COL_WOOD, COL_STRAW, 0.3f), true);
+                AddShape(bx + ax * 0.5f, 2.0f, bz + az * 0.5f, 0.5f, 0.5f, 0.5f, COL_POT, false, SHAPE_BLOB);
+            }
+            climbCount++;
+            break;
+        }
+    }
+}
+
 // Fills every free cell inside the walls; a cell that touches a street tries a smaller, shifted house first.
 void BuildCityHouses(void)
 {
+    houseSpotCount = 0;
     const float cell = 7.0f;
     const Color tones[4] = { COL_HOUSE, COL_HOUSE_DARK, COL_WALL, COL_MUD_PALE };
     static const float tries[5][3] = { { 0, 0, 1.0f }, { 0, 2.0f, 0.8f }, { 0, -2.0f, 0.8f }, { 2.0f, 0, 0.8f }, { -2.0f, 0, 0.8f } };
@@ -316,11 +626,14 @@ void BuildCityHouses(void)
                 AddBox(cx, 0, cz, w + 0.1f, 0.35f, d + 0.1f, base, false);
             }
 
+            // A room up on the roof, and a crate beside it to climb onto it from the roof.
             if (Hash2(ix + 13, iz + 29) < 0.4f) {
                 float ox = (Hash2(ix, iz + 61) < 0.5f ? -1.0f : 1.0f) * w / 4;
-                AddBox(cx + ox, h, cz - d / 4, w / 2, 2.0f, d / 2, tones[(int)(Hash2(ix + 3, iz + 71) * 3.99f)], false);
+                AddBox(cx + ox, h, cz - d / 4, w / 2, 2.0f, d / 2, tones[(int)(Hash2(ix + 3, iz + 71) * 3.99f)], !court);
+                if (!court) AddBox(cx + ox, h, cz + 0.5f, 0.9f, 1.0f, 0.9f, COL_WOOD, true);
             }
             int side = (int)(Hash2(ix + 77, iz + 5) * 3.99f);
+            if (!court && houseSpotCount < MAX_HOUSE_SPOTS) houseSpots[houseSpotCount++] = (HouseSpot){ cx, cz, w, d, h, side, ix, iz };
             float dx = (side == 0) ? -w / 2 : (side == 1) ? w / 2 : 0.0f;
             float dz = (side == 2) ? -d / 2 : (side == 3) ? d / 2 : 0.0f;
             AddBox(cx + dx, 0, cz + dz, dx != 0 ? 0.12f : 1.0f, 2.0f, dz != 0 ? 0.12f : 1.0f, COL_DOORWAY, false);
@@ -362,4 +675,5 @@ void BuildCityHouses(void)
             }
         }
     }
+    HouseClimbs();
 }

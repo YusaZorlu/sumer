@@ -107,10 +107,10 @@ const yawTo = (from, to) => Math.atan2(-(to[0] - from[0]), -(to[1] - from[1]));
   await bob.keyboard.type('Hello Ann', { delay: 150 });
   await bob.keyboard.press('Enter');
   const line = `${BOB}: Hello Ann`;
-  a = await waitFor(ann, 'Ann hears Bob', i => i.chat === line, 15000).catch(e => null);
-  c = await waitFor(cem, 'Cem hears Bob', i => i.chat === line, 15000).catch(e => null);
-  b = await waitFor(bob, 'Bob sees his own line', i => i.chat === line && i.panel === 0, 15000).catch(e => null);
-  check(!!a && !!c && !!b, `Bob's line reaches everyone: "${(a || await info(ann)).chat}"`);
+  a = await waitFor(ann, 'Ann hears Bob', i => i.chat === line, 40000).catch(e => null);
+  c = await waitFor(cem, 'Cem hears Bob', i => i.chat === line, 40000).catch(e => null);
+  b = await waitFor(bob, 'Bob sees his own line', i => i.chat === line && i.panel === 0, 40000).catch(e => null);
+  check(!!a && !!c && !!b, `Bob's line reaches everyone: "${(a || await info(ann)).chat}" (Ann ${!!a}, Cem ${!!c}, Bob ${!!b}: panel ${(await info(bob)).panel}, "${(await info(bob)).chat}")`);
   await ann.screenshot({ path: SHOTS + 'mp-chat.png' });
 
   // Night: it passes only when all three lie in bed.

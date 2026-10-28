@@ -346,7 +346,7 @@ void RemoveZigguratGuards(void)
     int kept = 0;
     for (int i = 0; i < G.villagerCount; i++) {
         const Villager *v = &G.villagers[i];
-        if (v->kind == NPC_GUARD && v->a.y >= 5.0f && v->b.y >= 5.0f && !v->crouch) continue;
+        if (v->kind == NPC_GUARD && v->a.y >= 5.0f && v->b.y >= 5.0f && !v->crouch && !v->perch) continue;
         G.villagers[kept++] = G.villagers[i];
     }
     G.villagerCount = kept;
@@ -417,7 +417,7 @@ int AddNpc(NpcKind kind, Vector3 a, Vector3 b, float speed, Color robe, float fa
 {
     if (G.villagerCount >= MAX_VILLAGERS) return -1;
     G.villagers[G.villagerCount] = (Villager){ a, b, speed > 0 ? RandF(0, 1) : 0.0f, 1.0f, speed, robe, kind, face, 0.0f, false, false, false,
-                                               { .hp = 0 }, -1, 0.0f, 0.0f, -1, -1, 0.0f, 0.0f, 0, false };
+                                               { .hp = 0 }, -1, 0.0f, 0.0f, -1, -1, 0.0f, 0.0f, 0, false, false };
     return G.villagerCount++;
 }
 
@@ -585,6 +585,20 @@ static void BuildTempleStaff(void)
     for (int k = 0; k < (int)(sizeof(gates) / sizeof(gates[0])); k++) {
         int g = AddNpc(NPC_GUARD, (Vector3){ gates[k][0], 0, gates[k][1] }, (Vector3){ gates[k][0], 0, gates[k][1] }, 0, guard, 0);
         if (g >= 0) G.villagers[g].bow = 2;
+    }
+    // In each tower by a gate: an archer keeping watch on the roof, and a guard off duty at the table on the
+    // middle floor.
+    for (int k = 0; k < GateTowerCount(); k++) {
+        float face;
+        Vector3 p = GateTowerPost(k, 0, &face);
+        int g = AddNpc(NPC_GUARD, p, p, 0, guard, face);
+        if (g >= 0) {
+            G.villagers[g].bow = 2;
+            G.villagers[g].perch = true;
+        }
+        p = GateTowerPost(k, 1, &face);
+        g = AddNpc(NPC_GUARD, p, p, 0, guard, face);
+        if (g >= 0) G.villagers[g].crouch = true;
     }
     AddNpc(NPC_GUARD, (Vector3){ 90, 0, 9 }, (Vector3){ 50, 0, 9 }, 0.9f, guard, 0);
     AddNpc(NPC_GUARD, (Vector3){ -90, 0, 39 }, (Vector3){ -40, 0, 39 }, 0.9f, guard, 0);

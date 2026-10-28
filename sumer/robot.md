@@ -242,6 +242,17 @@ in `src/game.h`) holds the whole world.
   a fight only when `Beaten()` (badly hurt and `Lone()`: no pack mate on its feet within 40 m).
 - **NPC walking** (`StepToward`, `AroundWater`, `JumpWater` in `combat.c`/`city.c`): people jump canals (they do not wade),
   or go round wide water by the bridges; townsfolk follow the street graph in `village.c`.
+- **Gate towers** (`BuildWalls`/`BuildGateTower` in `city.c`): hollow, axis-aligned, t along the wall away from the gate and
+  n into the city. 25 steps (`StairStep`: a square landing in each corner, six steps along each wall) from the ground to
+  `GT_MID` (= `WALL_TOP`, the wall walk) and on to `GT_TOP`; floors are tiles left open over steps a head below
+  (`TowerFloor`); walls with openings (`TowerSide`). Wall points within reach of a tower are left out (`skip`) and a box
+  joins the wall walk to the middle floor's door. `GateTowerPost` places the roof archer (`Villager.perch`: never moves,
+  only shoots, in `UpdateCombat`; kept in PvP) and the guard sitting on the middle floor. `harness towers` lists them.
+- **Rooftops** (`HouseClimbs` in `city.c`): after every house stands, stairs or crates on a free side of some houses
+  (`ClearStrip`). A jump rises about 1.17 m and a step up is at most 0.55 m (`STEP_HEIGHT`).
+- **Esc and the mouse** (`HandleMenus` in `game.c`): a browser gives the pointer back only on a click, and a grab
+  made on Esc is dropped by that same key, which reopened the pause menu; so a menu closed with Esc leaves the mouse
+  free (`WantPointer(true)`, `G.cursorLocked = false`) until the next click takes it.
 - **Death** (`Collapse` in `game.c`): the player loses what they gathered that day (`G.safe[]` is the baseline kept
   by `TrackGoods`; storage deposits count as kept).
 - **PvP rules** come from the room's kind (`ServeRoom`, sent in the welcome message): `G.pvp`, `G.combat`. The royale's

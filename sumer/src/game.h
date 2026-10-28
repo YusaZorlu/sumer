@@ -33,7 +33,7 @@
 #define STARVE_DAYS     6.0f
 #define FEED_MAX        30.0f
 
-#define MAX_BOXES       24000
+#define MAX_BOXES       28000
 #define MAX_RES         512
 #define MAX_ANIMALS     112
 #define MAX_ARROWS      40
@@ -44,8 +44,8 @@
 #define MAX_FLOCK       8
 #define MAX_RAIDERS     24   // 18 in the four camps, then the two roaming bands of three
 #define MAX_LADDERS     8
-#define MAX_FIGHTERS    160
-#define MAX_VILLAGERS   96
+#define MAX_FIGHTERS    200
+#define MAX_VILLAGERS   128
 #define PATH_MAX        16          // corners kept of a way found round something (path.c)
 #define MAX_WORKERS     16
 #define MAX_CARAVANS    2
@@ -220,6 +220,7 @@ typedef struct {
     float wait, stuck;
     int bow;   // 0: no bow; 1-3: the bow they shoot with (hunting, composite, war)
     bool crouch;   // someone at work low down: grinding grain, mending a net, tending a fire
+    bool perch;    // an archer posted up high (a gate tower's top): stays there and shoots, never comes down
 } Villager;
 // 'camp' 0 to CAMPS-1 is the camp they live in; CAMPS + b is roaming band b.
 typedef struct { Vector3 home, pos, netPos; float face, timer, speed, respawnDay; bool moving; int camp; Vitals vit; } Raider;
@@ -605,6 +606,12 @@ bool InAlehouse(Vector3 p);
 Rectangle FoldArea(void);
 
 bool InsideWalls(float x, float z, float margin);
+int GateTowerCount(void);
+Vector3 GateTowerStair(int i, int k);
+void GateTowerFrame(int i, Vector3 *centre, Vector3 *t, Vector3 *n);
+int HouseClimbCount(void);
+void PlayerStep(Vector3 dir, float dt);
+Vector3 GateTowerPost(int i, int who, float *face);
 bool InCityLands(float x, float z);
 int BridgeCount(void);
 void BridgeEnds(int i, Vector3 *a, Vector3 *b);

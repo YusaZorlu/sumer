@@ -174,6 +174,42 @@ static Rectangle PanelRect(float w, float h)
     return r;
 }
 
+// On a touch screen a slot answers when the finger lifts: a short tap is a click, and a finger held on a
+// basket for two seconds empties it (the long press fills a bar along the slot's foot meanwhile).
+#define HOLD_TO_DROP 2.0f
+static int SlotTouch(Rectangle r, Slot s, int index)
+{
+    static Rectangle held;
+    static float heldT;
+    static bool done;
+    bool same = held.x == r.x && held.y == r.y;
+    bool on = GetTouchPointCount() > 0 && CheckCollisionPointRec(UiMouse(), r);
+    if (on) {
+        if (!same) {
+            held = r;
+            heldT = 0;
+            done = false;
+        } else if (!done) {
+            heldT += GetFrameTime();
+        }
+        if (index >= 0 && s.item != IT_NONE && !done && heldT > 0.3f) {
+            DrawRectangle((int)r.x + 2, (int)(r.y + r.height) - 6, (int)((r.width - 4) * fminf(1.0f, heldT / HOLD_TO_DROP)), 4, C_BAD);
+            Fmt(hoverText, sizeof(hoverText), "Keep holding to drop the %s", ItemName(s.item));
+        }
+        if (index >= 0 && s.item != IT_NONE && !done && heldT >= HOLD_TO_DROP) {
+            done = true;
+            return CLICK_RIGHT;
+        }
+        return CLICK_NONE;
+    }
+    if (same) {
+        bool tap = !done && heldT < 0.6f;
+        held = (Rectangle){ -1, -1, 0, 0 };
+        if (tap) return CLICK_LEFT;
+    }
+    return CLICK_NONE;
+}
+
 static int SlotWidget(Rectangle r, Slot s, bool locked, int index)
 {
     static const char *labels[BAG_MAX] = { "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "=" };
@@ -193,7 +229,7 @@ static int SlotWidget(Rectangle r, Slot s, bool locked, int index)
         Text(d->name, r.x + 8, r.y + 32, 14, C_TEXT);
         const char *n = TextFormat(L("%d/%d"), s.count, d->stack);
         Text(n, r.x + r.width - 8 - (float)Measure(n, 16), r.y + r.height - 22, 16, s.count == d->stack ? C_GOLD : C_DIM);
-        if (hover) {
+        if (hover && !TouchOn()) {
             if (d->food > 0)
                 Fmt(hoverText, sizeof(hoverText), s.item == IT_MILK ? "%s: click to drink (+%d food), right-click or X to drop"
                     : "%s: click to eat (+%d food), right-click or X to drop", ItemName(s.item), d->food);
@@ -208,6 +244,7 @@ static int SlotWidget(Rectangle r, Slot s, bool locked, int index)
         CenterText("empty", r.x + r.width / 2, r.y + r.height / 2 - 7, 14, (Color){ 100, 88, 74, 255 });
     }
     if (index >= 0 && KeyPressed(SlotKey(index))) return CLICK_LEFT;
+    if (TouchOn()) return SlotTouch(r, s, index);
     if (!hover) return CLICK_NONE;
     if (MousePressed(MOUSE_BUTTON_LEFT)) return CLICK_LEFT;
     if (MousePressed(MOUSE_BUTTON_RIGHT) || KeyPressed(KEY_X)) return CLICK_RIGHT;
@@ -279,7 +316,7 @@ static void DrawBagPanel(void)
     y += 44;
     Text(TextFormat(L("Coop: %d hens, feed %d, %d eggs waiting, water %.1f days    Farm water %.1f days"), G.henCount, (int)G.coopFeed,
                     G.coopEggs, G.coopWater, G.farmWater), x0, y, 18, C_TEXT);
-    Text(hoverText[0] ? hoverText : "Click or 1-6: eat / drink / chew herbs / refill quiver    Right-click or X: drop    Tab: close",
+    Text(hoverText[0] ? hoverText : TouchOn() ? "Tap: eat / drink / chew herbs / refill quiver    Hold 2 seconds: drop" : "Click or 1-6: eat / drink / chew herbs / refill quiver    Right-click or X: drop    Tab: close",
          x0, r.y + r.height - 34, 16, hoverText[0] ? C_GOLD : C_DIM);
     if (Button((Rectangle){ r.x + r.width - 344, r.y + 14, 170, 30 }, G.torchOn ? "Torch: on (B)" : "Torch: off (B)", true, 0)) {
         G.torchOn = !G.torchOn;
@@ -642,6 +679,8 @@ static void DrawHelpPanel(void)
         "in their own color. The world never pauses, and the night passes when everyone lies in bed. The farm, the coop and the "
         "eggs are shared. On a PvP server players can hurt each other with the best gear, arrows never run out and the guards stay out of it "
         "(everyone starts somewhere in the city, the ziggurat is unguarded).",
+        "The towers by the city's gates have stairs inside: the middle floor opens onto the wall walk, and archers keep watch "
+        "on the roofs. Many houses have stairs or crates up to their roofs, for running across the city.",
         "Experience: 1 for a beast or a townsman brought down, 3 for a guard, raider, barbarian or bandit, 10 for another player, "
         "and 10 for every player in a battle royale round you win. Level 1 takes 100 to reach level 2, level 2 another 200, "
         "up to level 100. Your level, K/D and things are kept with your account.",
@@ -661,7 +700,7 @@ static void DrawHelpPanel(void)
     }
     // The tips take the biggest letters that fit the window (Turkish runs longer than English).
     static const struct { int size; float line; } fits[] = { { 15, 18.0f }, { 14, 16.5f }, { 13, 15.0f }, { 12, 14.0f } };
-    float room = r.y + r.height - 16.0f - y0, width = r.x + r.width - 24 - x1;
+    float room = r.y + r.height - 18.0f - y0, width = r.x + r.width - 30 - x1;
     int fit = 0;
     for (; fit < 3; fit++) {
         float used = 0;
@@ -670,8 +709,36 @@ static void DrawHelpPanel(void)
         paragraphDry = false;
         if (used <= room) break;
     }
-    float ty = y0;
+    // When even the smallest letters do not fit (a small window), the tips scroll: the wheel, the arrow keys
+    // or a finger dragged over them; a bar at the side shows where.
+    static float scroll, dragY = -1;
+    float total = 0;
+    paragraphDry = true;
+    for (int i = 0; i < nt; i++) total += Paragraph(tips[i], x1, y0, width, fits[fit].size, fits[fit].line) + 5;
+    paragraphDry = false;
+    float most = fmaxf(0.0f, total - room);
+    Rectangle area = { x1, y0, width, room };
+    if (most > 0) {
+        scroll -= GetMouseWheelMove() * 60.0f;
+        if (IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_PAGE_DOWN)) scroll += 400.0f * GetFrameTime();
+        if (IsKeyDown(KEY_UP) || IsKeyDown(KEY_PAGE_UP)) scroll -= 400.0f * GetFrameTime();
+        bool finger = GetTouchPointCount() > 0 && CheckCollisionPointRec(UiMouse(), area);
+        if (finger && dragY >= 0) scroll -= UiMouse().y - dragY;
+        dragY = finger ? UiMouse().y : -1.0f;
+    } else {
+        scroll = 0;
+    }
+    scroll = Clamp(scroll, 0.0f, most);
+    float k = UiScale();
+    BeginScissorMode((int)(area.x * k), (int)(area.y * k), (int)ceilf(area.width * k), (int)ceilf(area.height * k));
+    float ty = y0 - scroll;
     for (int i = 0; i < nt; i++) ty += Paragraph(tips[i], x1, ty, width, fits[fit].size, fits[fit].line) + 5;
+    EndScissorMode();
+    if (most > 0) {
+        float bar = room * room / total;
+        DrawRectangle((int)(x1 + width + 8), (int)(y0 + (room - bar) * scroll / most), 4, (int)bar, Fade(C_GOLD, 0.6f));
+        Text(TouchOn() ? "Drag the tips to read on" : "Wheel or arrow keys: read on", x1, r.y + r.height - 14, 12, C_DIM);
+    }
     Text("H or Esc: close", r.x + r.width - 170, r.y + 26, 16, C_DIM);
 }
 

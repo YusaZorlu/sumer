@@ -27,8 +27,8 @@ async function open(browser, name, url) {
   }
   const all = await waitHost(ROOM, 'six players', i => i.players === 6, 60000).catch(() => null);
   check(!!all, `the server has six players (${all ? all.players : '?'})`);
-  await sleep(2500);
-  const seen = await Promise.all(pages.map(p => info(p)));
+  // Each page hears of the last one in on its next frames: a slow page needs a while.
+  const seen = await Promise.all(pages.map(p => waitFor(p, 'six players', i => i.players === 6 && i.peers.length === 6, 60000).catch(() => info(p))));
   check(seen.every(i => i.players === 6), `everyone sees six players (${seen.map(i => i.players).join(' ')})`);
   const spots = seen.map(i => `${i.x.toFixed(0)},${i.z.toFixed(0)}`);
   check(new Set(spots).size === 6, `six different doorsteps: ${spots.join('  ')}`);
