@@ -2202,14 +2202,30 @@ static void TestRoyale(void)
     snprintf(G.peers[1].name, NAME_LEN, "Bob");
     G.peers[1].pos = (Vector3){ 0, 0, 0 };
     RoyaleUpdate(0.5f);
+    Check(RoyaleCountdown() < 0, "two players in, neither ready: no countdown");
+    G.peers[1].flags |= PF_READY;
+    RoyaleUpdate(0.5f);
+    Check(RoyaleCountdown() < 0, "only Bob ready: still none");
+    if (!MatchReady()) ToggleReady();
+    SyncSelf();
+    RoyaleUpdate(0.5f);
     float wait = RoyaleCountdown();
     RoyaleUpdate(0.5f);
-    Check(RoyalePhase() == RP_WAIT && wait > 29.0f && RoyaleCountdown() < wait, "two players in: the round counts down from half a minute (%.1f s)", wait);
+    Check(RoyalePhase() == RP_WAIT && wait > 9.0f && wait <= 10.0f && RoyaleCountdown() < wait, "both ready: the round counts down from ten seconds (%.1f s)", wait);
+    if (MatchReady()) ToggleReady();
+    SyncSelf();
+    RoyaleUpdate(0.1f);
+    Check(RoyaleCountdown() < 0, "one stops being ready: the countdown stops");
+    ToggleReady();
+    SyncSelf();
+    RoyaleUpdate(0.1f);
     RoyaleCountdownTo(0.01f);
     RoyaleUpdate(0.02f);
     Vector3 at = G.player.pos;
     float far = XZDist(at, (Vector3){ 0, 0, CITY_Z });
     Check(RoyalePhase() == RP_RUN && far > 200.0f && !InWater(at.x, at.z) && RoyaleStarted() == 2, "the round begins %.0f m out from the city, on dry land, two players in it", far);
+    RoyaleUpdate(0.02f);
+    Check(!MatchReady(), "once the round begins, the player's ready is taken back for the next one");
     // What every player's game is told of the round: how many began it (a guest once read 0: "2 of 0 standing").
     {
         static unsigned char buf[64];
@@ -2242,18 +2258,162 @@ static void TestRoyale(void)
     Check(RoyalePhase() == RP_OVER && RoyaleWinner() == 0 && AccountXp() == xp + 2 * XP_WIN && strstr(G.msg, "Congratulations"),
           "the last one standing wins and gains %ld experience: \"%s\"", AccountXp() - xp, G.msg);
 
-    // The next round counts down by itself; brought down in it, the player is out and watches, and Bob wins.
+    // The next round counts down once both are ready again; brought down in it, the player is out and watches, and Bob wins.
     RoyaleUpdate(0.016f);
-    Check(RoyaleCountdown() > 29.0f, "the next round counts down by itself (%.1f s)", RoyaleCountdown());
+    Check(RoyaleCountdown() < 0, "after the round, the next waits for everyone to be ready again");
+    ToggleReady();
+    SyncSelf();
+    RoyaleUpdate(0.016f);
+    Check(RoyaleCountdown() > 9.0f, "both ready again: the next round counts down (%.1f s)", RoyaleCountdown());
     RoyaleCountdownTo(0.01f);
     RoyaleUpdate(0.02f);
     HurtPlayerFrom(500, BY_STORM, NULL);
     SyncSelf();
     RoyaleUpdate(0.016f);
-    Check(RoyaleOut() && (G.peers[0].flags & PF_OUT) && RoyalePhase() == RP_OVER && RoyaleWinner() == 1, "brought down, the player is out and watches; Bob wins that round");
+    Check(OutOfRound() && (G.peers[0].flags & PF_OUT) && RoyalePhase() == RP_OVER && RoyaleWinner() == 1, "brought down, the player is out and watches; Bob wins that round");
     G.peers[1].active = false;
+    if (MatchReady()) ToggleReady();
 
     SetRoyale(false);
+    GameInit();
+}
+
+// Sumer Party: no guards, ready and a vote, four games of four minutes with scores, the top three's experience.
+static void TestParty(void)
+{
+    SetParty(true);
+    GameInit();
+    int guards = 0;
+    for (int i = 0; i < G.villagerCount; i++) guards += G.villagers[i].kind == NPC_GUARD || G.villagers[i].kind == NPC_WARDEN;
+    Check(guards == 0 && PartyPhase() == PP_WAIT, "a party: no guards (%d), waiting for players", guards);
+    G.role = NET_HOST;
+    G.self = G.actor = 0;
+    G.food = 10;
+    PartyUpdate(0.1f);
+    Check(G.food == FOOD_MAX, "food stays full in a party");
+    G.player.pos = G.stations[STN_STORAGE];
+    FindTarget(true);
+    Check(!(G.target.kind == TGT_STATION && G.target.index == STN_STORAGE), "the houses are of no use");
+
+    // Two players: no start until both are ready; a vote drops one game, the other four are played.
+    G.peers[1] = (Peer){ .active = true, .net = 1, .health = HEALTH_MAX, .flags = PF_GROUND | PF_READY | ((PG_HIDE + 1) << PF_VOTE_SHIFT) };
+    snprintf(G.peers[1].name, NAME_LEN, "Bob");
+    SetPartyVote(PG_HIDE);
+    SyncSelf();
+    PartyUpdate(0.1f);
+    Check(PartyPhase() == PP_WAIT && PartyVotes(PG_HIDE) == 2, "Bob ready, the player not: still waiting; two votes against hide and seek");
+    ToggleReady();
+    SyncSelf();
+    PartyUpdate(0.1f);
+    Check(PartyPhase() == PP_COUNT, "both ready: the party counts down");
+    for (int k = 0; k < 120 && PartyPhase() == PP_COUNT; k++) PartyUpdate(0.1f);
+    int seen[PG_COUNT] = { 0 }, g0 = PartyGame();
+    Check(PartyPhase() == PP_GAME && g0 >= 0 && g0 != PG_HIDE && !MatchReady(), "ten seconds later the first game begins: %s (not the one voted out)", PartyGameName(g0));
+    // Four games, each four minutes, with half a minute between; points as they come, and the top three's bonus.
+    for (int k = 0; k < PARTY_GAMES; k++) {
+        int g = PartyGame();
+        if (g >= 0) seen[g]++;
+        if (g == PG_DATES) {
+            // Date stashing: the points are the dates carried, one for every five.
+            Check(BagCount(IT_DATES) == 0, "date stashing: everyone starts with no dates");
+            BagAdd(IT_DATES, (k == 0 ? 7 : 1) * 5 + 4);
+            G.peers[1].dates = 200;
+            SyncSelf();
+            PartyUpdate(0.1f);
+            Check(PartyRound(0) == (k == 0 ? 7 : 1) && PartyRound(1) == 30, "a point for every five dates carried (%d), thirty at most (%d)", PartyRound(0), PartyRound(1));
+            G.peers[1].dates = 5 * 5 + 3;
+        } else {
+            PartyScore(1, 5);
+            PartyScore(0, k == 0 ? 7 : 1);
+        }
+        if (g == PG_LAVA) {
+            Vector3 roof = G.player.pos;
+            float up = roof.y - TerrainHeight(roof.x, roof.z);
+            Check(up > 1.5f, "floor is lava: the game starts up on a roof (%.1f m over the ground)", up);
+            G.player.pos.y = TerrainHeight(roof.x, roof.z);
+            SyncSelf();
+            float h0 = G.health;
+            for (int t = 0; t < 30; t++) PartyUpdate(0.1f);
+            Check(G.health == h0, "the first seconds of the game are a grace: nothing burns yet");
+            for (int t = 0; t < 11; t++) PartyUpdate(0.1f);
+            Check(h0 - G.health > 3.9f && h0 - G.health < 8.1f, "down on the ground the lava burns about 8 a second, through bronze (%.1f)", h0 - G.health);
+            G.player.pos = roof;
+            G.health = HEALTH_MAX;
+        }
+        if (g == PG_ARCHERS) {
+            G.equip = EQ_MELEE;
+            PartyUpdate(0.1f);
+            Check(G.equip == EQ_BOW, "one-shot archers: the bow and nothing else");
+            int r0 = PartyRound(0), r1 = PartyRound(1);
+            PartyDeath(1, 0);
+            Check(PartyRound(0) == r0 + 6 && PartyRound(1) == r1 - 2, "a kill: +6 for the archer, -2 for the one brought down");
+            PartyScore(0, -6);
+            PartyScore(1, 2);
+        }
+        if (g == PG_DEFENCE) {
+            int outside = 0, foe = -1;
+            for (int i = 0; i < MAX_RAIDERS; i++) outside += !G.raiders[i].vit.dead && !InsideWalls(G.raiders[i].pos.x, G.raiders[i].pos.z, 0.0f);
+            Check(outside == MAX_RAIDERS, "city defence: every barbarian, raider and bandit starts outside the walls (%d of %d)", outside, MAX_RAIDERS);
+            CollectFighters();
+            for (int i = 0; i < FighterCount() && foe < 0; i++) {
+                Vector3 pos;
+                float hp, maxHp;
+                const char *name;
+                bool hostile, dead;
+                if (FighterInfo(i, &pos, &hp, &maxHp, &name, &hostile, &dead) && !dead && (strstr(name, "Barbarian") || strstr(name, "Raider") || strstr(name, "Bandit"))) foe = i;
+            }
+            int r0 = PartyRound(0);
+            G.actor = 0;
+            if (foe >= 0) DamagePerson(foe, 10000.0f);
+            Check(foe >= 0 && PartyRound(0) == r0 + 2, "one of them brought down: +2");
+            int down = 0;
+            for (int i = 0; i < MAX_RAIDERS; i++) down += G.raiders[i].vit.dead;
+            for (int t = 0; t < 590; t++) UpdateRaiders(0.1f);
+            int still = 0;
+            for (int i = 0; i < MAX_RAIDERS; i++) still += G.raiders[i].vit.dead;
+            for (int t = 0; t < 20; t++) UpdateRaiders(0.1f);
+            int after = 0;
+            for (int i = 0; i < MAX_RAIDERS; i++) after += G.raiders[i].vit.dead;
+            Check(down == 1 && still == 1 && after == 0, "and back outside the walls a minute later (%d, %d, %d down)", down, still, after);
+            PartyScore(0, -2);
+        }
+        int before0 = PartyTotal(0), before1 = PartyTotal(1);
+        for (int t = 0; t < 2500 && PartyPhase() == PP_GAME; t++) {
+            SyncSelf();
+            PartyUpdate(0.1f);
+        }
+        int won = k == 0 ? 0 : 1;
+        Check(PartyTotal(won) - (won ? before1 : before0) == (won ? 5 : 7) + 10 && PartyTotal(1 - won) - (won ? before0 : before1) == (won ? 1 : 5) + 6,
+              "game %d (%s) over after four minutes: the winner's points +10, the second's +6 (totals %d and %d)", k + 1, PartyGameName(g), PartyTotal(0), PartyTotal(1));
+        if (k < PARTY_GAMES - 1) {
+            Check(PartyPhase() == PP_BREAK, "then half a minute's break");
+            for (int t = 0; t < 400 && PartyPhase() == PP_BREAK; t++) PartyUpdate(0.1f);
+        }
+    }
+    int all = 0;
+    for (int g = 0; g < PG_COUNT; g++) all += seen[g] == 1;
+    Check(all == 4 && seen[PG_HIDE] == 0, "four different games played, hide and seek left out");
+    Check(PartyPhase() == PP_END && strstr(G.msg, "party is over") != NULL, "the party is over, the top three told: \"%s\"", G.msg);
+    for (int t = 0; t < 400 && PartyPhase() == PP_END; t++) {
+        SyncSelf();
+        PartyUpdate(0.1f);
+    }
+    Check(PartyPhase() == PP_WAIT && PartyTotal(0) == 0 && PartyTotal(1) == 0, "then the scores start again from nothing (phase %d, %d and %d)", PartyPhase(), PartyTotal(0), PartyTotal(1));
+
+    // What a guest is told: the phase, the games and the scores.
+    {
+        PartyScore(1, 3);
+        static unsigned char buf[256];
+        Writer w = { buf, 0, sizeof(buf), false };
+        WriteParty(&w);
+        Reader r = { buf, w.n, 0, false };
+        ReadParty(&r);
+        Check(!r.bad && r.at == w.n, "a guest reads the party as the host wrote it (%d bytes)", w.n);
+    }
+    // In a game, a kill is +6 for whoever did it and -2 for the fallen; a guest who never says ready is sent away.
+    G.peers[1].active = false;
+    if (MatchReady()) ToggleReady();
+    SetParty(false);
     GameInit();
 }
 
@@ -2445,6 +2605,7 @@ static void RunTests(void)
     TestHitLights();
     TestSixPlayers();
     TestRoyale();
+    TestParty();
     TestLevels();
     TestSha256();
     TestSeats();

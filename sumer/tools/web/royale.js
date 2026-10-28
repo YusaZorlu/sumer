@@ -1,6 +1,7 @@
-// A battle royale server: no round for one player alone, a countdown once two are in, everyone set down far
-// apart, a statue's blessing, the sandstorm, players out and watching, the winner and their experience, a
-// late joiner who watches, and the next round.
+// A battle royale server: no round for one player alone, a ten-second countdown once everyone in (two or more)
+// has pressed Enter to say they are ready, everyone set down far apart, a statue's blessing, the sandstorm,
+// players out and watching, the winner and their experience, a late joiner who watches, and the next round
+// once everyone is ready again.
 const { BASE, RUN, launch, open, info, cmd, hostInfo, hostCmd, waitFor, waitHost, sleep } = require('./lib.js');
 const ROOM = 'royale-br' + RUN;
 const URL = `${BASE}?auto=join&room=${ROOM}`;
@@ -8,6 +9,13 @@ const ANN = 'Ann' + RUN, BOB = 'Bob' + RUN, CEM = 'Cem' + RUN;
 let fails = 0;
 function check(ok, what) { console.log((ok ? 'PASS: ' : 'FAIL: ') + what); if (!ok) fails++; }
 const away = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+// Enter says the player is ready (a slow page needs the key held over a frame).
+async function ready(page) {
+  await page.keyboard.down('Enter');
+  await sleep(800);
+  await page.keyboard.up('Enter');
+  await waitFor(page, 'ready', i => i.party.ready === 1, 20000).catch(e => null);
+}
 
 (async () => {
   const browser = await launch();
@@ -26,12 +34,19 @@ const away = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 
   const bob = await open(browser, BOB, URL);
   await waitFor(bob, 'Bob joining', i => i.lobby === 0 && i.role === 2);
-  h = await waitHost(ROOM, 'the countdown', i => i.royale.countdown > 0, 20000).catch(e => null);
-  let b = await waitFor(bob, 'the countdown at Bob', i => i.royale.countdown > 0, 20000).catch(e => null);
-  check(!!h && !!b, `with two in, a round starts in half a minute (server ${h ? h.royale.countdown : '?'} s, Bob sees ${b ? b.royale.countdown : '?'} s)`);
-  await hostCmd(ROOM, 22, 600);   // a page here takes half a minute to load: Cem first, and the chat
+  await sleep(3000);
+  h = await hostInfo(ROOM);
+  check(h.royale.countdown < 0, `two in but nobody ready: no countdown (${h.royale.countdown})`);
+  await ready(ann);
+  await ready(bob);
+  h = await waitHost(ROOM, 'the countdown', i => i.royale.countdown > 0, 30000).catch(e => null);
+  let b = await waitFor(bob, 'the countdown at Bob', i => i.royale.countdown > 0, 30000).catch(e => null);
+  check(!!h && !!b && h.royale.countdown <= 10, `both ready (Enter): the round starts in ten seconds (server ${h ? h.royale.countdown : '?'} s, Bob sees ${b ? b.royale.countdown : '?'} s)`);
+  await hostCmd(ROOM, 22, 600);   // a page here takes half a minute to load: the countdown waits for Cem
   const cem = await open(browser, CEM, URL);
   await waitFor(cem, 'Cem joining', i => i.lobby === 0 && i.role === 2);
+  h = await waitHost(ROOM, 'the countdown stopped', i => i.royale.countdown < 0, 20000).catch(e => null);
+  check(!!h, 'Cem comes in, not yet ready: the countdown stops');
 
   // Chat before the round.
   await ann.keyboard.press('t');
@@ -42,6 +57,8 @@ const away = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
   check(!!b && b.royale.phase === 1, `Ann's line reaches Bob before the round (phase ${b ? b.royale.phase : '?'})`);
 
   // The round: everyone set down far out and far apart; everyone's count says three began.
+  await ready(cem);
+  await waitHost(ROOM, 'the countdown again', i => i.royale.countdown > 0, 30000).catch(e => null);
   await hostCmd(ROOM, 22, 1);
   b = await waitFor(bob, 'the round at Bob', i => i.royale.phase === 2, 60000).catch(e => null);
   let c = await waitFor(cem, 'the round at Cem', i => i.royale.phase === 2, 60000).catch(e => null);
@@ -103,9 +120,13 @@ const away = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
   check(!!c, 'Cem sees Ann win');
   await ann.screenshot({ path: __dirname + '/shots/royale-won.png' });
 
-  // The next round comes by itself and brings everyone back in, the watchers too.
-  h = await waitHost(ROOM, 'the next countdown', i => i.royale.countdown > 0, 20000).catch(e => null);
-  check(!!h, `after the round the next one counts down (${h ? h.royale.countdown : '?'} s)`);
+  // The next round, once everyone is ready again, brings everyone back in, the watchers too.
+  await sleep(3000);
+  h = await hostInfo(ROOM);
+  check(h.royale.countdown < 0, 'after the round, the next waits for everyone to be ready again');
+  for (const p of [ann, bob, cem, dee]) await ready(p);
+  h = await waitHost(ROOM, 'the next countdown', i => i.royale.countdown > 0, 40000).catch(e => null);
+  check(!!h, `all four ready: the next round counts down (${h ? h.royale.countdown : '?'} s)`);
   await hostCmd(ROOM, 22, 1);
   c = await waitFor(cem, 'Cem back in', i => i.royale.phase === 2 && i.royale.out === 0, 60000).catch(e => null);
   const d2 = await waitFor(dee, 'Dee in', i => i.royale.phase === 2 && i.royale.out === 0, 60000).catch(e => null);

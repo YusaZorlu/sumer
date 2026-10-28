@@ -438,6 +438,14 @@ static void DrawNetPausePanel(void)
         y += 24;
     }
 
+    // A battle royale or a party, waiting to begin: ready, and in a party the vote.
+    if (LobbyWaiting()) {
+        float rw = Party() ? bw : r.width - 100;
+        if (Button((Rectangle){ bx, r.y + 274, rw, 34 }, MatchReady() ? "Ready: yes (Enter)" : "Ready: no (Enter)", true, KEY_ENTER)) ToggleReady();
+        if (Party() && Button((Rectangle){ bx + bw + gap, r.y + 274, bw, 34 }, "Vote a game out", true, KEY_V)) SetPanel(PANEL_PARTY);
+    } else if (Party()) {
+        if (Button((Rectangle){ bx, r.y + 274, r.width - 100, 34 }, "The party's games", true, KEY_V)) SetPanel(PANEL_PARTY);
+    }
     if (Button((Rectangle){ bx, r.y + 316, r.width - 100, 34 }, "Game settings (S)", true, KEY_S)) SetPanel(PANEL_SETTINGS);
     if (Button((Rectangle){ bx, r.y + 358, r.width - 100, 34 }, "Your look", true, 0)) SetPanel(PANEL_LOOK);
     CenterText(RulesText(), r.x + r.width / 2, r.y + 398, 15, C_GOLD);
@@ -445,6 +453,29 @@ static void DrawNetPausePanel(void)
     if (Button((Rectangle){ bx, y, bw, 40 }, "Resume (Esc)", true, 0)) SetPanel(PANEL_NONE);
     if (Button((Rectangle){ bx + bw + gap, y, bw, 40 }, "Hand in my things (F5)", true, 0)) SaveNow();
     if (Button((Rectangle){ bx, y + 54, r.width - 100, 40 }, "Leave the game (Q)", true, 0)) G.quit = true;
+}
+
+// The party's five games: while everyone waits, a vote to drop one; during the party, the order played.
+static void DrawPartyPanel(void)
+{
+    Rectangle r = PanelRect(760, 470);
+    float x = r.x + 30, y = r.y + 70;
+    bool voting = LobbyWaiting();
+    CenterText("Sumer Party", r.x + r.width / 2, r.y + 18, 28, C_GOLD);
+    CenterText(voting ? "Vote one game out: the most voted is left out, the other four come in a random order."
+                      : "The games of this party, and the one voted out.", r.x + r.width / 2, r.y + 50, 15, C_DIM);
+    for (int g = 0; g < PG_COUNT; g++) {
+        Text(PartyGameName(g), x, y, 20, PartyVote() == g ? C_BAD : C_GOLD);
+        Paragraph(PartyGameRule(g), x, y + 24, 470, 14, 16.0f);
+        if (voting) {
+            Text(TextFormat(L("%d votes out"), PartyVotes(g)), x + 500, y + 4, 15, C_DIM);
+            if (Button((Rectangle){ x + 590, y, 110, 30 }, PartyVote() == g ? "Take back" : "Vote out", true, 0)) SetPartyVote(g);
+        }
+        y += 66;
+    }
+    float by = r.y + r.height - 54;
+    if (voting && Button((Rectangle){ x, by, 260, 38 }, MatchReady() ? "Ready: yes (Enter)" : "Ready: no (Enter)", true, KEY_ENTER)) ToggleReady();
+    if (Button((Rectangle){ r.x + r.width - 30 - 200, by, 200, 38 }, "Back (Esc)", true, 0)) SetPanel(PANEL_PAUSE);
 }
 
 static void DrawPausePanel(void)
@@ -840,7 +871,7 @@ static void DrawStatus(void)
     DrawRectangle(bx, 101, 200, 14, Fade(BLACK, 0.5f));
     DrawRectangle(bx, 101, (int)(200 * Clamp(G.health, 0, HEALTH_MAX) / HEALTH_MAX), 14, G.health < 35 ? C_BAD : C_GOOD);
     DrawRectangleLines(bx, 101, 200, 14, Fade(BLACK, 0.6f));
-    if (UnlimitedArrows()) Text(Royale() ? "Arrows: unlimited (battle royale)" : "Arrows: unlimited (PvP)", 24, 124, 18, C_TEXT);
+    if (UnlimitedArrows()) Text(Royale() ? "Arrows: unlimited (battle royale)" : Party() ? "Arrows: unlimited (party)" : "Arrows: unlimited (PvP)", 24, 124, 18, C_TEXT);
     else Text(TextFormat(L("Arrows %d/%d   +%d carried"), G.quiver, G.quiverMax, BagCount(IT_ARROWS)), 24, 124, 18, C_TEXT);
     Text(TextFormat(L("In hand: %s%s"), EquipName(G.equip), G.player.crouching ? L("  |  crouching") : ""), 24, 146, 18,
          G.player.crouching ? C_GOOD : C_TEXT);
@@ -915,7 +946,7 @@ static void DrawMinimap(int ox, int oy, int size)
             DrawRectangle((int)(mx + G.ladders[i].base.x * s) - 2, (int)(mz + G.ladders[i].base.z * s) - 2, 4, 4, COL_WOOD);
     }
     // Raider camps as red crosses; the barbarians' across the river darker and larger.
-    for (int c = 0; c < (Royale() ? 0 : CAMPS); c++) {
+    for (int c = 0; c < (RaidersAway() ? 0 : CAMPS); c++) {
         Vector3 cc = CampCenter(c);
         Vector2 camp = { mx + cc.x * s, mz + cc.z * s };
         float k = c >= EAST_CAMPS ? 5.0f : 4.0f;
@@ -927,7 +958,7 @@ static void DrawMinimap(int ox, int oy, int size)
     // In a battle royale the map gives no one away, except to those already out.
     for (int k = 0; k < MAX_PLAYERS; k++) {
         if (k == G.self || !G.peers[k].active || (G.peers[k].flags & PF_OUT)) continue;
-        if (Royale() && !RoyaleOut()) continue;
+        if (Royale() && !OutOfRound()) continue;
         Vector2 q = { mx + G.peers[k].shown.x * s, mz + G.peers[k].shown.z * s };
         DrawCircleV(q, 4.5f, Fade(BLACK, 0.8f));
         DrawCircleV(q, 3.5f, PlayerColor(k));
@@ -1223,6 +1254,7 @@ void DrawUI(void)
         CenterText("Click the game to look around with the mouse", (float)sw / 2, (float)sh / 2 + 70, 20, C_GOLD);
 
     DrawRoyaleHUD((float)sw, (float)sh);
+    DrawPartyHUD((float)sw, (float)sh);
     if (G.msgT > 0) DrawMessage(sw);
 
     DrawChat(sh);
@@ -1233,6 +1265,7 @@ void DrawUI(void)
     case PANEL_STORAGE: DrawStoragePanel(); break;
     case PANEL_TRADE:   DrawTradePanel(); break;
     case PANEL_PAUSE:   DrawPausePanel(); break;
+    case PANEL_PARTY:   DrawPartyPanel(); break;
     case PANEL_HELP:    DrawHelpPanel(); break;
     case PANEL_COOP:    DrawCoopPanel(); break;
     case PANEL_LOOK:    DrawLookPanel(); break;

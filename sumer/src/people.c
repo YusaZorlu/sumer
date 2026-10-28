@@ -19,7 +19,7 @@ void CollectBodies(void)
 {
     bodyCount = 0;
     for (int s = 0; s < MAX_PLAYERS; s++)
-        if ((s == G.self && !RoyaleOut() && !Dedicated()) || (s != G.self && PlayerIn(s) && !(G.peers[s].flags & (PF_BED | PF_OUT))))
+        if ((s == G.self && !OutOfRound() && !Dedicated()) || (s != G.self && PlayerIn(s) && !(G.peers[s].flags & (PF_BED | PF_OUT))))
             Add(s == G.self ? G.player.pos : G.peers[s].pos, PLAYER_RADIUS, OWNER_PLAYER + s);
     for (int i = 0; i < G.villagerCount; i++)
         if (!G.villagers[i].vit.dead) Add(VillagerPos(&G.villagers[i]), 0.35f, OWNER_VILLAGER + i);

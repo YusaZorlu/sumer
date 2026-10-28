@@ -87,11 +87,18 @@ EMSCRIPTEN_KEEPALIVE const char *TestInfo(void)
         first = 0;
     }
     n += snprintf(buf + n, sizeof(buf) - (size_t)n, "],\"royale\":{\"on\":%d,\"phase\":%d,\"out\":%d,\"alive\":%d,\"winner\":%d,\"started\":%d,\"countdown\":%.1f,\"attack\":%.2f,\"storm\":%d,\"statues\":[",
-                  Royale(), RoyalePhase(), RoyaleOut(), RoyaleAlive(), RoyaleWinner(), RoyaleStarted(), RoyaleCountdown(), RoyaleAttack(), InStorm(G.player.pos));
+                  Royale(), RoyalePhase(), OutOfRound(), RoyaleAlive(), RoyaleWinner(), RoyaleStarted(), RoyaleCountdown(), RoyaleAttack(), InStorm(G.player.pos));
     for (int i = 0; i < StatueCount(); i++) {
         Vector3 sp = StatuePos(i);
         n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%s[%.1f,%.1f,%d]", i ? "," : "", sp.x, sp.z, StatueClaimed(i));
     }
+    n += snprintf(buf + n, sizeof(buf) - (size_t)n, "]},\"party\":{\"on\":%d,\"phase\":%d,\"game\":%d,\"ready\":%d,\"vote\":%d,\"out\":%d,\"food\":%.0f,\"up\":%.2f,\"lava\":%d,\"scores\":[",
+                  Party(), PartyPhase(), PartyGame(), MatchReady(), PartyVote(), PartyOut(), G.food, G.player.pos.y - TerrainHeight(G.player.pos.x, G.player.pos.z), InLava(G.player.pos));
+    for (int s = 0, first = 1; s < MAX_PLAYERS; s++)
+        if (G.peers[s].active) {
+            n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%s[%d,%d,%d]", first ? "" : ",", s, PartyRound(s), PartyTotal(s));
+            first = 0;
+        }
     n += snprintf(buf + n, sizeof(buf) - (size_t)n, "]},\"villager0\":[%.2f,%.2f]}", VillagerPos(&G.villagers[0]).x, VillagerPos(&G.villagers[0]).z);
     return buf;
 }

@@ -264,7 +264,7 @@ typedef enum {
     STN_BED, STN_STORAGE, STN_QUERN, STN_TROUGH, STN_OVEN, STN_KILN, STN_SMELTER, STN_BENCH, STN_ALTAR, STN_STASH, STN_STASH2,
     STN_STASH3, STN_STASH4, STN_WELL, STN_DITCH, STN_FERRY_E, STN_FERRY_W, STN_COUNT
 } StationId;
-typedef enum { PANEL_NONE, PANEL_BAG, PANEL_STORAGE, PANEL_TRADE, PANEL_PAUSE, PANEL_HELP, PANEL_COOP, PANEL_LOOK, PANEL_SETTINGS, PANEL_CHAT } Panel;
+typedef enum { PANEL_NONE, PANEL_BAG, PANEL_STORAGE, PANEL_TRADE, PANEL_PAUSE, PANEL_HELP, PANEL_COOP, PANEL_LOOK, PANEL_SETTINGS, PANEL_CHAT, PANEL_PARTY } Panel;
 typedef enum { TGT_NONE, TGT_CARCASS, TGT_RES, TGT_STATION, TGT_PLOT, TGT_COOP, TGT_TRADER, TGT_BODY, TGT_OFFER, TGT_LADDER, TGT_WATER, TGT_STATUE } TargetKind;
 enum { SPRING, SUMMER, FALL, WINTER };
 typedef struct { TargetKind kind; int index; } Target;
@@ -310,7 +310,10 @@ typedef enum { NET_SOLO, NET_HOST, NET_CLIENT } NetRole;
 #define HITSTOP_TIME 0.07f          // a landed blow holds the swing still this long (the mace a little longer)
 #define FLINCH_TIME  0.45f
 enum { PF_CROUCH = 1, PF_RUN = 2, PF_MOVE = 4, PF_GROUND = 8, PF_AIM = 16, PF_SLEEP = 32, PF_CLIMB = 64, PF_PARRY = 128, PF_BED = 256, PF_OUT = 512,
-       PF_TORCH = 1024 };   // PF_OUT: brought down in a battle royale round, watching
+       PF_TORCH = 1024, PF_READY = 2048 };   // PF_OUT: out of a battle royale's round or a party's game, watching
+// A party player's veto, in bits 12-14 of the flags: 0 none, else the minigame + 1.
+#define PF_VOTE_SHIFT 12
+#define PF_VOTE_MASK  (7 << PF_VOTE_SHIFT)
 #define NAME_LEN 16
 #define SAFE_RADIUS 22.0f
 
@@ -324,6 +327,7 @@ typedef struct {
     int flags, equip, weapon, bow, armor, net;
     unsigned short style;   // how they chose to look (PackStyle, and STYLE_WOMAN)
     int kills, deaths;   // players brought down by this one, and times brought down by a player
+    int dates;           // dates in their bag (a party's date stashing counts them)
     // The warning mark over this player's head while they swing at someone, then how it came out
     // (MARK_*, the host decides); and how long since this machine saw them hurt (a flinch).
     int mark;
@@ -356,7 +360,7 @@ enum { S_HELLO = 1, S_JOIN, S_LEAVE, S_FULL, S_NOHOST, S_TAKEN, S_HOSTLEFT, S_BU
 #define NET_TO_SERVER 254
 enum { H_STORE = 1, H_PROGRESS, H_STATUS, H_TEST };   // H_TEST: test builds only (tools/web/hosthooks.c)
 // The kinds of rooms server.py runs (its --rooms).
-enum { ROOM_SURVIVAL, ROOM_PVP, ROOM_ROYALE };
+enum { ROOM_SURVIVAL, ROOM_PVP, ROOM_ROYALE, ROOM_PARTY };
 typedef struct { int kind, from; const unsigned char *data; int len; } NetMessage;
 
 // What a guest asks the host before it changes the shared world (shots and blows need no answer).
@@ -367,7 +371,7 @@ enum {
 #define REQ_ARGS 12
 enum { WARN_WOLF, WARN_SNAKE, WARN_KINDS };
 // What hurt a player last, so whoever is brought down hears by whom: BY_PLAYER + slot for a player.
-enum { BY_NONE, BY_GUARD, BY_CARAVAN, BY_TOWNSFOLK, BY_VILLAGERS, BY_RAIDER, BY_BARBARIAN, BY_WOLF, BY_BOAR, BY_SNAKE, BY_STORM, BY_BANDIT, BY_PLAYER };
+enum { BY_NONE, BY_GUARD, BY_CARAVAN, BY_TOWNSFOLK, BY_VILLAGERS, BY_RAIDER, BY_BARBARIAN, BY_WOLF, BY_BOAR, BY_SNAKE, BY_STORM, BY_BANDIT, BY_LAVA, BY_PLAYER };
 
 typedef struct {
     Box boxes[MAX_BOXES];
@@ -610,6 +614,8 @@ int GateTowerCount(void);
 Vector3 GateTowerStair(int i, int k);
 void GateTowerFrame(int i, Vector3 *centre, Vector3 *t, Vector3 *n);
 int HouseClimbCount(void);
+int RoofCount(void);
+Vector3 RoofSpot(int i);
 void PlayerStep(Vector3 dir, float dt);
 Vector3 GateTowerPost(int i, int who, float *face);
 bool InCityLands(float x, float z);
@@ -1106,7 +1112,7 @@ bool Royale(void);
 void SetRoyale(bool on);
 int PlayerLimit(void);
 int RoyalePhase(void);
-bool RoyaleOut(void);
+bool OutOfRound(void);
 int RoyaleWinner(void);
 void RoyaleSkipTo(float t);
 void RoyaleCountdownTo(float t);
@@ -1132,11 +1138,53 @@ void RoyaleUpdate(float dt);
 void WriteRoyale(Writer *w);
 void ReadRoyale(Reader *r);
 bool RoyaleCamera(void);
+void UpdateWatch(void);
+
+// Sumer Party (party.c): four minigames of four minutes in a row, scores for each and in all.
+enum { PG_LAVA, PG_DATES, PG_ARCHERS, PG_DEFENCE, PG_HIDE, PG_COUNT };
+enum { PP_OFF, PP_WAIT, PP_COUNT, PP_GAME, PP_BREAK, PP_END };
+#define PARTY_GAMES 4
+bool Party(void);
+void SetParty(bool on);
+bool Match(void);
+bool RaidersAway(void);
+int PartyPhase(void);
+int PartyGame(void);
+const char *PartyGameName(int g);
+const char *PartyGameRule(int g);
+bool PartyOut(void);
+bool PartyWaiting(void);
+void ShapeParty(void);
+void PartyUpdate(float dt);
+void PartyBegin(Vector3 at, int kind);
+bool PartyFall(const char *how);
+bool InLava(Vector3 pos);
+void StormCity(void);
+void DrawLava(void);
+void PartyJoinLate(bool running);
+void PartyDeath(int slot, int killer);
+void PartyScore(int slot, int points);
+void WriteParty(Writer *w);
+void ReadParty(Reader *r);
+void DrawPartyHUD(float sw, float sh);
+int PartyRound(int slot);
+int PartyTotal(int slot);
+int PartyVotes(int g);
+int PartyVote(void);
+void SetPartyVote(int g);
+void PartySkipTo(float t);
+bool MatchReady(void);
+void ToggleReady(void);
+bool LobbyWaiting(void);
+int ReadyCount(int *players);
+void UpdateIdle(float dt);
 void DrawRoyale(void);
 void DrawStorm(void);
 void DrawRoyaleHUD(float sw, float sh);
 void DrawRoyaleMap(float mx, float mz, float s);
 void NetRound(int slot, float x, float z);
+void NetParty(int slot, Vector3 at, int kind);
+void KickSlot(int s, const char *why);
 int HouseOf(int slot);
 int Seat(int slot);
 float RoyaleCountdown(void);

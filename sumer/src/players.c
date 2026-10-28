@@ -24,13 +24,15 @@ void SyncSelf(void)
     p->swingT = G.swingT;
     p->flags = (pl->crouching ? PF_CROUCH : 0) | (pl->running ? PF_RUN : 0) | (pl->moving ? PF_MOVE : 0) |
                (pl->grounded ? PF_GROUND : 0) | (pl->aiming ? PF_AIM : 0) | (G.sleeping || G.waitBed ? PF_SLEEP : 0) |
-               (G.climb ? PF_CLIMB : 0) | (G.parryT > 0 ? PF_PARRY : 0) | (G.waitBed ? PF_BED : 0) | (RoyaleOut() ? PF_OUT : 0) |
-               (TorchBurning() ? PF_TORCH : 0);
+               (G.climb ? PF_CLIMB : 0) | (G.parryT > 0 ? PF_PARRY : 0) | (G.waitBed ? PF_BED : 0) | (OutOfRound() ? PF_OUT : 0) |
+               (TorchBurning() ? PF_TORCH : 0) | (MatchReady() ? PF_READY : 0) |
+               (Party() && PartyVote() >= 0 ? (unsigned)(PartyVote() + 1) << PF_VOTE_SHIFT : 0);
     p->equip = G.equip;
     p->weapon = UseWeapon();
     p->bow = UseBow();
     p->armor = UseArmor();
     p->style = ChosenStyle();
+    p->dates = BagCount(IT_DATES);
     p->heard = 0;
 }
 

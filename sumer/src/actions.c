@@ -138,7 +138,7 @@ void FindTarget(bool play)
         for (int i = 0; i < G.resCount; i++)
             Consider(&best, &score, TGT_RES, i, G.res[i].pos, 2.4f);
         for (int i = 0; i < STN_COUNT; i++)
-            if (i != STN_FERRY_E && i != STN_FERRY_W && !(Royale() && UselessStation(i))) Consider(&best, &score, TGT_STATION, i, G.stations[i], 1.9f);
+            if (i != STN_FERRY_E && i != STN_FERRY_W && !(Match() && UselessStation(i))) Consider(&best, &score, TGT_STATION, i, G.stations[i], 1.9f);
         for (int i = 0; i < StatueCount(); i++) Consider(&best, &score, TGT_STATUE, i, StatuePos(i), 2.8f);
         for (int i = 0; i < MAX_PLOTS; i++)
             if (G.plots[i].state != PLOT_PALM) Consider(&best, &score, TGT_PLOT, i, G.plots[i].pos, 2.1f);
@@ -337,6 +337,7 @@ bool ServeRequest(int slot, int kind, const int *args, int n, int *res, int *nre
             for (int s = 0; s < MAX_PLAYERS; s++)
                 if (s != slot && PlayerIn(s)) SayTo(s, "%s brought down %s.", G.peers[a - BY_PLAYER].name, G.peers[slot].name);
         }
+        if (n >= 1) PartyDeath(slot, a >= BY_PLAYER && a < BY_PLAYER + MAX_PLAYERS ? a - BY_PLAYER : -1);
         CalmFor(slot);
         return true;
     case RQ_STATUE:

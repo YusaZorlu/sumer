@@ -623,7 +623,7 @@ static bool ReadWorld(Reader *r)
 // The host keeps the game: the shared world, and every player who has been in it.
 bool SaveNetGame(void)
 {
-    if (Royale()) return false;   // a battle royale keeps nothing between games
+    if (Match()) return false;   // a battle royale or a party keeps nothing between games
     static unsigned char buf[NET_SAVE_MAX];
     Writer w = { buf, 0, NET_SAVE_MAX, false };
     PlayerRecord mine;
@@ -642,7 +642,7 @@ bool SaveNetGame(void)
 
 bool LoadNetGame(void)
 {
-    if (Royale()) return false;
+    if (Match()) return false;
     static unsigned char buf[NET_SAVE_MAX];
     int n = ReadFile(NET_SAVE_FILE, buf, NET_SAVE_MAX);
     if (n < 0) return false;

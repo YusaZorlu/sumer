@@ -520,6 +520,18 @@ int HouseClimbCount(void)
     return climbCount;
 }
 
+// The roofs to stand on (in a party's floor is lava): over the half of each plain house without a room.
+int RoofCount(void)
+{
+    return houseSpotCount;
+}
+
+Vector3 RoofSpot(int i)
+{
+    const HouseSpot *hs = &houseSpots[i];
+    return (Vector3){ hs->x, hs->h, hs->z + hs->d / 4 };
+}
+
 // Whether a strip of ground from (x0, z0) to (x1, z1) is clear for something 'r' wide: no street, water,
 // building or wall.
 static bool ClearStrip(float x0, float z0, float x1, float z1, float r)

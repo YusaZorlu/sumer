@@ -479,7 +479,7 @@ void FollowCamera(float dt)
         return;
     }
     // Out of a battle royale round: the camera follows a player still in it.
-    if (RoyaleOut()) {
+    if (OutOfRound()) {
         UpdateLook(&G.player, dt, G.panel == PANEL_NONE);
         if (RoyaleCamera()) return;
     }
@@ -757,7 +757,7 @@ void DrawPlayer(void)
     const Player *p = &G.player;
     Look look = PlayerLook(G.self, ChosenStyle(), UseArmor());
 
-    if (RoyaleOut()) return;
+    if (OutOfRound()) return;
     // Riding behind an arrow, the eye has left the head: the hands in view would ride along with it, so
     // they are left out, and once the camera is clear of the head the body is drawn where it shot from.
     Vector3 head = { p->pos.x, p->pos.y + 1.5f, p->pos.z };
