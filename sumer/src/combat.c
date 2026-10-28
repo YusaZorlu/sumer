@@ -747,6 +747,7 @@ void DamagePerson(int i, float dmg)
         Say("%s killed. Search the body with E.", L(f->name));
         AwardXp(G.actor, KillXp(f->role), 0, 0);
         if (IsRaider(f->role) && PartyGame() == PG_DEFENCE) PartyScore(G.actor, 2);
+        if (!IsRaider(f->role)) PartyNpcKill(G.actor);
     }
 }
 
@@ -871,7 +872,7 @@ void CalmPeople(int slot)
 // Players who can be hurt by another player's blow or arrow: up and about, not lying in bed.
 static bool Hittable(int s, int skip)
 {
-    return s != skip && PlayerAwake(s) && !(G.peers[s].flags & PF_BED);
+    return s != skip && PlayerAwake(s) && !(G.peers[s].flags & PF_BED) && PartyMayHurt(skip, s);
 }
 
 int PlayerOnSegment(Vector3 a, Vector3 b, int skip)
@@ -1019,6 +1020,7 @@ void HitPlayer(int s, float dmg, Vector3 from, bool melee)
     int a = G.actor;
     (void)from;
     if (!G.pvp || !Hittable(s, a) || !PlayerIn(a)) return;
+    if (PartyGame() == PG_HIDE) dmg = 1000.0f;   // hide and seek: one blow from the seeker finds a hider
     if (melee) StartBlow(a, s, dmg);
     else Hurt(a, s, dmg, false, false);
 }

@@ -303,8 +303,10 @@ in `src/game.h`) holds the whole world.
   (`SwordFrame`, `ArmFrame`, `BlowFrame` for people's tools and axes) the swing trail also uses: change them together.
 - **Battle royale** (`src/royale.c`, Sumer Royale on the title screen): `Royale()` is set by the room joined
   (`SetRoyale` from the room's kind; `?mode=br` opens the title on its page). `MAX_PLAYERS` is 21 (slot 0 the server's),
-  `PlayerLimit()` 20 players in it and 6 outside it; there are `MAX_HOUSES` 6 houses (`HouseOf(slot)`). A round starts by
-  itself `ROUND_WAIT` (30 s) after two or more are in (`rnd.countdown`, sent with the round; never for one player), and the
+  `PlayerLimit()` 20 players in it and 6 outside it; there are `MAX_HOUSES` 6 houses (`HouseOf(slot)`). A round starts
+  `ROUND_WAIT` (10 s) after everyone in (two or more) is ready (`PF_READY` in each player's flags, `ReadyCount`, shared with
+  the party in party.c; `rnd.countdown`, sent with the round, is -1 while anyone is not ready); `UpdateIdle` sends away
+  (`KickSlot`) whoever is not ready and has not moved for 3 minutes. The
   winner gets `XP_WIN` for each player it began with (`rnd.started`, also sent: guests once read 0). The
   world is built with `BuildRoyale()` (statues, more trees; same on every machine) and `ShapeRoyale()` after `GameInit`
   builds it (no guards or wardens, caravans away; raiders and the bandit bands are skipped in their own functions). The host runs the round
@@ -314,6 +316,22 @@ in `src/game.h`) holds the whole world.
   camera follows another (`RoyaleCamera`). The storm hurts through `HurtSlotFrom(.., BY_STORM, ..)` on the host. Tests:
   `TestRoyale` (harness), `tools/web/royale.js` (a `royale-*` room on serve.sh's port 8123), `harness royale out.png x z
   yaw t [statue]` for pictures.
+- **Sumer Party** (`src/party.c`, room kind `party`, `ROOM_PARTY`; `?mode=party`): `Party()`; `Match()` is royale or
+  party (nothing kept, no house use, `HostRecord` skipped), `RaidersAway()` hides raiders except in city defence,
+  `OutOfRound()` (royale out, or `PartyOut()`: watching a game joined late, or the 5 s down after a fall) sets `PF_OUT`.
+  `ShapeParty()` after `GameInit` (both sides: no guards, caravans away, `PartyCrowd()` adds 24 walkers, so the villager
+  lists match). The host runs `pty` (phase `PP_WAIT/COUNT/GAME/BREAK/END`, clock, the four games' `order`, `joined` bit
+  mask, `round`/`total` scores, the hide-and-seek `seeker`, `npcKills`, `found`), sent in every snapshot
+  (`WriteParty`/`ReadParty`); `EV_PARTY` (`NetParty`) sets a guest down for a game (kind 1) or a break (0) through
+  `PartyBegin`. The veto vote rides in the player flags (`PF_VOTE_SHIFT`, game + 1). `ApplyRules()` sets `G.pvp` per
+  game (`G.combat` always: the best gear). `PartyFall` (from `Collapse`) handles a fall on every machine; the host
+  scores it in `PartyDeath` (from `RQ_COLLAPSE`). Per game: lava (`StartSpot` on `RoofSpot`s from city.c, `BurnLava`
+  through `BY_LAVA` after a 3 s grace, `DrawLava` from `DrawEffects`); archers (`G.equip` forced to the bow, arrows
+  1000 damage in wildlife.c); defence (`StormCity`/`Defence` in raiders.c, `SpotPlayer` sees everyone, +2 in the kill
+  credit in combat.c); dates (`Peer.dates` in `M_STATE`, scored live); hide and seek (`PartyHider`, `PartyMayHurt` in
+  `Hittable`, `PartyDisguise` for looks, no tags or map dots, `PartyNpcKill`, `HideUpdate`, `BY_STRAY`, `FarVillage`).
+  Tests: `TestParty` and `TestHide` (harness; `PartySeekerForTest`), `tools/web/party.js` and `tools/web/hide.js`
+  (`party-*` rooms; host cmd 30 the party's clock, 31 the seeker finds a player).
 - **Music** (`src/music.c`): see its own section below.
 - **Drawing**: see "Graphics: how drawing works" below.
 - **Web specifics:** `src/web.c` (storage in IndexedDB: call `SyncStorage()` after writing a file; requests to `/api`),
@@ -353,7 +371,7 @@ in `src/game.h`) holds the whole world.
   drives the game (1 teleport, 2 E, 3 F, 4 look, 5 shoot, 6 swing, 7 add item, 9 set hour, 13 hurt, 14 equip ...). Add
   fields there when a test needs to see something new. The server program's own (`tools/web/hosthooks.c`) answer
   `hostInfo(room)` and `hostCmd(room, n, a, b)` in `tools/web/lib.js` (9 hour, 20 start a royale round, 21 the round's
-  clock, 22 the countdown), and `stopRoom(room)` stops a room as if it stood empty. `lib.js`'s `open(browser, name, url)`
+  clock, 22 the countdown, 30 the party's clock, 31 the hide-and-seek seeker finds a player), and `stopRoom(room)` stops a room as if it stood empty. `lib.js`'s `open(browser, name, url)`
   logs a fresh browser context in to its own account first; every run uses new names and rooms (`RUN`).
 - Headless Chromium has no GPU: it runs about 5 frames a second, and the game clamps each frame to 0.05 s, so game time
   runs at a quarter of real time there (a 0.3 s windup takes over a second). Time-based checks need generous waits; use

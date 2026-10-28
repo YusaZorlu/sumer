@@ -680,7 +680,7 @@ static void DrawHelpPanel(void)
         { "E", "use, talk, pick up, climb, search" }, { "F", "alternate action" },
         { "R", "refill the quiver" }, { "B", "torch on/off (from evening)" }, { "Z", "arrow camera on/off" }, { "Tab", "baskets and equipment" },
         { "M", "map zoom" }, { "N", "music: off, low, medium, high" }, { "G", "graphics: auto, high, low, classic" }, { "T (hold)", "fast-forward time (alone)" }, { "T", "chat (in a shared game)" }, { "F5", "save" },
-        { "F11", "fullscreen" }, { "Esc", "pause, save slots, game settings, your look" }, { "H", "this window" },
+        { "Enter", "ready (battle royale, party)" }, { "F11", "fullscreen" }, { "Esc", "pause, save slots, game settings, your look" }, { "H", "this window" },
     };
     static const char *const tips[] = {
         "Parry: a yellow mark means a blow is coming, over a person or a player swinging at you (a player gives you less "
@@ -713,8 +713,12 @@ static void DrawHelpPanel(void)
         "The towers by the city's gates have stairs inside: the middle floor opens onto the wall walk, and archers keep watch "
         "on the roofs. Many houses have stairs or crates up to their roofs, for running across the city.",
         "Experience: 1 for a beast or a townsman brought down, 3 for a guard, raider, barbarian or bandit, 10 for another player, "
-        "and 10 for every player in a battle royale round you win. Level 1 takes 100 to reach level 2, level 2 another 200, "
-        "up to level 100. Your level, K/D and things are kept with your account.",
+        "10 for every player in a battle royale round you win, and 10, 5 or 2 for every player in a party you finish first, "
+        "second or third. Level 1 takes 100 to reach level 2, level 2 another 200, up to level 100. Your level, K/D and "
+        "things are kept with your account.",
+        "Battle royale and Sumer Party begin once everyone in (two or more) is ready: Enter, or Ready in the Esc menu. "
+        "A party is four of five minigames, four minutes each (vote one out in the Esc menu): floor is lava, date stashing, "
+        "one-shot archers, city defence, hide and seek. Each game's top three gain +10, +6, +3; the party's top three gain experience.",
     };
     const int nk = (int)(sizeof(keys) / sizeof(keys[0])), nt = (int)(sizeof(tips) / sizeof(tips[0]));
     Rectangle r = PanelRect(fminf(1200.0f, UiWidth() - 20.0f), fminf(690.0f, UiHeight() - 16.0f));
@@ -958,7 +962,7 @@ static void DrawMinimap(int ox, int oy, int size)
     // In a battle royale the map gives no one away, except to those already out.
     for (int k = 0; k < MAX_PLAYERS; k++) {
         if (k == G.self || !G.peers[k].active || (G.peers[k].flags & PF_OUT)) continue;
-        if (Royale() && !OutOfRound()) continue;
+        if ((Royale() || PartyGame() == PG_HIDE) && !OutOfRound()) continue;
         Vector2 q = { mx + G.peers[k].shown.x * s, mz + G.peers[k].shown.z * s };
         DrawCircleV(q, 4.5f, Fade(BLACK, 0.8f));
         DrawCircleV(q, 3.5f, PlayerColor(k));
@@ -974,6 +978,7 @@ static void DrawMinimap(int ox, int oy, int size)
 // The other players' names over their heads, in their colors, with their health when hurt.
 static void DrawPeerTags(void)
 {
+    if (PartyGame() == PG_HIDE) return;   // hide and seek: no one's name gives them away
     Vector3 fwd = Vector3Normalize(Vector3Subtract(G.cam.target, G.cam.position));
 
     for (int s = 0; s < MAX_PLAYERS; s++) {

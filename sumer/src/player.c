@@ -340,7 +340,7 @@ void UpdatePlayer(float dt, bool input)
     if (p->moving || p->aiming) G.followArrow = -1;
     bool hungry = G.food <= 0.0f;
     bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT) || TouchRun();
-    p->running = p->moving && input && shift && !p->crouching && !p->aiming && !hungry;
+    p->running = p->moving && input && shift && !p->crouching && !p->aiming && !hungry && !PartyHider(G.self);
 
     float speed = hungry ? HUNGRY_SPEED : WALK_SPEED;
     if (p->crouching) speed = CROUCH_SPEED;
@@ -756,6 +756,7 @@ void DrawPlayer(void)
 {
     const Player *p = &G.player;
     Look look = PlayerLook(G.self, ChosenStyle(), UseArmor());
+    PartyDisguise(G.self, &look);
 
     if (OutOfRound()) return;
     // Riding behind an arrow, the eye has left the head: the hands in view would ride along with it, so

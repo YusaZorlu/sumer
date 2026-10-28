@@ -21,6 +21,12 @@
 #define LAVA_DEPTH   0.5f     // floor is lava: anything lower than this above the ground burns
 #define DATES_MOST   30       // date stashing: the most points dates can bring
 #define LAVA_HURT    8.0f     // health a second, through armor
+#define HIDE_TICK    30.0f    // hide and seek: a point for every this long a hider stays hidden
+#define HIDE_MOST    8
+#define HIDE_LAST    6        // and this many more for one never found
+#define FIND_POINTS  6        // the seeker's, for each hider found
+#define SEEKER_SLIPS 5        // townsfolk the seeker may bring down: at this many the seeker loses
+#define STRAY_HURT   5.0f     // a hider out of the city loses this much health a second
 
 static bool mode, modeKnown;
 // The party as the host runs it and sends it to everyone. 'order' holds the four games in the order
@@ -32,9 +38,11 @@ static struct {
     unsigned joined;
     int round[MAX_PLAYERS], total[MAX_PLAYERS];
     int seeker, npcKills;
+    unsigned found;   // hide and seek: the hiders found
 } pty;
-// This machine's player.
-static bool ready, waiting;
+static int lastSeeker = -1;   // the host's: no one seeks twice in a row
+// This machine's player ('caught': found in hide and seek, before the host's word of it arrives).
+static bool ready, waiting, caught;
 static int vote = -1;
 static float downT;
 static Vector3 lastPos[MAX_PLAYERS];
@@ -206,11 +214,13 @@ void ShapeParty(void)
 {
     if (!Party()) return;
     RemoveGuards();
+    PartyCrowd();
     for (int c = 0; c < MAX_CARAVANS; c++) G.caravans[c].state = CV_AWAY;
     memset(&pty, 0, sizeof(pty));
     pty.phase = PP_WAIT;
     pty.seeker = -1;
-    ready = waiting = false;
+    lastSeeker = -1;
+    ready = waiting = caught = false;
     vote = -1;
     downT = 0;
 }
@@ -230,9 +240,108 @@ static bool Joined(int s)
     return (pty.joined >> s & 1u) != 0;
 }
 
+static void EndGame(void);
+
+// ---- Hide and seek ----
+
+static bool Found(int s)
+{
+    return (pty.found >> s & 1u) != 0 || (s == G.self && caught);
+}
+
+int PartySeeker(void)
+{
+    return PartyGame() == PG_HIDE ? pty.seeker : -1;
+}
+
+// Someone still hiding: no armor, no weapon, no running, a townsman's look, no harm to the seeker.
+bool PartyHider(int s)
+{
+    return PartyGame() == PG_HIDE && s >= 0 && s < MAX_PLAYERS && s != pty.seeker && Joined(s) && !Found(s);
+}
+
+// Whether player a's blow or arrow may hurt player s: in hide and seek only the seeker's, and only hiders.
+bool PartyMayHurt(int a, int s)
+{
+    return PartyGame() != PG_HIDE || (a == pty.seeker && PartyHider(s));
+}
+
+bool PartyDisguise(int s, Look *look)
+{
+    static const Color robes[6] = { { 200, 190, 160, 255 }, { 150, 110, 80, 255 }, { 180, 170, 140, 255 },
+                                    { 160, 120, 90, 255 },  { 120, 140, 150, 255 }, { 186, 150, 120, 255 } };
+    if (!PartyHider(s)) return false;
+    *look = PersonLook(LOOK_TOWN, 700u + 13u * (unsigned)s, robes[s % 6]);
+    return true;
+}
+
+// The seeker brought down one of the townsfolk: five and the seeker loses the game.
+void PartyNpcKill(int a)
+{
+    if (PartyGame() != PG_HIDE || a != pty.seeker || G.role == NET_CLIENT) return;
+    if (++pty.npcKills >= SEEKER_SLIPS) {
+        Announce("The seeker brought down %d townsfolk and loses the game!", SEEKER_SLIPS);
+        EndGame();
+    } else {
+        SayTo(a, "That was one of the townsfolk (%d of %d): at %d you lose.", pty.npcKills, SEEKER_SLIPS, SEEKER_SLIPS);
+    }
+}
+
+// Found hiders hold out in the village farthest from the city.
+static Vector3 FarVillage(void)
+{
+    int far = 0;
+    for (int v = 1; v < VILLAGES; v++)
+        if (XZDist(VillageCenter(v), (Vector3){ 0, 0, CITY_Z }) > XZDist(VillageCenter(far), (Vector3){ 0, 0, CITY_Z })) far = v;
+    Vector3 c = VillageCenter(far);
+    for (int k = 0; k < 30; k++) {
+        float x = c.x + RandF(-12.0f, 12.0f), z = c.z + RandF(-12.0f, 12.0f);
+        if (!InWater(x, z) && !SolidAt(x, z, 0.6f)) return (Vector3){ x, TerrainHeight(x, z), z };
+    }
+    return c;
+}
+
+static int HidersLeft(void)
+{
+    int n = 0;
+    for (int s = 0; s < MAX_PLAYERS; s++) n += PartyHider(s) && PlayerIn(s);
+    return n;
+}
+
+static void PickSeeker(void)
+{
+    int c[MAX_PLAYERS], n = 0;
+    for (int s = 0; s < MAX_PLAYERS; s++)
+        if (Joined(s) && s != lastSeeker) c[n++] = s;
+    for (int s = 0; s < MAX_PLAYERS && n == 0; s++)
+        if (Joined(s)) c[n++] = s;
+    pty.seeker = lastSeeker = n > 0 ? c[GetRandomValue(0, n - 1)] : -1;
+    pty.found = 0;
+}
+
+// The host: points for hiding as time goes by, and a hider out of the city wastes away.
+static void HideUpdate(float dt)
+{
+    static float tick;
+    for (int s = 0; s < MAX_PLAYERS; s++)
+        if (PartyHider(s)) pty.round[s] = (int)(pty.t / HIDE_TICK) < HIDE_MOST ? (int)(pty.t / HIDE_TICK) : HIDE_MOST;
+    if ((tick += dt) >= 0.5f) {
+        tick = 0;
+        for (int s = 0; s < MAX_PLAYERS; s++) {
+            const Peer *p = &G.peers[s];
+            if (PartyHider(s) && PlayerIn(s) && !(p->flags & PF_OUT) && !InsideWalls(p->pos.x, p->pos.z, 0.0f)) HurtSlotFrom(s, STRAY_HURT * 0.5f, BY_STRAY, NULL);
+        }
+    }
+    if (HidersLeft() == 0) {
+        Announce("Every hider is found!");
+        EndGame();
+    }
+}
+
 // Where player s starts a game (or waits out a break): somewhere in the city of its own.
 static Vector3 StartSpot(int s, int g)
 {
+    if (g == PG_HIDE && s != pty.seeker && Found(s)) return FarVillage();
     if (g != PG_LAVA || RoofCount() == 0) return CitySpawn(s);
     // Floor is lava: up on a roof, as far from the others as a few tries find.
     Vector3 best = RoofSpot(0);
@@ -282,6 +391,7 @@ static void StartGame(int k)
     pty.joined = 0;
     pty.seeker = -1;
     pty.npcKills = 0;
+    pty.found = 0;
     int g = pty.order[k];
     for (int s = 0; s < MAX_PLAYERS; s++) {
         pty.round[s] = 0;
@@ -291,6 +401,7 @@ static void StartGame(int k)
     }
     ApplyRules();
     if (g == PG_DEFENCE) StormCity();
+    if (g == PG_HIDE) PickSeeker();
     for (int s = 0; s < MAX_PLAYERS; s++)
         if (Joined(s)) Place(s, StartSpot(s, g), 1);
     Announce("Game %d of 4: %s. %s", k + 1, NAMES[g], RULES[g]);
@@ -342,6 +453,8 @@ static int Ranked(const int *score, unsigned who, int *out)
 static void EndGame(void)
 {
     static const int bonus[3] = { 10, 6, 3 };
+    for (int s = 0; s < MAX_PLAYERS; s++)
+        if (PartyHider(s)) pty.round[s] += HIDE_LAST;
     int order[MAX_PLAYERS], n = Ranked(pty.round, pty.joined, order);
     for (int k = 0; k < n && k < 3; k++) pty.round[order[k]] += bonus[k];
     for (int s = 0; s < MAX_PLAYERS; s++)
@@ -373,6 +486,8 @@ static void EndGame(void)
         pty.t = BREAK_TIME;
     }
     pty.joined = 0;
+    pty.seeker = -1;
+    pty.found = 0;
     ApplyRules();
     // Everyone back in the city for the break.
     for (int s = 0; s < MAX_PLAYERS; s++)
@@ -389,12 +504,28 @@ void PartyDeath(int slot, int killer)
         pty.round[slot] -= 2;
         if (killer >= 0 && killer != slot && Joined(killer)) pty.round[killer] += 6;
     }
+    if (g == PG_HIDE && PartyHider(slot)) {
+        pty.found |= 1u << slot;
+        if (killer == pty.seeker) {
+            pty.round[killer] += FIND_POINTS;
+            Announce("%s found %s!", G.peers[killer].name, G.peers[slot].name);
+        } else {
+            Announce("%s is out of hiding.", G.peers[slot].name);
+        }
+    }
 }
 
 void PartyScore(int slot, int points)
 {
     if (PartyGame() >= 0 && slot >= 0 && slot < MAX_PLAYERS && Joined(slot)) pty.round[slot] += points;
 }
+
+#ifdef SUMER_TEST
+void PartySeekerForTest(int s)
+{
+    pty.seeker = lastSeeker = s;
+}
+#endif
 
 // Test tools only: jump the clock of the phase under way.
 void PartySkipTo(float t)
@@ -437,6 +568,7 @@ static void HostUpdate(float dt)
             EndGame();
         } else {
             BurnLava(dt);
+            if (PartyGame() == PG_HIDE) HideUpdate(dt);
             // Date stashing: a point for every five dates carried, thirty at most, as they gather.
             if (PartyGame() == PG_DATES)
                 for (int s = 0; s < MAX_PLAYERS; s++)
@@ -461,6 +593,7 @@ void PartyBegin(Vector3 at, int kind)
 {
     Player *p = &G.player;
     waiting = false;
+    caught = false;
     downT = 0;
     ready = false;
     p->pos = at;
@@ -490,7 +623,11 @@ bool PartyFall(const char *how)
     G.player.draw = 0;
     G.climb = 0;
     if (G.panel != PANEL_NONE) SetPanel(PANEL_NONE);
-    if (pty.phase == PP_GAME && !waiting) {
+    if (PartyHider(G.self)) {
+        caught = true;
+        downT = DOWN_TIME;
+        Say("%s %s", how, L("You were found! Hold out in the farthest village until the game ends."));
+    } else if (pty.phase == PP_GAME && !waiting) {
         downT = DOWN_TIME;
         Say("%s %s", how, L("Back in the game in a moment."));
     } else {
@@ -526,9 +663,11 @@ void PartyUpdate(float dt)
             G.player.pos = (Vector3){ at.x, GroundHeight(at.x, at.z, at.y + 0.5f), at.z };
             G.player.vy = 0;
             G.health = HEALTH_MAX;
+            if (PartyGame() == PG_HIDE && Found(G.self) && G.self != pty.seeker) G.equip = EQ_BOW;   // the wild beasts await
         }
         // One-shot archers: the bow and nothing else.
         if (PartyGame() == PG_ARCHERS && G.equip != EQ_BOW) G.equip = EQ_BOW;
+        if (PartyHider(G.self) && G.equip != EQ_NONE) G.equip = EQ_NONE;   // a hider carries nothing
         // Once the party begins, the next one wants everyone ready again.
         if (pty.phase == PP_GAME && ready) ready = false;
     }
@@ -552,6 +691,7 @@ void WriteParty(Writer *w)
     W32(w, pty.joined);
     W8(w, pty.seeker >= 0 ? (unsigned)pty.seeker : 255u);
     W8(w, (unsigned)pty.npcKills);
+    W32(w, pty.found);
     for (int s = 0; s < MAX_PLAYERS; s++) {
         W16(w, (unsigned)(pty.round[s] & 0xffff));
         W16(w, (unsigned)(pty.total[s] & 0xffff));
@@ -567,6 +707,7 @@ void ReadParty(Reader *r)
     int vetoed = (int)R8(r);
     unsigned joined = R32(r);
     int seeker = (int)R8(r), npc = (int)R8(r);
+    unsigned found = R32(r);
     int round[MAX_PLAYERS], total[MAX_PLAYERS];
     for (int s = 0; s < MAX_PLAYERS; s++) {
         round[s] = (short)R16(r);
@@ -579,8 +720,9 @@ void ReadParty(Reader *r)
     for (int k = 0; k < PARTY_GAMES; k++) pty.order[k] = order[k] % PG_COUNT;
     pty.vetoed = vetoed;
     pty.joined = joined;
-    pty.seeker = seeker == 255 ? -1 : seeker;
+    pty.seeker = seeker < MAX_PLAYERS ? seeker : -1;
     pty.npcKills = npc;
+    pty.found = found;
     memcpy(pty.round, round, sizeof(round));
     memcpy(pty.total, total, sizeof(total));
 }
@@ -653,6 +795,19 @@ void DrawPartyHUD(float sw, float sh)
         Vector2 rm = MeasureTextEx(GameFont(), rule, 12, 1);
         DrawRectangle((int)(sw / 2 - rm.x / 2 - 6), 32, (int)rm.x + 12, 18, Fade(BLACK, 0.45f));
         DrawTextEx(GameFont(), rule, (Vector2){ sw / 2 - rm.x / 2, 35 }, 12, 1, dim);
+        // Hide and seek: this player's part in it.
+        const char *part = NULL;
+        if (PartyGame() == PG_HIDE && Joined(G.self) && !waiting) {
+            if (G.self == pty.seeker) part = TextFormat(L("You seek: one blow finds a hider. Townsfolk brought down: %d of %d."), pty.npcKills, SEEKER_SLIPS);
+            else if (Found(G.self)) part = L("You were found: hold out in the village until the game ends.");
+            else part = TextFormat(L("You hide among the townsfolk: no running, and stay in the city. %s seeks."),
+                                   pty.seeker >= 0 ? G.peers[pty.seeker].name : "?");
+        }
+        if (part) {
+            Vector2 pm = MeasureTextEx(GameFont(), part, 13, 1);
+            DrawRectangle((int)(sw / 2 - pm.x / 2 - 6), 52, (int)pm.x + 12, 19, Fade(BLACK, 0.5f));
+            DrawTextEx(GameFont(), part, (Vector2){ sw / 2 - pm.x / 2, 55 }, 13, 1, gold);
+        }
     }
 
     // The scores, this game's and the party's: the best three by the party's, and this player if not among them.
@@ -663,7 +818,7 @@ void DrawPartyHUD(float sw, float sh)
     for (int k = 0; k < n && k < 3; k++) rows[nr++] = k;
     for (int k = 3; k < n; k++)
         if (order[k] == G.self) rows[nr++] = k;
-    float x = sw - 212, y = 214, w = 200;
+    float x = sw - 212, y = 232, w = 200;   // under the map and its frame counter
     DrawRectangle((int)x, (int)y, (int)w, 21 + 14 * nr, Fade(BLACK, 0.5f));
     DrawTextEx(GameFont(), L("Party"), (Vector2){ x + 6, y + 4 }, 12, 1, gold);
     DrawTextEx(GameFont(), L("game"), (Vector2){ x + 120, y + 4 }, 10, 1, dim);
@@ -682,6 +837,12 @@ void DrawPartyHUD(float sw, float sh)
         Vector2 wm = MeasureTextEx(GameFont(), w2, 18, 1);
         DrawRectangle((int)(sw / 2 - wm.x / 2 - 10), (int)sh - 120, (int)wm.x + 20, 28, Fade(BLACK, 0.55f));
         DrawTextEx(GameFont(), w2, (Vector2){ sw / 2 - wm.x / 2, sh - 115 }, 18, 1, gold);
+    } else if (downT <= 0 && PartyHider(G.self) && !InsideWalls(G.player.pos.x, G.player.pos.z, 0.0f)) {
+        DrawRectangle(0, 0, (int)sw + 1, (int)sh + 1, Fade((Color){ 120, 90, 60, 255 }, 0.3f));
+        const char *w2 = L("Back into the city! Out here a hider wastes away.");
+        Vector2 wm = MeasureTextEx(GameFont(), w2, 22, 2);
+        DrawRectangle((int)(sw / 2 - wm.x / 2 - 10), (int)(sh / 2 + 56), (int)wm.x + 20, 32, Fade(BLACK, 0.5f));
+        DrawTextEx(GameFont(), w2, (Vector2){ sw / 2 - wm.x / 2, sh / 2 + 60 }, 22, 2, (Color){ 255, 200, 160, 255 });
     } else if (downT <= 0 && InLava(G.player.pos)) {
         DrawRectangle(0, 0, (int)sw + 1, (int)sh + 1, Fade((Color){ 200, 40, 10, 255 }, 0.3f));
         const char *w2 = L("The floor is lava! Get up onto something.");

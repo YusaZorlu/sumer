@@ -692,7 +692,9 @@ static void WalkVillager(Villager *v, int i, float dt)
         return;
     }
     if (street) RoomOf(v, &right, &left);
-    next.t += v->dir * v->speed * dt / len;
+    // Hide and seek: the townsfolk hurry about, and the hiders with them.
+    float pace = v->kind == NPC_CIVILIAN && PartyGame() == PG_HIDE ? 2.5f : 1.0f;
+    next.t += v->dir * v->speed * pace * dt / len;
     if (street && next.t >= 1.0f) {
         NextStreet(v);
         return;
@@ -743,6 +745,14 @@ static void WalkVillager(Villager *v, int i, float dt)
     }
 }
 
+// The townsfolk who wander the streets.
+static const struct { int from, to; float speed; Color robe; } WALKERS[] = {
+    { 1, 2, 1.1f, { 200, 190, 160, 255 } }, { 2, 1, 1.3f, { 150, 110, 80, 255 } },  { 4, 1, 1.2f, { 180, 170, 140, 255 } },
+    { 7, 8, 1.0f, { 160, 120, 90, 255 } },  { 16, 17, 0.9f, { 170, 150, 110, 255 } }, { 12, 13, 1.0f, { 190, 175, 150, 255 } },
+    { 14, 15, 1.0f, { 168, 148, 118, 255 } }, { 5, 18, 0.8f, { 120, 140, 150, 255 } }, { 10, 11, 1.1f, { 176, 160, 120, 255 } },
+    { 3, 2, 1.0f, { 186, 150, 120, 255 } }, { 9, 8, 1.15f, { 140, 120, 100, 255 } }, { 6, 5, 0.95f, { 210, 196, 170, 255 } },
+};
+
 void BuildVillage(void)
 {
     BuildHome();
@@ -752,15 +762,9 @@ void BuildVillage(void)
     BuildMarket();
 
     // Townsfolk wander the streets; one sweeps the temple's inner court, one its outer court.
-    static const struct { int from, to; float speed; Color robe; } walkers[] = {
-        { 1, 2, 1.1f, { 200, 190, 160, 255 } }, { 2, 1, 1.3f, { 150, 110, 80, 255 } },  { 4, 1, 1.2f, { 180, 170, 140, 255 } },
-        { 7, 8, 1.0f, { 160, 120, 90, 255 } },  { 16, 17, 0.9f, { 170, 150, 110, 255 } }, { 12, 13, 1.0f, { 190, 175, 150, 255 } },
-        { 14, 15, 1.0f, { 168, 148, 118, 255 } }, { 5, 18, 0.8f, { 120, 140, 150, 255 } }, { 10, 11, 1.1f, { 176, 160, 120, 255 } },
-        { 3, 2, 1.0f, { 186, 150, 120, 255 } }, { 9, 8, 1.15f, { 140, 120, 100, 255 } }, { 6, 5, 0.95f, { 210, 196, 170, 255 } },
-    };
     G.villagerCount = 0;
     roomMeasured = false;
-    for (int k = 0; k < COUNT(walkers); k++) AddWalker(walkers[k].from, walkers[k].to, walkers[k].speed, walkers[k].robe);
+    for (int k = 0; k < COUNT(WALKERS); k++) AddWalker(WALKERS[k].from, WALKERS[k].to, WALKERS[k].speed, WALKERS[k].robe);
     AddVillager(-3, ZIG_Z + 2, 3, ZIG_Z + 2, 0.7f, (Color){ 230, 225, 210, 255 });
     AddVillager(-14, -9, 14, -9, 0.6f, (Color){ 236, 232, 222, 255 });
     for (int i = 0; i < CityFarmCount(); i++) {
@@ -769,6 +773,19 @@ void BuildVillage(void)
     }
     BuildTempleStaff();
     AlehouseFolk();
+}
+
+// A party's city is busier: twice as many more walk the same streets, some the other way, in other cloth
+// (the same on every machine, so the people match the host's).
+void PartyCrowd(void)
+{
+    static const Color dyes[4] = { { 120, 60, 40, 255 }, { 70, 90, 120, 255 }, { 200, 196, 180, 255 }, { 96, 110, 70, 255 } };
+    for (int k = 0; k < 2 * COUNT(WALKERS); k++) {
+        int w = k % COUNT(WALKERS);
+        bool back = k >= COUNT(WALKERS);
+        AddWalker(back ? WALKERS[w].to : WALKERS[w].from, back ? WALKERS[w].from : WALKERS[w].to, WALKERS[w].speed,
+                  Mix(WALKERS[w].robe, dyes[k % 4], 0.35f));
+    }
 }
 
 static void WanderIn(Wanderer *w, Rectangle area, float speed, float dt)

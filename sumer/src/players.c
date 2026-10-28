@@ -272,6 +272,7 @@ void DrawPeers(void)
         const Peer *p = &G.peers[s];
         if (!p->active || s == G.self || (p->flags & PF_OUT) || XZDist(p->shown, G.cam.position) > 240.0f || !InView(p->shown, 2.0f)) continue;
         Look look = PlayerLook(s, p->style, p->armor);
+        PartyDisguise(s, &look);
         LightFor(p->shown);
         if (p->flags & PF_BED) {
             DrawInBed(s, p->shown, p->shownFacing, look);

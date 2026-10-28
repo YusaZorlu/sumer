@@ -2417,6 +2417,71 @@ static void TestParty(void)
     GameInit();
 }
 
+// Hide and seek: one seeker, the others hidden as townsfolk among a bigger crowd; found by one blow
+// and sent off to the farthest village; points for lasting, for finding, and a loss for the seeker
+// who brings down too many townsfolk.
+void PartySeekerForTest(int s);
+
+static void TestHide(void)
+{
+    SetParty(true);
+    GameInit();
+    int folk = 0;
+    for (int i = 0; i < G.villagerCount; i++) folk += G.villagers[i].kind == NPC_CIVILIAN;
+    Check(folk >= 36, "a party's city is crowded: %d townsfolk", folk);
+    G.role = NET_HOST;
+    G.self = G.actor = 0;
+    for (int s = 1; s <= 2; s++) {
+        G.peers[s] = (Peer){ .active = true, .net = s, .health = HEALTH_MAX, .flags = PF_GROUND | PF_READY | ((PG_LAVA + 1) << PF_VOTE_SHIFT) };
+        snprintf(G.peers[s].name, NAME_LEN, s == 1 ? "Seeker" : "Hider");
+    }
+    SetPartyVote(PG_LAVA);
+    if (!MatchReady()) ToggleReady();
+    for (int t = 0; t < 400 && PartyGame() != PG_HIDE; t++) {
+        SyncSelf();
+        if (PartyPhase() == PP_GAME) PartySkipTo(239.9f);
+        PartyUpdate(0.5f);
+    }
+    Check(PartyGame() == PG_HIDE, "hide and seek comes round");
+    PartySeekerForTest(1);
+    G.peers[2].pos = CitySpawn(2);
+    G.player.pos = CitySpawn(0);
+    G.equip = EQ_MELEE;
+    SyncSelf();
+    PartyUpdate(0.1f);
+    Look look = PlayerLook(0, 0, ARMOR_BRONZE);
+    Check(PartySeeker() == 1 && PartyHider(0) && PartyHider(2) && !PartyHider(1), "one seeker, the others hiders");
+    Check(UseArmor() == ARMOR_NONE && G.equip == EQ_NONE && PartyDisguise(0, &look) && !PartyDisguise(1, &look), "a hider wears no armor, carries nothing and looks like the townsfolk");
+    Check(PartyMayHurt(1, 0) && !PartyMayHurt(0, 1) && !PartyMayHurt(2, 0), "only the seeker can hurt, and only hiders");
+    for (int t = 0; t < 610; t++) {
+        SyncSelf();
+        PartyUpdate(0.1f);
+    }
+    Check(PartyRound(0) == 2 && PartyRound(2) == 2, "a point for every half minute hidden (%d, %d)", PartyRound(0), PartyRound(2));
+    G.player.pos = (Vector3){ 0, 0, CITY_Z + CITY_B + 40.0f };
+    G.player.pos.y = TerrainHeight(G.player.pos.x, G.player.pos.z);
+    SyncSelf();
+    float h0 = G.health;
+    for (int t = 0; t < 11; t++) PartyUpdate(0.1f);
+    Check(h0 - G.health > 2.0f && h0 - G.health < 6.0f, "out of the city a hider wastes away (%.1f)", h0 - G.health);
+    G.player.pos = CitySpawn(0);
+    G.health = HEALTH_MAX;
+    SyncSelf();
+    for (int k = 0; k < 4; k++) PartyNpcKill(1);
+    Check(PartyGame() == PG_HIDE, "four townsfolk brought down: the seeker plays on");
+    int seeker = PartyRound(1);
+    PartyDeath(2, 1);
+    Check(PartyRound(1) == seeker + 6 && !PartyHider(2) && PartyMayHurt(1, 0), "a hider found: +6 for the seeker");
+    PartyFall("Found.");
+    for (int t = 0; t < 53; t++) {
+        SyncSelf();
+        PartyUpdate(0.1f);
+    }
+    Check(PartyPhase() != PP_GAME, "every hider found: the game is over");
+    SetParty(false);
+    GameInit();
+}
+
 // Levels and experience: level L takes 100 x L to the next, up to 100; what each kill is worth.
 static void TestLevels(void)
 {
@@ -2606,6 +2671,7 @@ static void RunTests(void)
     TestSixPlayers();
     TestRoyale();
     TestParty();
+    TestHide();
     TestLevels();
     TestSha256();
     TestSeats();

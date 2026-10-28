@@ -371,7 +371,7 @@ enum {
 #define REQ_ARGS 12
 enum { WARN_WOLF, WARN_SNAKE, WARN_KINDS };
 // What hurt a player last, so whoever is brought down hears by whom: BY_PLAYER + slot for a player.
-enum { BY_NONE, BY_GUARD, BY_CARAVAN, BY_TOWNSFOLK, BY_VILLAGERS, BY_RAIDER, BY_BARBARIAN, BY_WOLF, BY_BOAR, BY_SNAKE, BY_STORM, BY_BANDIT, BY_LAVA, BY_PLAYER };
+enum { BY_NONE, BY_GUARD, BY_CARAVAN, BY_TOWNSFOLK, BY_VILLAGERS, BY_RAIDER, BY_BARBARIAN, BY_WOLF, BY_BOAR, BY_SNAKE, BY_STORM, BY_BANDIT, BY_LAVA, BY_STRAY, BY_PLAYER };
 
 typedef struct {
     Box boxes[MAX_BOXES];
@@ -1160,6 +1160,12 @@ void PartyBegin(Vector3 at, int kind);
 bool PartyFall(const char *how);
 bool InLava(Vector3 pos);
 void StormCity(void);
+int PartySeeker(void);
+bool PartyHider(int s);
+bool PartyMayHurt(int a, int s);
+bool PartyDisguise(int s, Look *look);
+void PartyNpcKill(int a);
+void PartyCrowd(void);
 void DrawLava(void);
 void PartyJoinLate(bool running);
 void PartyDeath(int slot, int killer);

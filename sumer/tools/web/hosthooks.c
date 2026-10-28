@@ -2,7 +2,8 @@
 // suites ask server.py --test (POST /test/host?room=ID) what the room's world is like, or have it do
 // something. "info" answers with the world as JSON; "cmd N a b" runs command N:
 // 9 set the hour to a; 20 start a battle royale round; 21 skip the round's clock to a s; 22 the next
-// round in a s; 30 a party's clock: a game's time to a s, a countdown or break to a s at most.
+// round in a s; 30 a party's clock: a game's time to a s, a countdown or break to a s at most; 31 in hide
+// and seek, the seeker's blow finds player a.
 #include "game.h"
 #include <stdio.h>
 #include <string.h>
@@ -46,8 +47,8 @@ static void Info(char *buf, int size)
         Vector3 sp = StatuePos(i);
         n += snprintf(buf + n, (size_t)(size - n), "%s[%.1f,%.1f,%d]", i ? "," : "", sp.x, sp.z, StatueClaimed(i));
     }
-    n += snprintf(buf + n, (size_t)(size - n), "]},\"party\":{\"on\":%d,\"phase\":%d,\"game\":%d,\"votes\":[%d,%d,%d,%d,%d],\"scores\":[",
-                  Party(), PartyPhase(), PartyGame(), PartyVotes(0), PartyVotes(1), PartyVotes(2), PartyVotes(3), PartyVotes(4));
+    n += snprintf(buf + n, (size_t)(size - n), "]},\"party\":{\"on\":%d,\"phase\":%d,\"game\":%d,\"seeker\":%d,\"votes\":[%d,%d,%d,%d,%d],\"scores\":[",
+                  Party(), PartyPhase(), PartyGame(), PartySeeker(), PartyVotes(0), PartyVotes(1), PartyVotes(2), PartyVotes(3), PartyVotes(4));
     for (int s = 0, first = 1; s < MAX_PLAYERS; s++)
         if (G.peers[s].active) {
             n += snprintf(buf + n, (size_t)(size - n), "%s[%d,%d,%d]", first ? "" : ",", s, PartyRound(s), PartyTotal(s));
@@ -75,6 +76,12 @@ void HostTest(const char *in, char *out, int size)
     case 21: RoyaleSkipTo(a); break;
     case 22: RoyaleCountdownTo(a); break;
     case 30: PartySkipTo(a); break;
+    case 31:
+        if (PartySeeker() >= 0) {
+            G.actor = PartySeeker();
+            HitPlayer((int)a, 10.0f, G.peers[PartySeeker()].pos, false);
+        }
+        break;
     default: break;
     }
     snprintf(out, (size_t)size, "{\"done\":%d}", c);

@@ -194,6 +194,7 @@ static const char *WhatBroughtDown(int by)
     case BY_SNAKE: what = L("A snake's venom brought you down."); break;
     case BY_STORM: what = L("The sandstorm brought you down."); break;
     case BY_LAVA: what = L("The lava burned you down."); break;
+    case BY_STRAY: what = L("Out of the city, a hider wastes away."); break;
     default:
         if (by >= BY_PLAYER && by < BY_PLAYER + MAX_PLAYERS && G.peers[by - BY_PLAYER].name[0])
             what = TextFormat(L("%s beat you down."), G.peers[by - BY_PLAYER].name);

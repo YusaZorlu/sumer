@@ -92,8 +92,8 @@ EMSCRIPTEN_KEEPALIVE const char *TestInfo(void)
         Vector3 sp = StatuePos(i);
         n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%s[%.1f,%.1f,%d]", i ? "," : "", sp.x, sp.z, StatueClaimed(i));
     }
-    n += snprintf(buf + n, sizeof(buf) - (size_t)n, "]},\"party\":{\"on\":%d,\"phase\":%d,\"game\":%d,\"ready\":%d,\"vote\":%d,\"out\":%d,\"food\":%.0f,\"up\":%.2f,\"lava\":%d,\"scores\":[",
-                  Party(), PartyPhase(), PartyGame(), MatchReady(), PartyVote(), PartyOut(), G.food, G.player.pos.y - TerrainHeight(G.player.pos.x, G.player.pos.z), InLava(G.player.pos));
+    n += snprintf(buf + n, sizeof(buf) - (size_t)n, "]},\"party\":{\"on\":%d,\"phase\":%d,\"game\":%d,\"ready\":%d,\"vote\":%d,\"out\":%d,\"food\":%.0f,\"up\":%.2f,\"lava\":%d,\"seeker\":%d,\"hider\":%d,\"scores\":[",
+                  Party(), PartyPhase(), PartyGame(), MatchReady(), PartyVote(), PartyOut(), G.food, G.player.pos.y - TerrainHeight(G.player.pos.x, G.player.pos.z), InLava(G.player.pos), PartySeeker(), PartyHider(G.self));
     for (int s = 0, first = 1; s < MAX_PLAYERS; s++)
         if (G.peers[s].active) {
             n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%s[%d,%d,%d]", first ? "" : ",", s, PartyRound(s), PartyTotal(s));
