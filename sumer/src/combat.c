@@ -49,6 +49,7 @@ typedef struct {
     const char *name;
     FighterKind kind;
     int village, bow;
+    bool perch;
 } Fighter;
 
 // The bows other people shoot: a village guard's hunting bow, a gate guard's composite bow, a
@@ -71,7 +72,7 @@ static void Add(Vitals *v, Role role, Vector3 home, float face, int owner, int l
     if (!v->used) {
         *v = (Vitals){ .hp = ROLES[role].maxHp, .target = -1, .used = true };
     }
-    fighters[fighterCount++] = (Fighter){ v, role, home, face, owner, loot, arg, name, kind, kind == FK_VILLAGER ? VillageAt(home) : -1, 0 };
+    fighters[fighterCount++] = (Fighter){ v, role, home, face, owner, loot, arg, name, kind, kind == FK_VILLAGER ? VillageAt(home) : -1, 0, false };
 }
 
 static bool IsRaider(Role r)
@@ -93,7 +94,10 @@ void CollectFighters(void)
                          : v->kind == NPC_TRAVELLER ? "Traveller" : v->kind == NPC_VILLAGER ? "Villager" : "Townsperson";
         FighterKind kind = v->kind == NPC_GUARD ? FK_CITY_GUARD : v->kind == NPC_VILLAGER || warden ? FK_VILLAGER : v->kind == NPC_TRAVELLER ? FK_TRAVELLER : FK_TOWN;
         Add(&v->vit, r, VillagerLanePos(v), v->face, OWNER_VILLAGER + i, loot, 0, name, kind);
-        if (fighterCount > 0 && fighters[fighterCount - 1].v == &v->vit) fighters[fighterCount - 1].bow = v->bow;
+        if (fighterCount > 0 && fighters[fighterCount - 1].v == &v->vit) {
+            fighters[fighterCount - 1].bow = v->bow;
+            fighters[fighterCount - 1].perch = v->perch;
+        }
     }
     for (int i = 0; i < G.workerCount; i++) {
         Worker *w = &G.workers[i];
@@ -480,7 +484,7 @@ static int SpotPlayer(const Fighter *f, Vector3 pos)
         if (!PlayerAwake(s) || (f->kind == FK_CITY_GUARD && (G.peers[s].wanted <= 0 || !InReach(f, G.peers[s].pos)))) continue;
         Vector3 p = G.peers[s].pos;
         float d = XZDist(pos, p);
-        if (d < SightOf(f->role, s) && fabsf(pos.y - p.y) < 6.0f && d < bestD) {
+        if (d < SightOf(f->role, s) && fabsf(pos.y - p.y) < (f->perch ? 14.0f : 6.0f) && d < bestD) {
             best = s;
             bestD = d;
         }
@@ -593,6 +597,24 @@ void UpdateCombat(float dt)
         if (v->hostile > 0 && !reach) v->hostile -= dt;
         bool angry = v->hostile > 0 && reach;
 
+        // An archer posted up high only ever shoots, from where it stands, at whoever it is after.
+        if (f->perch) {
+            if (v->hostile > 0 && t >= 0 && !foe && (v->drawing || (dist <= BowRange(f, t) && fabsf(pos.y - G.peers[t].pos.y) < 14.0f))) {
+                if (!v->override) {
+                    v->override = true;
+                    v->at = pos;
+                    v->face = f->homeFace;
+                }
+                v->hostile -= dt;
+                Archery(f, t, dt);
+            } else {
+                v->drawing = false;
+                v->windup = 0;
+                v->override = false;
+                if (v->hostile > 0) v->hostile -= dt;
+            }
+            continue;
+        }
         // An archer shoots at whoever it is after: a city guard once they have run beyond its reach,
         // a village guard or a bowman from any distance beyond a few steps.
         bool aim = f->bow > 0 && v->hostile > 0 && t >= 0 && !foe && fabsf(pos.y - G.peers[t].pos.y) < 8.0f &&

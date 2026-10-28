@@ -192,6 +192,8 @@ see-through so the world shows behind them, cover the main keys:
 - **Bag**, **View** (first person or behind you) and **Menu** at the top; with a panel open the Menu button reads
   **Close** and puts it away.
 - **Your name** on the title screen: a tap on the field opens the browser's box, and with it the keyboard.
+- **Baskets**: a tap eats, drinks, chews a herb or refills the quiver; a finger held on a basket for two
+  seconds (a red bar fills along it) drops what is in it.
 
 On a phone the game never takes the pointer and never pauses by itself (so touching the screen, in Firefox too,
 cannot open the pause menu); Menu pauses. A touch also puts the game in full screen, hiding the browser's bars
@@ -342,7 +344,9 @@ fields outside. Gates: south (main road), east, west, north, plus the harbor wat
   way stays open until dawn. Behind it: the priests' halls inside the second stage, then the shrine of
   Nanna on top, where the priest blesses you once a day: full health and, for 24 hours, running and
   attacking 20% faster
-- City houses: some have a cloth awning over the door, jars and baskets by it, or a reed sun shade on the roof
+- City houses: some have a cloth awning over the door, jars and baskets by it, or a reed sun shade on the roof.
+  The roofs are for running across: many houses have mud-brick stairs up one side or a crate by a pile of
+  crates to climb from, and a room up on a roof has a crate beside it to get on top of it
 - Craft quarter (west, by the harbor): potters, kiln, smelter, smith
 - Caravans walk the southern trade road and set up stalls in the temple courtyard for a while; each
   travels with two spear-armed guards
@@ -385,6 +389,10 @@ fields outside. Gates: south (main road), east, west, north, plus the harbor wat
   pond with fish. Gazelles, onagers, boars and two wolf packs live there, and two barbarian war camps,
   north-west and south-west
 - Ladders lead up to the wall walk at seven points around the city
+- The towers either side of each gate are hollow: a door from the city at the foot (jars, sacks and a torch
+  inside), stairs round the inside walls, a middle floor level with the wall walk where a guard sits at a table
+  by the spears (its door opens onto the wall), and a roof with a brazier where an archer keeps watch. The
+  archers stay up there and shoot at anyone the guards are after
 - Guards: two at the temple gate and two inside each of the city's five gates (south, north, east, west and
   on the quays of the harbor's water gate), more on patrol in the east and west quarters and about the
   temple; clerics in the temple courtyard and on the ziggurat. A PvP game only takes away the three on duty

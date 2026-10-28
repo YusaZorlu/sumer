@@ -339,7 +339,7 @@ static void TestGateGuards(void)
             }
             guarded += n >= 2;
         }
-        for (int i = 0; i < G.villagerCount; i++) high += G.villagers[i].kind == NPC_GUARD && G.villagers[i].a.y >= 5.0f && !G.villagers[i].crouch;
+        for (int i = 0; i < G.villagerCount; i++) high += G.villagers[i].kind == NPC_GUARD && G.villagers[i].a.y >= 5.0f && !G.villagers[i].crouch && !G.villagers[i].perch;
         Check(guarded == 5, "%s: two guards stand at each of the city's 5 gates (%d gates guarded)", pass ? "PvP" : "alone", guarded);
         if (pass) Check(high == 0, "PvP: no guards left on the ziggurat's terrace (%d)", high);
     }
@@ -901,7 +901,7 @@ static void TestTempleLife(void)
     for (int i = 0; i < G.villagerCount; i++) {
         const Villager *v = &G.villagers[i];
         if (InTempleInterior(v->a)) inside++;
-        resting += v->kind == NPC_GUARD && v->crouch && v->a.y > 5.0f;
+        resting += v->kind == NPC_GUARD && v->crouch && v->a.y > 5.0f && InTempleInterior(v->a);
     }
     Check(inside >= 12 && resting == 2, "%d people inside the ziggurat, %d guards off duty in their room", inside, resting);
     CollectFighters();
@@ -912,7 +912,7 @@ static void TestTempleLife(void)
     memcpy(saved, G.villagers, sizeof(saved));
     RemoveZigguratGuards();
     int kept = 0;
-    for (int i = 0; i < G.villagerCount; i++) kept += G.villagers[i].kind == NPC_GUARD && G.villagers[i].crouch;
+    for (int i = 0; i < G.villagerCount; i++) kept += G.villagers[i].kind == NPC_GUARD && G.villagers[i].crouch && InTempleInterior(G.villagers[i].a);
     Check(before - G.villagerCount == 3 && kept == 2, "PvP takes the three guards on duty (%d gone) and leaves the two at supper", before - G.villagerCount);
     memcpy(G.villagers, saved, sizeof(saved));
     G.villagerCount = before;
@@ -1418,6 +1418,99 @@ static float GuestBlow(float gx, float gz, float hx, float hz, int weapon)
 }
 
 // Players fighting players, as the host sees it: the host's rules, the guards, parries, arrows.
+// Walks the player through the points (t, n) of tower i's frame in turn; returns how high they got.
+static float TowerWalk(int i, const float (*pts)[2], int n, float *endY)
+{
+    Vector3 c, t, nn;
+    GateTowerFrame(i, &c, &t, &nn);
+    float top = 0;
+    for (int k = 0; k < n; k++) {
+        Vector3 to = { c.x + t.x * pts[k][0] + nn.x * pts[k][1], 0, c.z + t.z * pts[k][0] + nn.z * pts[k][1] };
+        for (float s = 0; s < 6.0f && XZDist(G.player.pos, to) > 0.2f; s += 0.02f) {
+            PlayerStep((Vector3){ to.x - G.player.pos.x, 0, to.z - G.player.pos.z }, 0.02f);
+            top = fmaxf(top, G.player.pos.y);
+        }
+        if (getenv("TRACE")) {
+            Vector3 q = G.player.pos;
+            printf("  wp %d (%.2f,%.2f) -> at t %.2f n %.2f y %.2f\n", k, pts[k][0], pts[k][1], (q.x - c.x) * t.x + (q.z - c.z) * t.z, (q.x - c.x) * nn.x + (q.z - c.z) * nn.z, q.y);
+        }
+    }
+    for (float s = 0; s < 1.0f; s += 0.02f) PlayerStep((Vector3){ 0 }, 0.02f);
+    *endY = G.player.pos.y;
+    return top;
+}
+
+// The towers by the gates: in at the door, up the stairs round the walls to the roof; or off at the middle
+// floor and out of its door onto the wall walk. On the roof an archer keeps watch, and shoots at someone
+// the guards are after.
+static void TestGateTowers(void)
+{
+    Check(GateTowerCount() == 10, "a tower either side of each of the five gates (%d)", GateTowerCount());
+    for (int i = 0; i < GateTowerCount(); i++) {
+        Vector3 c, t, n;
+        GateTowerFrame(i, &c, &t, &n);
+        float pts[40][2];
+        int np = 0, mid = 0;
+        pts[np][0] = 0, pts[np++][1] = 6.0f;
+        pts[np][0] = 0, pts[np++][1] = 2.4f;
+        for (int k = 0; k < 25; k++) {
+            Vector3 p = GateTowerStair(i, k);
+            pts[np][0] = (p.x - c.x) * t.x + (p.z - c.z) * t.z;
+            pts[np++][1] = (p.x - c.x) * n.x + (p.z - c.z) * n.z;
+            if (k == 15) mid = np;
+        }
+        pts[np][0] = 0.5f, pts[np++][1] = -0.5f;
+        PlaceAt(c.x + n.x * 6.0f, c.z + n.z * 6.0f, 0);
+        float endY, top = TowerWalk(i, pts, np, &endY);
+        Check(endY > 9.9f && endY < 10.2f, "tower %d: in at the door and up the stairs to the roof (%.1f m up, at most %.1f)", i, endY, top);
+
+        // Up to the middle floor and out of its door onto the wall walk.
+        float walk[40][2];
+        int nw = 0;
+        for (int k = 0; k < mid; k++) walk[nw][0] = pts[k][0], walk[nw++][1] = pts[k][1];
+        walk[nw][0] = 0.0f, walk[nw++][1] = -0.6f;
+        walk[nw][0] = 2.5f, walk[nw++][1] = 0;
+        walk[nw][0] = 4.4f, walk[nw++][1] = 0;
+        walk[nw][0] = 5.4f, walk[nw++][1] = 0;
+        PlaceAt(c.x + n.x * 6.0f, c.z + n.z * 6.0f, 0);
+        TowerWalk(i, walk, nw, &endY);
+        Vector3 p = G.player.pos;
+        float along = (p.x - c.x) * t.x + (p.z - c.z) * t.z;
+        // (Out there the wall walk can lead straight onto one of the wall's own towers, half a metre higher.)
+        Check(endY > WALL_TOP - 0.15f && endY < WALL_TOP + 0.6f && along > 4.0f, "tower %d: from the middle floor out of its door onto the wall walk (%.1f m up, %.1f m out)",
+              i, endY, along);
+    }
+
+    // The archer on the first tower's roof shoots at a wanted player out in front.
+    int archer = -1;
+    for (int i = 0; i < G.villagerCount && archer < 0; i++)
+        if (G.villagers[i].perch) archer = i;
+    Check(archer >= 0, "an archer posted on a tower's roof");
+    if (archer < 0) return;
+    Vector3 c, t, n;
+    GateTowerFrame(0, &c, &t, &n);
+    RespawnPeople();
+    PlaceAt(c.x - n.x * 18.0f, c.z - n.z * 18.0f, 0);
+    G.peers[G.self].wanted = 100;
+    G.health = HEALTH_MAX;
+    int shots = 0;
+    for (float s = 0; s < 8.0f; s += 0.05f) {
+        SyncSelf();
+        CollectBodies();
+        CollectFighters();
+        UpdateCombat(0.05f);
+        for (int k = 0; k < MAX_ARROWS; k++) shots += G.arrows[k].active && G.arrows[k].owner < 0 && G.arrows[k].life > 0 ? 0 : 0;
+        UpdateArrows(0.05f);
+    }
+    Vector3 ap = VillagerPos(&G.villagers[archer]);
+    Check(G.health < HEALTH_MAX && ap.y > 9.9f, "the archer up top shoots at the wanted player below (health %.0f) and stays up there (%.1f m)", G.health, ap.y);
+    (void)shots;
+    G.peers[G.self].wanted = 0;
+    G.health = HEALTH_MAX;
+    RespawnPeople();
+    Check(HouseClimbCount() > 40, "stairs or a pile of crates up onto %d houses' roofs", HouseClimbCount());
+}
+
 // Cows and sheep are solid: walking into one leaves the player outside it.
 static void TestLivestock(void)
 {
@@ -2273,13 +2366,13 @@ static void TestSixPlayers(void)
     int savedCount = G.villagerCount, up = 0, guards = 0;
     memcpy(saved, G.villagers, sizeof(saved));
     for (int i = 0; i < G.villagerCount; i++) {
-        up += G.villagers[i].kind == NPC_GUARD && G.villagers[i].a.y >= 5.0f && !G.villagers[i].crouch;
+        up += G.villagers[i].kind == NPC_GUARD && G.villagers[i].a.y >= 5.0f && !G.villagers[i].crouch && !G.villagers[i].perch;
         guards += G.villagers[i].kind == NPC_GUARD;
     }
     RemoveZigguratGuards();
     int upAfter = 0, guardsAfter = 0;
     for (int i = 0; i < G.villagerCount; i++) {
-        upAfter += G.villagers[i].kind == NPC_GUARD && G.villagers[i].a.y >= 5.0f && !G.villagers[i].crouch;
+        upAfter += G.villagers[i].kind == NPC_GUARD && G.villagers[i].a.y >= 5.0f && !G.villagers[i].crouch && !G.villagers[i].perch;
         guardsAfter += G.villagers[i].kind == NPC_GUARD;
     }
     Check(up >= 3 && upAfter == 0 && guardsAfter == guards - up && G.villagerCount == savedCount - up,
@@ -2347,6 +2440,7 @@ static void RunTests(void)
     TestHostWorld();
     TestPvp();
     TestLivestock();
+    TestGateTowers();
     TestPlayerMarks();
     TestHitLights();
     TestSixPlayers();

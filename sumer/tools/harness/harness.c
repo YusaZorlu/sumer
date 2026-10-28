@@ -492,7 +492,14 @@ int main(int argc, char **argv)
     rlSetClipPlanes(0.1, 1200.0);
     GameInit();
     SetPanel(PANEL_NONE);
-    if (strcmp(argv[1], "stats") == 0) {
+    if (strcmp(argv[1], "towers") == 0) {
+        // The gate towers: their middles and axes (t along the wall away from the gate, n into the city).
+        for (int i = 0; i < GateTowerCount(); i++) {
+            Vector3 c, t, n;
+            GateTowerFrame(i, &c, &t, &n);
+            printf("tower %d at (%.1f, %.1f)  t (%.0f, %.0f)  n (%.0f, %.0f)\n", i, c.x, c.z, t.x, t.z, n.x, n.z);
+        }
+    } else if (strcmp(argv[1], "stats") == 0) {
         Stats();
         TimeUpdate(argc > 2 ? atoi(argv[2]) : 300);
     } else if (strcmp(argv[1], "streets") == 0 && argc > 2) {

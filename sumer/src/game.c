@@ -507,8 +507,18 @@ static bool HandleWindow(void)
 static void HandleMenus(bool paused)
 {
     if (G.escQuiet > 0) G.escQuiet -= GetFrameTime();
-    if ((KeyPressed(KEY_ESCAPE) && !paused && G.escQuiet <= 0) || TouchPressed(TB_MENU)) {
+    bool esc = KeyPressed(KEY_ESCAPE) && !paused && G.escQuiet <= 0;
+    if (esc || TouchPressed(TB_MENU)) {
         SetPanel(G.panel == PANEL_NONE ? PANEL_PAUSE : PANEL_NONE);
+        // Closed with Esc: a browser hands the mouse over only on a click, and a grab made now is dropped
+        // again by that same Esc, which would open the menu again. So the mouse waits for the next click
+        // (WantPointer keeps the page ready to take it then), and that click is not a blow.
+        if (esc && G.panel == PANEL_NONE && OnWeb()) {
+            LockMouse(false);
+            WantPointer(true);
+            G.cursorLocked = false;
+            G.escQuiet = 0.4f;
+        }
     } else if (KeyPressed(KEY_H) && (G.panel == PANEL_NONE || G.panel == PANEL_PAUSE || G.panel == PANEL_HELP)) {
         SetPanel(G.panel == PANEL_HELP ? PANEL_NONE : PANEL_HELP);
     } else if (KeyPressed(KEY_T) && Online() && G.panel == PANEL_NONE && !G.sleeping) {

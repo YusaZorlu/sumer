@@ -365,6 +365,14 @@ void UpdatePlayer(float dt, bool input)
     MoveVertical(p, dt);
 }
 
+// One step of walking in 'dir' (the harness walks the player about with it).
+void PlayerStep(Vector3 dir, float dt)
+{
+    Player *p = &G.player;
+    if (Vector3Length(dir) > 0.01f) MoveHorizontal(p, Vector3Normalize(dir), WALK_SPEED, dt);
+    MoveVertical(p, dt);
+}
+
 // Rides behind the last arrow, holds briefly where it lands, then blends back.
 static void ArrowCamera(float dt)
 {
