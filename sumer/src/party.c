@@ -400,7 +400,11 @@ static void StartGame(int k)
         G.peers[s].flags &= ~PF_OUT;
     }
     ApplyRules();
-    if (g == PG_DEFENCE) StormCity();
+    if (g == PG_DEFENCE) {
+        int players = 0;
+        for (int s = 0; s < MAX_PLAYERS; s++) players += Joined(s);
+        StormCity(players);
+    }
     if (g == PG_HIDE) PickSeeker();
     for (int s = 0; s < MAX_PLAYERS; s++)
         if (Joined(s)) Place(s, StartSpot(s, g), 1);

@@ -121,6 +121,7 @@ void CollectFighters(void)
     }
     // A battle royale has no raiders or barbarians.
     for (int i = 0; i < (RaidersAway() ? 0 : MAX_RAIDERS); i++) {
+        if (RaiderBenched(i)) continue;   // city defence with few players: these stay at their camp
         Raider *r = &G.raiders[i];
         bool bandit = RaiderBandit(i), west = !bandit && r->camp >= EAST_CAMPS, bow = RaiderBowman(i);
         Add(&r->vit, bandit ? ROLE_BANDIT : west ? ROLE_BARBARIAN : ROLE_RAIDER, r->pos, r->face, OWNER_RAIDER + i,
@@ -171,11 +172,11 @@ static Vector3 FPos(const Fighter *f)
 static bool BlockedAt(float x, float z, float y)
 {
     int n;
-    const int *near = BoxesNear(x - 0.3f, z - 0.3f, x + 0.3f, z + 0.3f, &n);
+    const int *near = BoxesNear(x - 0.25f, z - 0.25f, x + 0.25f, z + 0.25f, &n);
     for (int k = 0; k < n; k++) {
         const Box *b = &G.boxes[near[k]];
         if (!IsBlocking(b, y)) continue;
-        if (fabsf(x - b->pos.x) <= b->size.x / 2 + 0.3f && fabsf(z - b->pos.z) <= b->size.z / 2 + 0.3f) return true;
+        if (fabsf(x - b->pos.x) <= b->size.x / 2 + 0.25f && fabsf(z - b->pos.z) <= b->size.z / 2 + 0.25f) return true;
     }
     return false;
 }
@@ -280,7 +281,8 @@ static bool StepToward(Vitals *v, int owner, Vector3 goal, float speed, float dt
         return false;
     }
     float dx = goal.x - v->at.x, dz = goal.z - v->at.z, d = sqrtf(dx * dx + dz * dz), left = d;
-    if (d <= stop + 0.05f) return true;
+    // Under someone up on a roof or a floor above is not there yet: the way up is looked for.
+    if (d <= stop + 0.05f && goal.y - v->at.y < 1.5f) return true;
     Vector3 way = PathWay(v, goal, dt);
     if (way.x == goal.x && way.z == goal.z) way = AroundWater(v->at, goal);
     if (way.x != goal.x || way.z != goal.z) {
@@ -303,15 +305,18 @@ static bool StepToward(Vitals *v, int owner, Vector3 goal, float speed, float dt
     for (int k = 0; k < (left > 3.0f ? 9 : 5); k++) {
         float a = base + tries[k] * (float)v->detour;   // the side it keeps to first, then the other
         float nx = v->at.x + sinf(a) * step, nz = v->at.z + cosf(a) * step;
-        Vector3 next = { nx, v->at.y, nz };
-        if (BlockedAt(nx, nz, v->at.y)) {
+        // Up (a step) or down first, then what stands about at that height: so the floor beside the
+        // last stair is no wall to someone on the step below it.
+        float ny = GroundHeight(nx, nz, v->at.y);
+        Vector3 next = { nx, ny, nz };
+        if (BlockedAt(nx, nz, ny)) {
             if (k == 0 && JumpWater(v, a)) return false;
             continue;
         }
         if (BodyAhead(v->at, next, 0.35f, owner)) continue;
         v->at.x = nx;
         v->at.z = nz;
-        v->at.y = GroundHeight(nx, nz, v->at.y + 0.5f);
+        v->at.y = ny;
         v->face = a;
         return false;
     }
@@ -735,10 +740,14 @@ void DamagePerson(int i, float dmg)
         Vector3 to = Vector3Add(v->at, Vector3Scale(away, 0.35f / gap));
         if (!SolidAt(to.x, to.z, 0.3f) && !InWater(to.x, to.z)) v->at = to;
     }
-    v->hostile = fmaxf(v->hostile, 40.0f);
-    v->target = G.actor;
-    if (IsRaider(f->role)) RallyRaiders(f);
-    else if (unaware) RaiseAlarm(f);
+    // In a party the townsfolk and villagers only take it: arrows fly about in its games, and the people
+    // are no one's foe there. Raiders and barbarians fight back as ever.
+    if (!Party() || IsRaider(f->role)) {
+        v->hostile = fmaxf(v->hostile, 40.0f);
+        v->target = G.actor;
+        if (IsRaider(f->role)) RallyRaiders(f);
+        else if (unaware) RaiseAlarm(f);
+    }
     if (v->hp <= 0) {
         v->hp = 0;
         v->dead = true;

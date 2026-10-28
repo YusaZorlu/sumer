@@ -716,7 +716,7 @@ static void DrawHelpPanel(void)
         "10 for every player in a battle royale round you win, and 10, 5 or 2 for every player in a party you finish first, "
         "second or third. Level 1 takes 100 to reach level 2, level 2 another 200, up to level 100. Your level, K/D and "
         "things are kept with your account.",
-        "Battle royale and Sumer Party begin once everyone in (two or more) is ready: Enter, or Ready in the Esc menu. "
+        "Battle royale and Sumer Party begin once everyone in (two or more) is ready: Enter, the Ready button at the top, or Ready in the Esc menu. "
         "A party is four of five minigames, four minutes each (vote one out in the Esc menu): floor is lava, date stashing, "
         "one-shot archers, city defence, hide and seek. Each game's top three gain +10, +6, +3; the party's top three gain experience.",
     };
@@ -973,6 +973,29 @@ static void DrawMinimap(int ox, int oy, int size)
     EndScissorMode();
     DrawRectangleLines(ox, oy, size, size, Fade(BLACK, 0.6f));
     Text(TextFormat(L("M  x%.1f"), zoom), (float)ox + 4, (float)(oy + size) - 16, 12, Fade(BLACK, 0.7f));
+}
+
+// Waiting for a battle royale round or a party to begin, while the mouse is free (as one joins, before the
+// first click into the game, and always on a phone): Ready, and in a party the vote, as buttons under the
+// line at the top. A click on them does not take the mouse (NoGrab).
+static void DrawStartButtons(float sw)
+{
+    static bool shown;
+    if (!LobbyWaiting() || G.panel != PANEL_NONE || (OnWeb() && PointerCaptured())) {
+        if (shown) NoGrab(NULL, 0);
+        shown = false;
+        return;
+    }
+    const float w = 190, h = 32, gap = 12, y = 42;
+    int n = Party() ? 2 : 1;
+    float x = sw / 2 - (w * (float)n + gap * (float)(n - 1)) / 2;
+    Rectangle b[2] = { { x, y, w, h }, { x + w + gap, y, w, h } };
+    NoGrab(b, n);
+    shown = true;
+    bool over = CheckCollisionPointRec(UiMouse(), b[0]) || (n > 1 && CheckCollisionPointRec(UiMouse(), b[1]));
+    if (Button(b[0], MatchReady() ? "Ready: yes (Enter)" : "Ready: no (Enter)", true, 0)) ToggleReady();
+    if (n > 1 && Button(b[1], "Vote a game out", true, 0)) SetPanel(PANEL_PARTY);
+    if (over) G.ignoreClick = true;
 }
 
 // The other players' names over their heads, in their colors, with their health when hurt.
@@ -1260,6 +1283,7 @@ void DrawUI(void)
 
     DrawRoyaleHUD((float)sw, (float)sh);
     DrawPartyHUD((float)sw, (float)sh);
+    DrawStartButtons((float)sw);
     if (G.msgT > 0) DrawMessage(sw);
 
     DrawChat(sh);

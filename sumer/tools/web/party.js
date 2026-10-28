@@ -53,7 +53,11 @@ async function voteOutHide(page) {
   let a = await waitFor(ann, 'Ann joining', i => i.lobby === 0 && i.role === 2);
   let h = await hostInfo(ROOM);
   check(a.party.on === 1 && a.party.phase === PP_WAIT && h.guards === 0, `a party: waiting, no guards (${h.guards})`);
-  await key(ann, 'Enter');
+  // On joining the mouse is free, and Ready and the vote are buttons under the line at the top.
+  await ann.screenshot({ path: __dirname + '/shots/party-buttons.png' });
+  await ann.mouse.click(284 + 95, 42 + 16);
+  a = await waitFor(ann, 'Ann ready by the button', i => i.party.ready === 1, 20000).catch(e => null) || await info(ann);
+  check(a.party.ready === 1 && !a.captured, `the Ready button makes Ann ready, and the click does not take the mouse (${a.party.ready}, ${a.captured})`);
   await sleep(3000);
   h = await hostInfo(ROOM);
   check(h.party.phase === PP_WAIT, 'alone and ready: no party for one');

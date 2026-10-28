@@ -27,7 +27,7 @@ void AddBox(float x, float y0, float z, float w, float h, float d, Color c, bool
             if (G.boxCount >= MAX_BOXES) return;
             float sw = w / (float)nx, sd = d / (float)nz;
             float cx = x - w / 2 + sw * ((float)i + 0.5f), cz = z - d / 2 + sd * ((float)j + 0.5f);
-            G.boxes[G.boxCount++] = (Box){ { cx, y0 + h / 2, cz }, { sw, h, sd }, c, solid, false, false, 0.0f, SHAPE_BOX, building };
+            G.boxes[G.boxCount++] = (Box){ { cx, y0 + h / 2, cz }, { sw, h, sd }, c, solid, false, false, 0.0f, SHAPE_BOX, building, false };
         }
     }
 }
@@ -51,14 +51,14 @@ void AddShape(float x, float y0, float z, float w, float h, float d, Color c, bo
 void AddGlow(float x, float y0, float z, float w, float h, float d, Color c)
 {
     if (G.boxCount >= MAX_BOXES) return;
-    G.boxes[G.boxCount++] = (Box){ { x, y0 + h / 2, z }, { w, h, d }, c, false, false, true, 0.0f, SHAPE_BOX, false };
+    G.boxes[G.boxCount++] = (Box){ { x, y0 + h / 2, z }, { w, h, d }, c, false, false, true, 0.0f, SHAPE_BOX, false, false };
 }
 
 static void WaterBox(float cx, float cz, float w, float d, int shape)
 {
     if (G.boxCount >= MAX_BOXES) return;
     if (waterCount < MAX_WATER) water[waterCount++] = G.boxCount;
-    G.boxes[G.boxCount++] = (Box){ { cx, WATER_LEVEL - 0.33f, cz }, { w, 0.66f, d }, COL_WATER, true, true, false, 0.0f, (unsigned char)shape, false };
+    G.boxes[G.boxCount++] = (Box){ { cx, WATER_LEVEL - 0.33f, cz }, { w, 0.66f, d }, COL_WATER, true, true, false, 0.0f, (unsigned char)shape, false, false };
 }
 
 // Long water is cut into sections so each one is culled by its own distance.
@@ -306,7 +306,7 @@ bool SolidAt(float x, float z, float radius)
 
     for (int k = 0; k < n; k++) {
         const Box *b = &G.boxes[near[k]];
-        if (b->solid && !b->water && b->pos.y + b->size.y / 2 > ground + 0.6f && Contains(b, x, z, radius)) return true;
+        if (b->solid && !b->water && !b->over && b->pos.y + b->size.y / 2 > ground + 0.6f && Contains(b, x, z, radius)) return true;
     }
     return false;
 }
