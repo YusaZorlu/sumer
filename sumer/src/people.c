@@ -87,6 +87,7 @@ Vector2 PushOutBodies(Vector2 p, float r, int self)
         p = PushOutHerd(p, r, G.cows, MAX_COWS, cow, 3, 0.45f);
         p = PushOutHerd(p, r, G.sheep, MAX_SHEEP, sheep, 2, 0.35f);
         p = PushOutHerd(p, r, G.flock, MAX_FLOCK, sheep, 2, 0.35f);
+        p = PushOutPets(p, r);
     }
     float y = G.player.pos.y;
 

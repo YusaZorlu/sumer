@@ -324,6 +324,12 @@ static bool StepToward(Vitals *v, int owner, Vector3 goal, float speed, float dt
     return left < stop + 1.5f;
 }
 
+// The same walk for anyone else on foot (cats and dogs going after a friend, or home).
+bool WalkToward(Vitals *v, Vector3 goal, float speed, float dt, float stop)
+{
+    return StepToward(v, -1, goal, speed, dt, stop);
+}
+
 #ifdef SUMER_TEST
 bool StepTowardForTest(Vitals *v, Vector3 goal, float speed, float dt)
 {

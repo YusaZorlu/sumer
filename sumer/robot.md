@@ -230,6 +230,24 @@ in `src/game.h`) holds the whole world.
   Two floors (frame `ALE`, rot 3: local -x is the door side); the streets pass both long sides, so it grows
   along the street, not deeper. `InAlehouse` covers both floors: `HurtSlotFrom` drops any harm whose source
   is outside while the player is inside (blows, arrows, bites all pass a source there).
+- **Cats and dogs** (`pets.c`): fifteen at fixed homes (`HOMES`; a home in a wall moves to the nearest free
+  ground). Only when `PetsOn()` (not a Royale or Party). They wander on every machine on their own with their own
+  random numbers (the world's stay untouched), out of sight they keep still, and they step aside for people
+  (`PeopleAt`). Going home from too far or after a friend they walk as people do (`WalkToward` in `combat.c`, the
+  path search). Fed through `RQ_PET` (`PetServe` on the host, `PetReply` takes the food); who is followed is in the
+  snapshot (`WritePets`; a change there needs a `NET_VERSION` bump). Solid to the player via `PushOutPets` in
+  `people.c`; not in the fighter or animal lists, so nothing hits them. `TestPets` (harness) and `pets.js` check them;
+  test hook cmd 26 stands beside pet a, the info has `pets` ([x, y, z, dog, friend]).
+- **The mouse in a browser** (`SetPanel` in `ui.c`, `KeepPointer` and the page's mousemove in `web.c`,
+  `HandleWindow`/`HandleMenus` in `game.c`): a panel opened while the page has the mouse keeps it (not the pause
+  menu); the page moves `Module.sumerPointerX/Y` by the mouse's movement and `DrawGameCursor` draws the arrow there.
+  Closing with Tab/E/a button goes straight back to play. A browser always takes the mouse back on Esc: if that
+  happens with such a panel open, `HandleWindow` closes it as Esc would (Firefox may keep that Esc to itself), and
+  play waits for a click. E closes trade, storage, coop and board windows (`closedWithE` keeps the same E from
+  opening them again). `mouse.js` checks it; headless Chromium reports no movement of a captured mouse, so the test
+  sends the movement events itself.
+- **The mine** (`BuildMine` in `jobs.c`): ancient copper working (ridge, adit, shaft, ore dressing, furnaces,
+  slag). The six `RES_ORE` veins and the miners' spots are as before; keep new pieces clear of them.
 - **Alehouse games** (`boards.c`; tables at `GAME_TABLES` in `village.c`, `BoardSpot`/`BoardSeat`): the host
   keeps `Board boards[BOARDS]` and throws the dice; guests ask with `RQ_BOARD` (`BoardRequest` on the host,
   `BoardReply` on the guest), and `WriteBoards`/`ReadBoards` carry them in the snapshot (only when `BoardsOn()`,

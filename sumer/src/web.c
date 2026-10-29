@@ -143,6 +143,20 @@ static int presses, taps[16], tapCount;
 static Vector2 look, pointer = { -1, -1 };
 #endif
 
+// A panel opened over the game keeps the captured mouse: the page stops taking it on a click (a click there
+// is for the panel) and the game's own cursor starts in the middle of the screen.
+void KeepPointer(void)
+{
+#if defined(__EMSCRIPTEN__)
+    EM_ASM({
+        Module.sumerWantLock = 0;
+        Module.sumerPointerX = Module.canvas.width / 2;
+        Module.sumerPointerY = Module.canvas.height / 2;
+    });
+    pointer = (Vector2){ (float)GetScreenWidth() / 2, (float)GetScreenHeight() / 2 };
+#endif
+}
+
 // The page counts every mouse press on the game (for MousePressed) and adds up every movement of
 // the captured mouse (for MouseLook). A single movement of hundreds of pixels is a known browser
 // glitch when the mouse is captured, and is left out.
@@ -160,6 +174,7 @@ void WatchClicks(void)
         }, true);
         // Where the mouse or a finger last was, in the canvas's pixels. A tap counts as a left click.
         var at = function (e) {
+            if (e.pointerType === 'mouse' && document.pointerLockElement === Module.canvas) return;   // the game's cursor
             var r = Module.canvas.getBoundingClientRect();
             if (r.width <= 0 || r.height <= 0) return;
             Module.sumerPointerX = (e.clientX - r.left) * Module.canvas.width / r.width;
@@ -175,6 +190,12 @@ void WatchClicks(void)
             if (document.pointerLockElement !== Module.canvas || Math.abs(x) > 300 || Math.abs(y) > 300) return;
             Module.sumerLookX += x;
             Module.sumerLookY += y;
+            // The captured mouse moves the game's own cursor (for a panel open over the game).
+            var r = Module.canvas.getBoundingClientRect();
+            if (r.width <= 0 || r.height <= 0) return;
+            var k = Module.canvas.width / r.width;
+            Module.sumerPointerX = Math.max(0, Math.min(Module.canvas.width - 1, Module.sumerPointerX + x * k));
+            Module.sumerPointerY = Math.max(0, Math.min(Module.canvas.height - 1, Module.sumerPointerY + y * k));
         }, true);
     });
 #endif

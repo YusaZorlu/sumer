@@ -121,29 +121,121 @@ static void BuildWaterfront(void)
     KeepOut(-135, FERRY_Z - 5, -122, FERRY_Z + 5);
 }
 
+// Something set on the ground at (x, z), standing 'up' above it.
+static void OnGround(float x, float z, float up, float w, float h, float d, Color c, bool solid, int shape)
+{
+    AddShape(x, TerrainHeight(x, z) + up, z, w, h, d, c, solid, shape);
+}
+
+// A copper mine as they were worked in the third millennium BC (Timna and Feinan, and Magan, today's Oman,
+// whence Sumer had its copper): a rocky ridge with green malachite seams, an adit timbered at its mouth, a
+// shaft with a notched log for a ladder and a frame to haul baskets up; the ore broken with stone hammers on
+// anvil stones and sorted by hand under a reed shade, rich green from grey waste; bowl furnaces of clay blown
+// through clay pipes by pot bellows, charcoal, the black slag thrown on a heap, and the copper cast in buns.
 static void BuildMine(void)
 {
     const float E = EAST;
     float y = TerrainHeight(149 + E, -60);
     static const float veins[][2] = { { 144, -53 }, { 141, -62 }, { 145, -70 }, { 152, -52 }, { 153, -69 }, { 138, -57 } };
+    const Color rock2 = { 134, 124, 110, 255 }, rock3 = { 116, 110, 100, 255 }, malachite = { 52, 150, 108, 255 };
+    const Color waste = { 138, 132, 120, 255 }, slag = { 46, 42, 46, 255 }, coal = { 34, 30, 28, 255 }, copper = { 196, 114, 66, 255 };
+    const Color reed = { 176, 156, 96, 255 }, leather = { 122, 86, 56, 255 }, furnace = { 150, 92, 62, 255 };
 
+    // The ridge: the face with the adit, a higher crest behind, a spur either side.
     AddBoxOn(151.5f + E, -60, 5.0f, 4.5f, 6.0f, COL_ROCK, true);
+    OnGround(155.0f + E, -60, -1.0f, 7.0f, 8.0f, 12.5f, rock3, true, SHAPE_BLOB);
+    OnGround(152.6f + E, -55.0f, -0.6f, 3.6f, 4.0f, 3.4f, rock2, true, SHAPE_BLOB);
+    OnGround(152.6f + E, -65.0f, -0.6f, 3.6f, 4.4f, 3.4f, rock2, true, SHAPE_BLOB);
+    OnGround(156.0f + E, -57.0f, 5.4f, 3.0f, 1.8f, 2.8f, rock2, false, SHAPE_BLOB);
+    OnGround(155.0f + E, -63.5f, 5.6f, 2.4f, 1.4f, 2.2f, COL_ROCK, false, SHAPE_BLOB);
+    // Malachite seams across the faces, where the miners follow them in.
+    AddBox(148.97f + E, y + 1.2f, -62.4f, 0.05f, 0.22f, 0.9f, malachite, false);
+    AddBox(148.97f + E, y + 3.0f, -58.0f, 0.05f, 0.18f, 1.4f, malachite, false);
+    AddBox(148.97f + E, y + 0.5f, -57.6f, 0.05f, 0.3f, 0.5f, COL_ORE, false);
+    AddBox(151.5f + E, y + 2.0f, -56.97f, 1.8f, 0.2f, 0.05f, malachite, false);
+    AddBox(151.0f + E, y + 1.0f, -63.03f, 1.2f, 0.18f, 0.05f, COL_ORE, false);
+
+    // The adit: a dark mouth in the face, two props and a cap piece, a rough sill, baskets of ore at hand.
     AddBox(148.95f + E, y - 0.1f, -60, 0.1f, 2.3f, 1.8f, COL_DOORWAY, false);
     AddBox(148.7f + E, y - 0.2f, -61.1f, 0.25f, 2.7f, 0.25f, COL_WOOD, true);
     AddBox(148.7f + E, y - 0.2f, -58.9f, 0.25f, 2.7f, 0.25f, COL_WOOD, true);
     AddBox(148.7f + E, y + 2.3f, -60, 0.3f, 0.3f, 2.6f, COL_WOOD, false);
-    AddBoxOn(142 + E, -67, 3.0f, 1.0f, 2.5f, (Color){ 110, 104, 96, 255 }, false);
-    AddBoxOn(146.5f + E, -60, 0.6f, 0.5f, 0.6f, COL_STRAW, false);
+    AddBoxOn(148.3f + E, -60, 0.6f, 0.12f, 1.8f, rock3, false);
+    for (int k = 0; k < 2; k++) {
+        float bz = k ? -61.8f : -58.3f;
+        OnGround(147.6f + E, bz, 0, 0.5f, 0.38f, 0.5f, reed, false, SHAPE_CYL);
+        OnGround(147.6f + E, bz, 0.34f, 0.42f, 0.16f, 0.42f, malachite, false, SHAPE_BLOB);
+    }
 
+    // The miners at the outcrops by the face, as before.
     for (int i = 0; i < 2; i++) {
         float z = i ? -56.5f : -63.5f;
         AddBoxOn(147.5f + E, z, 1.4f, 0.9f, 1.2f, COL_ROCK, true);
         AddBox(146.79f + E, TerrainHeight(147.5f + E, z) + 0.4f, z, 0.04f, 0.15f, 0.6f, COL_ORE, false);
         AddWorker(JOB_MINE, 136 + E, -45.2f, 146.0f + E, z, 147.5f + E, z);
     }
+
+    // The shaft: a collar of stones round the dark hole, a notched log standing in it, the hauling frame
+    // with its rope and a basket.
+    const float sx = 140.5f + E, sz = -65.0f, sy = TerrainHeight(sx, sz);
+    AddBox(sx, sy - 0.1f, sz + 0.7f, 1.8f, 0.65f, 0.4f, COL_STONE, true);
+    AddBox(sx, sy - 0.1f, sz - 0.7f, 1.8f, 0.65f, 0.4f, COL_STONE, true);
+    AddBox(sx - 0.7f, sy - 0.1f, sz, 0.4f, 0.65f, 1.0f, rock2, true);
+    AddBox(sx + 0.7f, sy - 0.1f, sz, 0.4f, 0.65f, 1.0f, rock2, true);
+    AddBox(sx, sy - 0.1f, sz, 1.0f, 0.58f, 1.0f, (Color){ 20, 16, 14, 255 }, true);
+    AddShape(sx - 0.2f, sy + 0.4f, sz - 0.15f, 0.2f, 1.7f, 0.2f, COL_WOOD, false, SHAPE_CYL);
+    for (int k = 0; k < 4; k++) AddBox(sx - 0.1f, sy + 0.6f + 0.35f * (float)k, sz - 0.15f, 0.04f, 0.06f, 0.16f, COL_DOORWAY, false);
+    for (int e = -1; e <= 1; e += 2) AddBox(sx + 1.15f * (float)e, sy - 0.1f, sz, 0.14f, 2.6f, 0.14f, COL_WOOD, true);
+    AddBox(sx, sy + 2.4f, sz, 2.5f, 0.14f, 0.14f, COL_WOOD, false);
+    AddBox(sx + 0.25f, sy + 0.9f, sz, 0.03f, 1.5f, 0.03f, COL_STRAW, false);
+    AddShape(sx + 0.25f, sy + 0.62f, sz, 0.36f, 0.3f, 0.36f, reed, false, SHAPE_CYL);
+    // What came up and was no use: the spoil heap.
+    OnGround(141.5f + E, -70.5f, -0.3f, 4.2f, 1.5f, 3.0f, waste, false, SHAPE_BLOB);
+    OnGround(139.8f + E, -69.0f, -0.2f, 1.6f, 0.8f, 1.4f, rock3, false, SHAPE_BLOB);
+
+    // Dressing the ore under a reed shade: anvil stones with their hammerstones, the rich green ore kept,
+    // the grey thrown aside; one worker breaking it.
+    const float dx = 142.0f + E, dz = -57.5f;
+    for (int k = 0; k < 4; k++) {
+        float px = dx + ((k & 1) ? 1.8f : -1.8f), pz = dz + ((k & 2) ? 1.5f : -1.5f);
+        AddBox(px, TerrainHeight(px, pz) - 0.1f, pz, 0.14f, 2.45f, 0.14f, COL_WOOD, true);
+    }
+    AddBox(dx, TerrainHeight(dx, dz) + 2.3f, dz, 4.2f, 0.08f, 3.5f, reed, false);
+    AddBoxOn(dx - 0.8f, dz - 0.3f, 0.8f, 0.35f, 0.6f, COL_STONE, true);
+    AddBoxOn(dx + 0.9f, dz + 0.5f, 0.7f, 0.32f, 0.6f, rock2, true);
+    OnGround(dx - 0.65f, dz - 0.25f, 0.35f, 0.16f, 0.12f, 0.2f, rock3, false, SHAPE_BLOB);
+    OnGround(dx + 1.0f, dz + 0.45f, 0.32f, 0.16f, 0.12f, 0.2f, COL_STONE, false, SHAPE_BLOB);
+    OnGround(dx - 0.6f, dz + 1.0f, -0.05f, 0.7f, 0.34f, 0.6f, malachite, false, SHAPE_BLOB);
+    OnGround(dx + 1.1f, dz - 0.9f, -0.05f, 0.8f, 0.3f, 0.7f, waste, false, SHAPE_BLOB);
+    OnGround(dx + 0.1f, dz + 1.15f, 0, 0.45f, 0.36f, 0.45f, reed, false, SHAPE_CYL);
+    AddWorker(JOB_MINE, 136 + E, -45.2f, dx - 0.8f, dz - 1.4f, dx - 0.8f, dz - 0.3f);
+
+    // Smelting: two bowl furnaces of clay (one alight), clay pipes from the pot bellows, charcoal and wood
+    // for it, the slag heap, and the copper cast in buns cooling on a stone.
+    const float fx = 136.5f + E, fz = -63.8f;
+    for (int k = 0; k < 2; k++) {
+        float z = fz - 2.2f * (float)k, g = TerrainHeight(fx, z);
+        AddShape(fx, g - 0.05f, z, 0.85f, 0.75f, 0.85f, furnace, true, SHAPE_CYL);
+        AddShape(fx, g + 0.69f, z, 0.6f, 0.03f, 0.6f, k ? coal : (Color){ 236, 120, 40, 255 }, false, SHAPE_CYL);
+        AddBox(fx + 0.6f, g + 0.12f, z, 0.6f, 0.1f, 0.1f, COL_CLAY_DARK, false);
+        for (int e = -1; e <= 1; e += 2) {
+            AddShape(fx + 1.05f, g, z + 0.28f * (float)e, 0.4f, 0.28f, 0.4f, COL_POT, false, SHAPE_CYL);
+            AddShape(fx + 1.05f, g + 0.24f, z + 0.28f * (float)e, 0.42f, 0.12f, 0.42f, leather, false, SHAPE_BLOB);
+        }
+    }
+    AddFireLight(fx, TerrainHeight(fx, fz) + 0.95f, fz);
+    OnGround(134.5f + E, -61.0f, -0.1f, 1.5f, 0.6f, 1.2f, coal, false, SHAPE_BLOB);
+    AddBoxOn(136.2f + E, -59.4f, 1.4f, 0.5f, 0.7f, COL_WOOD, true);
+    OnGround(134.3f + E, -67.6f, -0.2f, 2.3f, 0.8f, 1.9f, slag, false, SHAPE_BLOB);
+    for (int k = 0; k < 3; k++)
+        OnGround(135.6f + E + 0.6f * (float)k, -69.0f + 0.3f * (float)k, 0, 0.5f, 0.08f, 0.45f, slag, false, SHAPE_CYL);
+    AddBoxOn(138.2f + E, -66.4f, 0.9f, 0.3f, 0.6f, COL_STONE, true);
+    for (int k = 0; k < 2; k++) OnGround(137.95f + E + 0.45f * (float)k, -66.4f, 0.3f, 0.32f, 0.09f, 0.3f, copper, false, SHAPE_BLOB);
+    OnGround(138.5f + E, -65.3f, 0, 0.36f, 0.5f, 0.36f, COL_POT, false, SHAPE_CYL);
+
     Hut(136 + E, -47, 3);
     for (int i = 0; i < 6; i++) AddResource(veins[i][0] + E, veins[i][1], RES_ORE);
-    KeepOut(135 + E, -73, 157 + E, -48);
+    KeepOut(133 + E, -73, 157 + E, -48);
 }
 
 static void BuildForestCamp(void)

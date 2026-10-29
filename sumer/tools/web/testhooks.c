@@ -32,6 +32,7 @@ static int Esc(char *dst, int size, const char *src)
 const char *ChatLast(void);
 bool TouchButtonAt(int b, Vector2 *c, float *r);
 bool BoardTapAt(int k, Vector2 *c);
+bool BoardRulesShown(void);
 
 EMSCRIPTEN_KEEPALIVE const char *TestInfo(void)
 {
@@ -108,13 +109,19 @@ EMSCRIPTEN_KEEPALIVE const char *TestInfo(void)
         n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%s{\"kind\":%d,\"seat\":[%d,%d],\"turn\":%d,\"roll\":%d,\"winner\":%d,\"moves\":%d,\"at\":[[%.2f,%.2f,%.2f],[%.2f,%.2f,%.2f]]}",
                       b ? "," : "", x->kind, x->seat[0], x->seat[1], x->turn, x->roll, x->winner, x->moves, s0.x, s0.y, s0.z, s1.x, s1.y, s1.z);
     }
-    // Where to tap on the board panel, in CSS pixels: Throw, Play a townsman, Get up, then pieces 1-7 ([-1,-1] when not shown).
+    // Where to tap on the board panel, in CSS pixels: Throw, Play a townsman, Get up, pieces 1-7, Rules ([-1,-1] when not shown).
     n += snprintf(buf + n, sizeof(buf) - (size_t)n, "],\"boardTaps\":[");
-    for (int k = 0; k < 3 + UR_PIECES; k++) {
+    for (int k = 0; k < 4 + UR_PIECES; k++) {
         Vector2 c = { -1, -1 };
         BoardTapAt(k, &c);
         n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%s[%.0f,%.0f]", k ? "," : "", c.x, c.y);
     }
+    // The UI's pointer in CSS pixels (the game's own cursor while a panel keeps the mouse), the board's rules shown.
+    Vector2 ptr = Vector2Scale(PointerPosition(), 1.0f / PixelRatio());
+    n += snprintf(buf + n, sizeof(buf) - (size_t)n, "],\"pointer\":[%.0f,%.0f],\"rules\":%d", ptr.x, ptr.y, BoardRulesShown());
+    n += snprintf(buf + n, sizeof(buf) - (size_t)n, ",\"pets\":[");
+    for (int i = 0; i < PetCount(); i++)
+        n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%s[%.2f,%.2f,%.2f,%d,%d]", i ? "," : "", PetPos(i).x, PetPos(i).y, PetPos(i).z, PetIsDog(i), PetFriend(i));
     n += snprintf(buf + n, sizeof(buf) - (size_t)n, "],\"villager0\":[%.2f,%.2f]}", VillagerPos(&G.villagers[0]).x, VillagerPos(&G.villagers[0]).z);
     return buf;
 }
@@ -131,7 +138,7 @@ static float LandingHeight(float x, float z)
 // down dead at the player's feet (a = index); 9 set the hour to a; 10 shoot at the ground point (a, b)
 // at body height; 11 language a; 12 barter offer b of trader a; 13 hurt the player by a; 14 equip a;
 // 15 open panel a (PANEL_* in game.h); 20 start a battle royale round (the host); 21 skip the round's clock to a s;
-// 23 forget whose this browser's saves are, as if made before accounts; 25 to board a's seat b.
+// 23 forget whose this browser's saves are, as if made before accounts; 25 to board a's seat b; 26 beside pet a.
 EMSCRIPTEN_KEEPALIVE void TestCommand(int cmd, float a, float b)
 {
     Player *p = &G.player;
@@ -182,6 +189,12 @@ EMSCRIPTEN_KEEPALIVE void TestCommand(int cmd, float a, float b)
         p->pos = BoardSeat((int)a, (int)b, NULL);
         p->vy = 0;
         break;
+    case 26: {   // beside cat or dog a, b metres east of it
+        Vector3 q = PetPos((int)a);
+        p->pos = (Vector3){ q.x + (b > 0 ? b : 1.0f), q.y, q.z };
+        p->vy = 0;
+        break;
+    }
     default: break;
     }
 }

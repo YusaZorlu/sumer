@@ -1324,6 +1324,108 @@ static void TestBoards(void)
     SetParty(false);
 }
 
+// Cats and dogs: where they live, that they keep to free ground near home, that the player cannot walk
+// through them, feeding (fish for a cat, roast meat for a dog) and following; none in a party.
+static void TestPets(void)
+{
+    NetRole role = G.role;
+    G.role = NET_SOLO;
+    G.self = G.actor = 0;
+    PetsInit();
+    int cats = 0, dogs = 0, city = 0, fishers = 0, temple = 0, villages = 0;
+    bool free = true;
+    for (int i = 0; i < PetCount(); i++) {
+        Vector3 p = PetPos(i);
+        if (PetIsDog(i)) dogs++;
+        else cats++;
+        int v = VillageAt(p);
+        if (!PetIsDog(i) && v < 0) city++;
+        if (!PetIsDog(i) && v == VIL_FISHERS) fishers++;
+        if (PetIsDog(i) && v >= 0) villages++;
+        if (PetIsDog(i) && fabsf(p.x) < 10 && p.z < 0 && p.z > -12) temple++;
+        if (InWater(p.x, p.z) || SolidAt(p.x, p.z, 0.3f)) {
+            free = false;
+            printf("    pet %d at (%.1f %.1f) is in water or a wall\n", i, p.x, p.z);
+        }
+    }
+    Check(cats == 8 && dogs == 7 && city == 5 && fishers == 3 && villages == 5 && temple == 2 && free,
+          "%d cats (%d in the city, %d at the fishers'), %d dogs (%d in the villages, %d by the temple gate), all on free ground",
+          cats, city, fishers, dogs, villages, temple);
+
+    // A while of wandering, each watched in turn (out of sight they keep still): never in a wall or the water.
+    bool kept = true;
+    for (int i = 0; i < PetCount(); i++) {
+        float range;
+        Vector3 home = PetHomeAt(i, &range);
+        G.cam.position = (Vector3){ home.x, home.y + 3, home.z + 4 };
+        for (int t = 0; t < 1200; t++) {
+            PathNewFrame();
+            UpdatePets(0.05f);
+            Vector3 p = PetPos(i);
+            if (InWater(p.x, p.z) || SolidAt(p.x, p.z, 0.15f) || XZDist(p, home) > range + 3.0f) {
+                kept = false;
+                printf("    pet %d strayed to (%.1f %.1f %.1f) from (%.1f %.1f)\n", i, p.x, p.y, p.z, home.x, home.z);
+                break;
+            }
+        }
+    }
+    Check(kept, "a minute of wandering each: near home, out of walls and water");
+
+    // Solid: the player is pushed out of a cat.
+    Vector3 c = PetPos(0);
+    G.player.pos = c;
+    Vector2 q = PushOutBodies((Vector2){ c.x, c.z }, 0.35f, OWNER_PLAYER + G.self);
+    Check(Vector2Distance(q, (Vector2){ c.x, c.z }) > 0.3f, "no one walks through a cat (pushed %.2f m)", Vector2Distance(q, (Vector2){ c.x, c.z }));
+
+    // Fed: a cat with a fish, a dog with roast meat; then it follows.
+    int cat = 0, dog = -1;
+    for (int i = 0; i < PetCount() && dog < 0; i++)
+        if (PetIsDog(i) && VillageAt(PetPos(i)) < 0) dog = i;
+    PlaceAt(c.x + 1.0f, c.z, 0);
+    SyncSelf();
+    while (BagCount(IT_FISH) > 0) BagRemove(IT_FISH, BagCount(IT_FISH));
+    FindTarget(true);
+    bool asked = G.target.kind == TGT_PET && G.target.index == cat && !G.okE;
+    BagAdd(IT_FISH, 2);
+    FindTarget(true);
+    bool offered = G.target.kind == TGT_PET && G.okE;
+    Interact(false);
+    Check(asked && offered && BagCount(IT_FISH) == 1 && PetFriend(cat) == G.self && PetEating(cat),
+          "a cat wants a fish; given one it eats (fish left %d, friend %d)", BagCount(IT_FISH), PetFriend(cat));
+    Vector3 away = { c.x + 7.0f, 0, c.z };
+    bool walkable = !SolidAt(away.x, away.z, 0.5f) && !InWater(away.x, away.z);
+    if (!walkable) away = (Vector3){ c.x - 7.0f, 0, c.z };
+    PlaceAt(away.x, away.z, 0);
+    SyncSelf();
+    G.cam.position = (Vector3){ away.x, away.y + 3, away.z + 4 };
+    float d0 = XZDist(PetPos(cat), G.player.pos);
+    for (int t = 0; t < 400; t++) {
+        PathNewFrame();
+        UpdatePets(0.05f);
+    }
+    float d1 = XZDist(PetPos(cat), G.player.pos);
+    Check(d1 < 3.5f && d1 < d0, "fed, it follows: from %.1f m to %.1f m", d0, d1);
+    if (dog >= 0) {
+        Vector3 dp = PetPos(dog);
+        PlaceAt(dp.x + 1.0f, dp.z, 0);
+        SyncSelf();
+        while (BagCount(IT_ROAST) > 0) BagRemove(IT_ROAST, BagCount(IT_ROAST));
+        BagAdd(IT_FISH, 1);
+        FindTarget(true);
+        bool noFish = G.target.kind == TGT_PET && G.target.index == dog && !G.okE;
+        BagAdd(IT_ROAST, 1);
+        FindTarget(true);
+        Interact(false);
+        Check(noFish && BagCount(IT_ROAST) == 0 && PetFriend(dog) == G.self, "the temple's dog takes no fish, but roast meat (friend %d)", PetFriend(dog));
+    }
+    G.role = role;
+    SetParty(true);
+    PetsInit();
+    Check(PetCount() == 0, "no cats or dogs in a party (nor a battle royale): %d", PetCount());
+    SetParty(false);
+    PetsInit();
+}
+
 static void TestAlehouse(void)
 {
     int talkers = 0;
@@ -2916,6 +3018,7 @@ static void RunTests(void)
     TestFaster();
     TestAlehouse();
     TestBoards();
+    TestPets();
     TestDockFisher();
     TestPaths();
     TestDawn();
