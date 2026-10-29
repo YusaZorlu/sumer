@@ -2,6 +2,11 @@
 
 // Turkish text for every English string shown in the game, keyed by the English source text.
 const Phrase TR_PHRASES[] = {
+    { "Throw", "At" },
+    { "Play a townsman", "Bir kentliyle oyna" },
+    { "Your turn: throw.", "Sıra sende: at." },
+    { "Pick a piece to move: tap it.", "Oynatacağın taşı seç: üstüne dokun." },
+    { "Close: away from the board (you keep your place)", "Kapat: tahtadan uzaklaş (yerin korunur)" },
     { "The alehouse has game tables (not in battle royale or a party): sit with E and play the Royal Game of Ur or fifty-eight holes against another player or a townsman (Enter). Space throws, click or 1-7 moves. The winner gains 20 experience against a player, 10 against a townsman. Nothing from outside can hurt you inside the alehouse.", "Meyhanede oyun masaları var (battle royale ve partide yok): E ile otur, başka bir oyuncuya ya da bir kentliye (Enter) karşı Ur Kraliyet Oyunu ya da elli sekiz delik oyna. Boşluk atar, tıklama ya da 1-7 taşı oynatır. Kazanan bir oyuncuya karşı 20, bir kentliye karşı 10 deneyim alır. Meyhanenin içindeyken dışarıdan hiçbir şey sana zarar veremez." },
     { "[E] Back to the board", "[E] Oyuna dön" },
     { "[E] Sit down to play %s", "[E] Otur, %s oyna" },

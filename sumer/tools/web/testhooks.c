@@ -31,6 +31,7 @@ static int Esc(char *dst, int size, const char *src)
 
 const char *ChatLast(void);
 bool TouchButtonAt(int b, Vector2 *c, float *r);
+bool BoardTapAt(int k, Vector2 *c);
 
 EMSCRIPTEN_KEEPALIVE const char *TestInfo(void)
 {
@@ -106,6 +107,13 @@ EMSCRIPTEN_KEEPALIVE const char *TestInfo(void)
         Vector3 s0 = BoardSeat(b, 0, NULL), s1 = BoardSeat(b, 1, NULL);
         n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%s{\"kind\":%d,\"seat\":[%d,%d],\"turn\":%d,\"roll\":%d,\"winner\":%d,\"moves\":%d,\"at\":[[%.2f,%.2f,%.2f],[%.2f,%.2f,%.2f]]}",
                       b ? "," : "", x->kind, x->seat[0], x->seat[1], x->turn, x->roll, x->winner, x->moves, s0.x, s0.y, s0.z, s1.x, s1.y, s1.z);
+    }
+    // Where to tap on the board panel, in CSS pixels: Throw, Play a townsman, Get up, then pieces 1-7 ([-1,-1] when not shown).
+    n += snprintf(buf + n, sizeof(buf) - (size_t)n, "],\"boardTaps\":[");
+    for (int k = 0; k < 3 + UR_PIECES; k++) {
+        Vector2 c = { -1, -1 };
+        BoardTapAt(k, &c);
+        n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%s[%.0f,%.0f]", k ? "," : "", c.x, c.y);
     }
     n += snprintf(buf + n, sizeof(buf) - (size_t)n, "],\"villager0\":[%.2f,%.2f]}", VillagerPos(&G.villagers[0]).x, VillagerPos(&G.villagers[0]).z);
     return buf;

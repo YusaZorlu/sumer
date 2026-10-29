@@ -462,6 +462,22 @@ static const Color PIECE_UI[2] = { { 40, 40, 54, 255 }, { 236, 230, 214, 255 } }
 
 // A piece on the panel's board: its disc, a ring if it can move (with its number), a faint one if it moved last.
 // True if it was clicked.
+#if defined(SUMER_TEST)
+// Test builds: where on the board panel to tap (UI units; x < 0 when not shown): Throw, Play a townsman,
+// Get up, then the pieces that can move, by their number.
+static Vector2 boardTap[3 + UR_PIECES];
+#define BOARD_TAP(k, v) (boardTap[k] = (v))
+
+bool BoardTapAt(int k, Vector2 *c)
+{
+    if (k < 0 || k >= 3 + UR_PIECES || boardTap[k].x < 0) return false;
+    *c = Vector2Scale(boardTap[k], UiScale() / PixelRatio());
+    return true;
+}
+#else
+#define BOARD_TAP(k, v) ((void)0)
+#endif
+
 static bool BoardPiece(Vector2 c, float rad, int side, int number, bool last)
 {
     DrawCircleV((Vector2){ c.x + 2, c.y + 3 }, rad, Fade(BLACK, 0.35f));
@@ -536,6 +552,7 @@ static int DrawUrPanel(Rectangle a, const Board *b, int view, const int *moves, 
                 c = (Vector2){ ox + ((float)col + 0.5f) * S, oy + ((float)row + 0.5f) * S };
             }
             int num = s == view ? MoveNumber(moves, nm, i) : 0;
+            if (num) BOARD_TAP(2 + num, c);
             if (BoardPiece(c, p == 0 || p >= 15 ? rad * 0.8f : rad, s, num, b->last == i && b->lastSide == s && b->moves > 0) && num) clicked = i;
         }
     }
@@ -575,6 +592,7 @@ static int DrawHolesPanel(Rectangle a, const Board *b, int view, const int *move
             else if (p >= 30) c = (Vector2){ ox + bw / 2 + side * (18 + (float)home++ * 14), oy + 0.06f * bh - 16 };
             else c = HOLE_AT(s, p);
             int num = s == view ? MoveNumber(moves, nm, i) : 0;
+            if (num) BOARD_TAP(2 + num, c);
             if (BoardPiece(c, 10, s, num, b->last == i && b->lastSide == s && b->moves > 0) && num) clicked = i;
         }
     }
@@ -610,6 +628,9 @@ static void DrawBoardPanel(void)
         SetPanel(PANEL_NONE);
         return;
     }
+#if defined(SUMER_TEST)
+    for (int k = 0; k < 3 + UR_PIECES; k++) boardTap[k] = (Vector2){ -1, -1 };
+#endif
     Rectangle r = PanelRect(fminf(860.0f, UiWidth() - 20.0f), fminf(520.0f, UiHeight() - 16.0f));
     int me = BoardSide(bi, G.self), view = me >= 0 ? me : 0, other = 1 - view;
     bool ur = b->kind == BG_UR, opponent = b->seat[0] != SEAT_NONE && b->seat[1] != SEAT_NONE;
@@ -637,23 +658,30 @@ static void DrawBoardPanel(void)
     if (!opponent) status = me >= 0 ? L("Waiting for someone to sit across, or play a townsman.") : L("Nobody is playing here.");
     else if (b->winner >= 0) status = b->winner == me ? L("You won the game!") : TextFormat(L("%s won the game."), names[b->winner]);
     else if (!mine) status = me >= 0 ? TextFormat(L("%s's turn."), names[b->turn]) : TextFormat(L("%s's turn (watching)."), names[b->turn]);
-    else if (b->roll < 0) status = L("Your turn: throw (Space).");
+    else if (b->roll < 0) status = L(TouchOn() ? "Your turn: throw." : "Your turn: throw (Space).");
     else if (nm == 0) status = b->roll == 0 ? L("Nothing thrown: the turn passes.") : L("No piece can move with that: the turn passes.");
-    else status = L("Pick a piece to move: click it, or its number.");
+    else status = L(TouchOn() ? "Pick a piece to move: tap it." : "Pick a piece to move: click it, or its number.");
     y += Paragraph(status, x, y, 240, 17, 21) + 14;
 
     if (me >= 0) {
-        if (Button((Rectangle){ x, y, 240, 34 }, "Throw (Space)", mine && b->roll < 0, KEY_SPACE)) BoardAct(bi, BA_THROW, 0);
+        BOARD_TAP(0, ((Vector2){ x + 120, y + 17 }));
+        if (Button((Rectangle){ x, y, 240, 34 }, TouchOn() ? "Throw" : "Throw (Space)", mine && b->roll < 0, KEY_SPACE)) BoardAct(bi, BA_THROW, 0);
         y += 42;
-        if (!opponent && Button((Rectangle){ x, y, 240, 34 }, "Play a townsman (Enter)", true, KEY_ENTER)) BoardAct(bi, BA_NPC, 0);
+        if (!opponent) BOARD_TAP(1, ((Vector2){ x + 120, y + 17 }));
+        if (!opponent && Button((Rectangle){ x, y, 240, 34 }, TouchOn() ? "Play a townsman" : "Play a townsman (Enter)", true, KEY_ENTER)) BoardAct(bi, BA_NPC, 0);
         if (!opponent) y += 42;
+        BOARD_TAP(2, ((Vector2){ x + 120, y + 17 }));
         if (Button((Rectangle){ x, y, 240, 34 }, "Get up", true, 0)) {
             BoardAct(bi, BA_LEAVE, 0);
             SetPanel(PANEL_NONE);
             return;
         }
     }
-    Text(me >= 0 ? "Esc: away from the board (you keep your place)" : "Esc: close", r.x + 24, r.y + r.height - 26, 14, C_DIM);
+    if (TouchOn()) {   // the Close button in the Menu button's place
+        if (me >= 0) Text("Close: away from the board (you keep your place)", r.x + 24, r.y + r.height - 26, 14, C_DIM);
+    } else {
+        Text(me >= 0 ? "Esc: away from the board (you keep your place)" : "Esc: close", r.x + 24, r.y + r.height - 26, 14, C_DIM);
+    }
     for (int k = 0; k < nm && k < 7; k++)
         if (KeyPressed(KEY_ONE + k)) clicked = moves[k];
     if (clicked >= 0 && mine && b->roll >= 0) BoardAct(bi, BA_MOVE, clicked);
