@@ -160,75 +160,164 @@ static Vector3 HPoint(const Frame *f, float lx, float lz)
 }
 
 // The alehouse by the potters' quarter, its door on the street: the oldest such place we know of stood in
-// the potters' district of Lagash, about 2700 BC. Two long tables with benches where townsfolk sit and
-// talk, a counter with jars and cups at the back, lamps on the walls. No weapons are carried inside.
-static const Frame ALE = { -69.0f, 17.5f, 3 };   // door on its local -x side, toward the street (+z)
-#define ALE_W 10.0f
-#define ALE_D 14.0f
+// the potters' district of Lagash, about 2700 BC. A long hall the length of the block, and a hall above it
+// up stairs along the back wall. Below, two long tables with benches where townsfolk sit and talk, a
+// counter with jars and cups at the back, and two game tables (the Royal Game of Ur, fifty-eight holes);
+// above, another game table and a corner where two sit over their cups. No weapons are carried inside, and
+// no one inside can be hurt from outside (HurtSlotFrom).
+static const Frame ALE = { -71.0f, 17.5f, 3 };   // door on its local -x side, toward the street (+z); the
+                                                 // street from the south-east passes its east end
+#define ALE_W  10.0f   // deep (local x: from the street to the back wall)
+#define ALE_D  20.0f   // long (local z: along the street)
+#define ALE_H1 3.4f    // the upper floor
+#define ALE_H  6.4f    // the roof
+// The game tables (local x, z, and the floor they stand on): see BoardSpot.
+static const float GAME_TABLES[BOARDS][3] = { { -1.6f, 4.0f, 0.0f }, { -1.6f, 7.6f, 0.0f }, { -1.0f, 1.5f, ALE_H1 } };
+#define STAIR_X0 3.6f   // the stairs: along the back wall, from z 3.0 to 8.4, nine steps up to the upper floor
+#define STAIR_Z0 3.0f
+#define STAIR_RUN 0.6f
+#define STAIR_STEPS 9
 
 bool InAlehouse(Vector3 p)
 {
-    return p.y < 3.0f && fabsf(p.x - ALE.cx) < ALE_D / 2 - 0.4f && fabsf(p.z - ALE.cz) < ALE_W / 2 - 0.4f;
+    return p.y < ALE_H && fabsf(p.x - ALE.cx) < ALE_D / 2 - 0.4f && fabsf(p.z - ALE.cz) < ALE_W / 2 - 0.4f;
+}
+
+// Board b's middle, on its table.
+Vector3 BoardSpot(int b)
+{
+    b = b < 0 || b >= BOARDS ? 0 : b;
+    Vector3 p = HPoint(&ALE, GAME_TABLES[b][0], GAME_TABLES[b][1]);
+    p.y = GAME_TABLES[b][2] + 0.62f;
+    return p;
+}
+
+// Where the one on 'side' of board b sits (side 0 toward the street), and which way they face.
+Vector3 BoardSeat(int b, int side, float *face)
+{
+    b = b < 0 || b >= BOARDS ? 0 : b;
+    Vector3 p = HPoint(&ALE, GAME_TABLES[b][0] + (side ? 0.85f : -0.85f), GAME_TABLES[b][1]);
+    p.y = GAME_TABLES[b][2];
+    if (face) *face = side ? 0.0f : PI;   // rot 3: local +x is world -z
+    return p;
+}
+
+// A game table: a low table with the board's place on it, a stool each side.
+static void GameTable(const Frame *f, float lx, float lz, float y)
+{
+    const Color stool = { 128, 92, 60, 255 };
+    HBox(f, lx, y, lz, 0.72f, 0.6f, 1.15f, COL_WOOD, true);
+    for (int s = -1; s <= 1; s += 2) {
+        HShape(f, lx + 0.85f * (float)s, y, lz, 0.42f, 0.38f, 0.42f, stool, false, SHAPE_CYL);
+        HShape(f, lx + 0.25f * (float)s, y + 0.6f, lz + 0.45f, 0.1f, 0.12f, 0.1f, (Color){ 176, 104, 70, 255 }, false, SHAPE_CYL);
+    }
+}
+
+// A long table with benches along both sides, cups, bread and a jug on it.
+static void LongTable(const Frame *f, float lz, float y)
+{
+    const Color bench = { 120, 86, 56, 255 }, cup = { 176, 104, 70, 255 };
+    HBox(f, -0.6f, y, lz, 4.4f, 0.55f, 0.9f, COL_WOOD, true);
+    HBox(f, -0.6f, y, lz - 0.85f, 4.4f, 0.32f, 0.35f, bench, false);
+    HBox(f, -0.6f, y, lz + 0.85f, 4.4f, 0.32f, 0.35f, bench, false);
+    for (int k = 0; k < 4; k++) {
+        float x = -2.3f + 1.15f * (float)k;
+        HShape(f, x, y + 0.55f, lz + ((k & 1) ? 0.22f : -0.22f), 0.11f, 0.1f, 0.11f, cup, false, SHAPE_CYL);
+    }
+    HShape(f, -0.6f, y + 0.55f, lz, 0.32f, 0.14f, 0.26f, (Color){ 196, 150, 90, 255 }, false, SHAPE_BLOB);
+    HShape(f, 0.4f, y + 0.55f, lz, 0.3f, 0.12f, 0.3f, COL_POT, false, SHAPE_CYL);
 }
 
 static void BuildAlehouse(void)
 {
-    const float W = ALE_W, D = ALE_D, H = 3.2f, t = 0.5f, gap = 1.8f, seg = (D - 2 * t - gap) / 2;
-    const Color wall = { 204, 176, 132, 255 }, band = { 150, 70, 50, 255 }, bench = { 120, 86, 56, 255 }, cup = { 176, 104, 70, 255 };
+    const float W = ALE_W, D = ALE_D, H = ALE_H, H1 = ALE_H1, t = 0.5f, gap = 1.8f, seg = (D - 2 * t - gap) / 2, in = W / 2 - t;
+    const Color wall = { 204, 176, 132, 255 }, band = { 150, 70, 50, 255 }, cup = { 176, 104, 70, 255 }, rug = { 140, 62, 46, 255 };
+    const Color floor2 = Mix(COL_WOOD, wall, 0.35f), dark = { 46, 36, 30, 255 };
     const Frame *f = &ALE;
+    // Walls the height of both floors; the door in the middle of the street side.
     HBox(f, 0, 0, -D / 2 + t / 2, W, H, t, wall, true);
     HBox(f, 0, 0, D / 2 - t / 2, W, H, t, wall, true);
     HBox(f, W / 2 - t / 2, 0, 0, t, H, D - 2 * t, wall, true);
     HBox(f, -W / 2 + t / 2, 0, -gap / 2 - seg / 2, t, H, seg, wall, true);
     HBox(f, -W / 2 + t / 2, 0, gap / 2 + seg / 2, t, H, seg, wall, true);
-    HBox(f, -W / 2 + t / 2, H - 0.6f, 0, t + 0.1f, 0.6f, gap, wall, false);
+    HBox(f, -W / 2 + t / 2, 2.6f, 0, t, H - 2.6f, gap, wall, true);
     HBox(f, 0, 0, 0, W - 2 * t, 0.04f, D - 2 * t, COL_BRICK, false);
+    // Bands of red under each floor's ceiling, outside; beam ends; small windows up the street side and the back.
+    HBox(f, -W / 2 + t / 2, H1 - 0.45f, 0, t + 0.12f, 0.26f, D + 0.1f, band, false);
     HBox(f, -W / 2 + t / 2, H - 0.45f, 0, t + 0.12f, 0.26f, D + 0.1f, band, false);
     HBox(f, 0, H, 0, W + 0.3f, 0.35f, D + 0.3f, Mix(wall, COL_MUD_DARK, 0.3f), true);
-    for (int k = -3; k <= 3; k++) HBox(f, -W / 2 - 0.25f, H - 0.12f, 1.9f * (float)k, 0.5f, 0.14f, 0.14f, COL_PALM_TRUNK, false);
+    for (int k = -4; k <= 4; k++) {
+        HBox(f, -W / 2 - 0.25f, H - 0.12f, 2.1f * (float)k, 0.5f, 0.14f, 0.14f, COL_PALM_TRUNK, false);
+        HBox(f, -W / 2 - 0.25f, H1 - 0.12f, 2.1f * (float)k + 1.05f, 0.4f, 0.12f, 0.12f, COL_PALM_TRUNK, false);
+        if (k != 0) {
+            HBox(f, -W / 2 - 0.02f, H1 + 1.1f, 2.1f * (float)k, 0.06f, 0.75f, 0.6f, dark, false);
+            HBox(f, W / 2 + 0.02f, H1 + 1.1f, 2.1f * (float)k, 0.06f, 0.75f, 0.6f, dark, false);
+        }
+    }
     // A reed awning over the door and two jars beside it, so the street can tell what the house is.
     HBox(f, -W / 2 - 0.8f, 2.4f, 0, 1.4f, 0.06f, 3.2f, COL_STRAW, false);
     for (int s = -1; s <= 1; s += 2) {
         HBox(f, -W / 2 - 1.4f, 0, 1.5f * (float)s, 0.09f, 2.45f, 0.09f, COL_WOOD, false);
         HShape(f, -W / 2 - 0.4f, -0.05f, 1.6f * (float)s, 0.55f, 0.75f, 0.55f, COL_POT, true, SHAPE_BLOB);
     }
-    // Two long tables, benches along both sides, bowls, cups and bread on them.
-    for (int s = -1; s <= 1; s += 2) {
-        float z = 3.3f * (float)s;
-        HBox(f, -0.6f, 0, z, 4.4f, 0.55f, 0.9f, COL_WOOD, true);
-        HBox(f, -0.6f, 0, z - 0.85f, 4.4f, 0.32f, 0.35f, bench, false);
-        HBox(f, -0.6f, 0, z + 0.85f, 4.4f, 0.32f, 0.35f, bench, false);
-        for (int k = 0; k < 4; k++) {
-            float x = -2.3f + 1.15f * (float)k;
-            HShape(f, x, 0.55f, z + ((k & 1) ? 0.22f : -0.22f), 0.11f, 0.1f, 0.11f, cup, false, SHAPE_CYL);
-        }
-        HShape(f, -0.6f, 0.55f, z, 0.32f, 0.14f, 0.26f, (Color){ 196, 150, 90, 255 }, false, SHAPE_BLOB);
-        HShape(f, 0.4f, 0.55f, z, 0.3f, 0.12f, 0.3f, COL_POT, false, SHAPE_CYL);
-    }
-    // The counter at the back: big jars stoppered with clay, a shelf of cups.
-    HBox(f, W / 2 - 1.6f, 0, 0, 0.7f, 1.0f, 4.0f, COL_MUD_DARK, true);
+
+    // The hall below: the townsfolk's two long tables in its west end, the game tables in the east.
+    LongTable(f, -7.0f, 0);
+    LongTable(f, -3.5f, 0);
+    for (int b = 0; b < BOARDS; b++) GameTable(f, GAME_TABLES[b][0], GAME_TABLES[b][1], GAME_TABLES[b][2]);
+    // The counter at the back, short of the stairs' foot: big jars stoppered with clay, a shelf of cups.
+    const float cz = -1.2f;
+    HBox(f, W / 2 - 1.6f, 0, cz, 0.7f, 1.0f, 4.0f, COL_MUD_DARK, true);
     for (int k = 0; k < 4; k++) {
-        HShape(f, W / 2 - 0.8f, -0.1f, -2.4f + 1.6f * (float)k, 0.8f, 1.25f, 0.8f, COL_POT, true, SHAPE_BLOB);
-        HShape(f, W / 2 - 0.8f, 1.08f, -2.4f + 1.6f * (float)k, 0.36f, 0.2f, 0.36f, COL_CLAY_DARK, false, SHAPE_CYL);
+        HShape(f, W / 2 - 0.8f, -0.1f, cz - 2.4f + 1.6f * (float)k, 0.8f, 1.25f, 0.8f, COL_POT, true, SHAPE_BLOB);
+        HShape(f, W / 2 - 0.8f, 1.08f, cz - 2.4f + 1.6f * (float)k, 0.36f, 0.2f, 0.36f, COL_CLAY_DARK, false, SHAPE_CYL);
     }
-    HBox(f, W / 2 - t - 0.12f, 1.7f, 0, 0.24f, 0.06f, 3.0f, COL_WOOD, false);
-    for (int k = 0; k < 6; k++) HShape(f, W / 2 - t - 0.12f, 1.76f, -1.25f + 0.5f * (float)k, 0.12f, 0.14f, 0.12f, cup, false, SHAPE_CYL);
+    HBox(f, W / 2 - t - 0.12f, 1.7f, cz, 0.24f, 0.06f, 3.0f, COL_WOOD, false);
+    for (int k = 0; k < 6; k++) HShape(f, W / 2 - t - 0.12f, 1.76f, cz - 1.25f + 0.5f * (float)k, 0.12f, 0.14f, 0.12f, cup, false, SHAPE_CYL);
+
+    // The stairs, solid mud brick along the back wall, up to a landing at the east end.
+    for (int k = 0; k < STAIR_STEPS; k++) {
+        float top = H1 * (float)(k + 1) / STAIR_STEPS;
+        HBox(f, (STAIR_X0 + in) / 2, 0, STAIR_Z0 + STAIR_RUN * ((float)k + 0.5f), in - STAIR_X0, top, STAIR_RUN + 0.02f,
+             k & 1 ? wall : Mix(wall, COL_MUD_DARK, 0.2f), true);
+    }
+    // The upper floor, open over the stairs, with a rail along the opening.
+    float zEnd = STAIR_Z0 + STAIR_RUN * STAIR_STEPS, xOpen = STAIR_X0 - 0.15f;
+    HBox(f, (-in + xOpen) / 2, H1 - 0.3f, 0, in + xOpen, 0.3f, D - 2 * t, floor2, true);
+    HBox(f, (xOpen + in) / 2, H1 - 0.3f, (-(D / 2 - t) + STAIR_Z0) / 2, in - xOpen, 0.3f, STAIR_Z0 + D / 2 - t, floor2, true);
+    HBox(f, (xOpen + in) / 2, H1 - 0.3f, (zEnd + D / 2 - t) / 2, in - xOpen, 0.3f, D / 2 - t - zEnd, floor2, true);
+    HBox(f, xOpen - 0.05f, H1, (STAIR_Z0 + zEnd) / 2, 0.1f, 0.9f, zEnd - STAIR_Z0, COL_WOOD, true);
+    HBox(f, (xOpen + in) / 2, H1, STAIR_Z0 - 0.05f, in - xOpen, 0.9f, 0.1f, COL_WOOD, true);
+    // Up there: rugs, a bench along the back wall, jars, and the third game table.
+    HBox(f, -1.0f, H1, 1.5f, 3.2f, 0.02f, 3.0f, rug, false);
+    HBox(f, -0.6f, H1, -5.5f, 3.0f, 0.02f, 3.6f, (Color){ 70, 92, 130, 255 }, false);
+    HBox(f, 1.0f, H1, -5.5f, 0.8f, 0.5f, 2.2f, COL_WOOD, true);
+    HBox(f, W / 2 - t - 0.3f, H1, -5.0f, 0.5f, 0.4f, 6.0f, Mix(COL_WOOD, wall, 0.2f), false);
+    for (int k = 0; k < 3; k++) HShape(f, -W / 2 + t + 0.4f, H1 - 0.05f, -8.4f + 1.0f * (float)k, 0.6f, 0.9f, 0.6f, COL_POT, true, SHAPE_BLOB);
+    HShape(f, 1.0f, H1 + 0.5f, -5.9f, 0.12f, 0.12f, 0.12f, cup, false, SHAPE_CYL);
+    HShape(f, 1.0f, H1 + 0.5f, -5.1f, 0.12f, 0.12f, 0.12f, cup, false, SHAPE_CYL);
+
+    // Lamps on the end walls, both floors.
     for (int s = -1; s <= 1; s += 2) {
         Vector3 lamp = HPoint(f, 1.0f, (D / 2 - t - 0.15f) * (float)s);
         AddTorch(lamp.x, 2.3f, lamp.z, false);
+        lamp = HPoint(f, -1.5f, (D / 2 - t - 0.15f) * (float)s);
+        AddTorch(lamp.x, H1 + 2.0f, lamp.z, false);
     }
     KeepOut(ALE.cx - D / 2 - 1.5f, ALE.cz - W / 2 - 0.5f, ALE.cx + D / 2 + 1.5f, ALE.cz + W / 2 + 2.2f);
 }
 
-// Townsfolk at the alehouse's tables, four to a table, facing across it; the keeper behind the counter.
+// Townsfolk at the alehouse's tables, four to a side of each long table, facing across it; two upstairs
+// over their cups; the keeper behind the counter.
 static void AlehouseFolk(void)
 {
     static const Color robes[] = { { 196, 170, 120, 255 }, { 150, 110, 80, 255 }, { 120, 140, 160, 255 }, { 210, 196, 170, 255 }, { 170, 110, 80, 255 } };
+    static const float TABLES[2] = { -7.0f, -3.5f };
     int n = 0;
-    for (int s = -1; s <= 1; s += 2)
+    for (int s = 0; s < 2; s++)
         for (int side = -1; side <= 1; side += 2)
             for (int k = 0; k < 2; k++) {
-                float lx = -1.9f + 2.4f * (float)k + 0.4f * (float)((s + side) / 2), lz = 3.3f * (float)s + 0.85f * (float)side;
+                float lx = -1.9f + 2.4f * (float)k + 0.4f * (float)(side > 0), lz = TABLES[s] + 0.85f * (float)side;
                 Vector3 p = HPoint(&ALE, lx, lz);
                 // Facing the table: local -z or +z, turned by the frame (rot 3 turns local z into world x).
                 float face = side > 0 ? -PI / 2 : PI / 2;
@@ -238,7 +327,17 @@ static void AlehouseFolk(void)
                     G.villagers[i].talks = true;
                 }
             }
-    Vector3 keeper = HPoint(&ALE, ALE_W / 2 - 1.1f, 0);
+    // Upstairs, either side of the low table.
+    for (int side = -1; side <= 1; side += 2) {
+        Vector3 p = HPoint(&ALE, 1.0f + 0.75f * (float)side, -5.5f);
+        p.y = ALE_H1;
+        int i = AddNpc(NPC_CIVILIAN, p, p, 0, robes[n++ % 5], side > 0 ? 0.0f : PI);
+        if (i >= 0) {
+            G.villagers[i].crouch = true;
+            G.villagers[i].talks = true;
+        }
+    }
+    Vector3 keeper = HPoint(&ALE, ALE_W / 2 - 1.1f, -1.2f);
     AddNpc(NPC_CIVILIAN, keeper, keeper, 0, (Color){ 160, 70, 52, 255 }, 0);
 }
 

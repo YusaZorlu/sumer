@@ -99,7 +99,15 @@ EMSCRIPTEN_KEEPALIVE const char *TestInfo(void)
             n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%s[%d,%d,%d]", first ? "" : ",", s, PartyRound(s), PartyTotal(s));
             first = 0;
         }
-    n += snprintf(buf + n, sizeof(buf) - (size_t)n, "]},\"villager0\":[%.2f,%.2f]}", VillagerPos(&G.villagers[0]).x, VillagerPos(&G.villagers[0]).z);
+    // The alehouse's boards: kind, seats, turn, throw, winner, moves; and each table's first seat.
+    n += snprintf(buf + n, sizeof(buf) - (size_t)n, "]},\"board\":%d,\"boardView\":%d,\"boards\":[", BoardOf(G.self), BoardViewing());
+    for (int b = 0; b < BOARDS; b++) {
+        const Board *x = BoardAt(b);
+        Vector3 s0 = BoardSeat(b, 0, NULL), s1 = BoardSeat(b, 1, NULL);
+        n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%s{\"kind\":%d,\"seat\":[%d,%d],\"turn\":%d,\"roll\":%d,\"winner\":%d,\"moves\":%d,\"at\":[[%.2f,%.2f,%.2f],[%.2f,%.2f,%.2f]]}",
+                      b ? "," : "", x->kind, x->seat[0], x->seat[1], x->turn, x->roll, x->winner, x->moves, s0.x, s0.y, s0.z, s1.x, s1.y, s1.z);
+    }
+    n += snprintf(buf + n, sizeof(buf) - (size_t)n, "],\"villager0\":[%.2f,%.2f]}", VillagerPos(&G.villagers[0]).x, VillagerPos(&G.villagers[0]).z);
     return buf;
 }
 
@@ -115,7 +123,7 @@ static float LandingHeight(float x, float z)
 // down dead at the player's feet (a = index); 9 set the hour to a; 10 shoot at the ground point (a, b)
 // at body height; 11 language a; 12 barter offer b of trader a; 13 hurt the player by a; 14 equip a;
 // 15 open panel a (PANEL_* in game.h); 20 start a battle royale round (the host); 21 skip the round's clock to a s;
-// 23 forget whose this browser's saves are, as if made before accounts.
+// 23 forget whose this browser's saves are, as if made before accounts; 25 to board a's seat b.
 EMSCRIPTEN_KEEPALIVE void TestCommand(int cmd, float a, float b)
 {
     Player *p = &G.player;
@@ -162,6 +170,10 @@ EMSCRIPTEN_KEEPALIVE void TestCommand(int cmd, float a, float b)
     case 20: RoyaleStart(); break;
     case 21: RoyaleSkipTo(a); break;
     case 23: remove(DataPath("sumer.owner")); SyncStorage(); break;   // this browser's saves as if made before accounts
+    case 25:   // at the alehouse's board a, on the stool of side b
+        p->pos = BoardSeat((int)a, (int)b, NULL);
+        p->vy = 0;
+        break;
     default: break;
     }
 }

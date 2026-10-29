@@ -1165,11 +1165,170 @@ static void TestDockFisher(void)
     Check(lowest > 0.25f, "the dock's fisherman stays on the deck (lowest %.2f m)", lowest);
 }
 
+// The games at the alehouse: the throws come as often as they should; Ur's rosettes, takes, the safe
+// square and the exact throw off; fifty-eight holes' lines; the townsman plays well; a game sat down to,
+// played and won gains experience; getting up frees the seat; the alehouse keeps out blows from outside,
+// and someone after you comes up its stairs.
+static void TestBoards(void)
+{
+    Board b;
+    int counts[5] = { 0 };
+    memset(&b, 0, sizeof(b));
+    b.kind = BG_UR;
+    for (int k = 0; k < 16000; k++) {
+        BoardThrow(&b);
+        counts[b.roll]++;
+    }
+    bool fair = true;
+    static const int want[5] = { 1, 4, 6, 4, 1 };
+    for (int k = 0; k < 5; k++) fair = fair && fabsf((float)counts[k] - 1000.0f * (float)want[k]) < 150.0f * (float)want[k];
+    Check(fair, "Ur's four pyramid dice: 0-4 as 1:4:6:4:1 in sixteen (%d %d %d %d %d)", counts[0], counts[1], counts[2], counts[3], counts[4]);
+
+    int moves[8];
+    memset(&b, 0, sizeof(b));
+    b.kind = BG_UR;
+    b.roll = 2;
+    int n = BoardMoves(&b, 0, moves);
+    Check(n == 1 && BoardTarget(&b, 0, moves[0]) == 2, "a fresh board: one piece to bring on, to square 2");
+    b.pos[0][0] = 1;
+    b.roll = 3;
+    BoardMove(&b, 0);
+    Check(b.pos[0][0] == 4 && b.turn == 0, "landing on a rosette: another throw");
+    b.pos[0][0] = 6;
+    b.pos[1][0] = 9;
+    b.roll = 3;
+    BoardMove(&b, 0);
+    Check(b.pos[0][0] == 9 && b.pos[1][0] == 0 && b.turn == 1, "landing on the other's piece in the middle row sends it back; the turn passes");
+    b.turn = 0;
+    b.pos[1][0] = 8;
+    b.pos[0][0] = 6;
+    b.roll = 2;
+    Check(BoardTarget(&b, 0, 0) < 0, "the middle rosette keeps a piece safe");
+    b.pos[0][0] = 13;
+    b.roll = 3;
+    int over = BoardTarget(&b, 0, 0);
+    b.roll = 2;
+    Check(over < 0 && BoardTarget(&b, 0, 0) == 15, "off the board only with the exact throw");
+    b.pos[0][0] = 3;
+    b.pos[0][1] = 5;
+    Check(BoardTarget(&b, 0, 0) < 0, "no landing on one's own piece");
+    b.roll = 0;
+    Check(BoardMoves(&b, 0, moves) == 0, "nothing thrown, nothing moves");
+    for (int k = 0; k < UR_PIECES; k++) b.pos[0][k] = 15;
+    b.pos[0][6] = 14;
+    b.roll = 1;
+    b.winner = -1;
+    BoardMove(&b, 6);
+    Check(b.winner == 0, "the last piece off wins");
+
+    memset(&b, 0, sizeof(b));
+    b.kind = BG_HOLES;
+    b.winner = -1;
+    b.pos[0][0] = 4;
+    b.pos[0][1] = 14;
+    b.roll = 2;
+    int up = BoardTarget(&b, 0, 0);
+    b.roll = 6;
+    int down = BoardTarget(&b, 0, 1);
+    b.pos[0][2] = 27;
+    b.roll = 9;
+    Check(up == 20 && down == 6 && BoardTarget(&b, 0, 2) == 30, "fifty-eight holes: the line from 6 goes up to 20, from 20 down to 6; past the top is home");
+    BoardThrow(&b);
+    Check(b.roll >= 2 && b.roll <= 12 && (b.dice[0] == 1 || b.dice[0] == 3 || b.dice[0] == 4 || b.dice[0] == 6), "two knucklebones: %d and %d", b.dice[0], b.dice[1]);
+
+    // The townsman's play against a player moving at random.
+    for (int kind = BG_UR; kind <= BG_HOLES; kind++) {
+        int wins = 0;
+        for (int g = 0; g < 200; g++) {
+            memset(&b, 0, sizeof(b));
+            b.kind = (unsigned char)kind;
+            b.winner = -1;
+            b.roll = -1;
+            b.turn = (unsigned char)(g & 1);
+            for (int t = 0; t < 4000 && b.winner < 0; t++) {
+                BoardThrow(&b);
+                int m = BoardMoves(&b, b.turn, moves);
+                if (m == 0) {
+                    b.roll = -1;
+                    b.turn = (unsigned char)(1 - b.turn);
+                    continue;
+                }
+                BoardMove(&b, b.turn == 0 ? BoardBest(&b) : moves[GetRandomValue(0, m - 1)]);
+            }
+            wins += b.winner == 0;
+        }
+        Check(wins > (kind == BG_UR ? 130 : 110), "%s: the townsman beats random play in %d of 200", kind == BG_UR ? "Ur" : "Fifty-eight holes", wins);
+    }
+
+    // At the table: sit, a townsman across, play it out, win, gain experience; get up and the seat is free.
+    NetRole role = G.role;
+    G.role = NET_SOLO;
+    G.self = G.actor = 0;
+    BoardsInit();
+    G.player.pos = BoardSeat(0, 0, NULL);
+    SyncSelf();
+    int side = -1;
+    bool sat = BoardRequest(0, 0, BA_SIT, 0, &side) && side == 0 && BoardRequest(0, 0, BA_NPC, 0, &side);
+    Check(sat && BoardAt(0)->seat[1] == SEAT_NPC, "sat down to the Royal Game of Ur, a townsman across");
+    long xp = AccountXp();
+    int won = 0, played = 0;
+    for (int game = 0; game < 6 && !won; game++) {
+        for (int t = 0; t < 20000 && BoardAt(0)->winner < 0; t++) {
+            Board *x = BoardAt(0);
+            if (x->turn == 0 && x->roll < 0) BoardRequest(0, 0, BA_THROW, 0, &side);
+            else if (x->turn == 0 && BoardMoves(x, 0, moves) > 0) BoardRequest(0, 0, BA_MOVE, BoardBest(x), &side);
+            SyncSelf();
+            BoardsUpdate(0.25f);
+        }
+        played++;
+        won = BoardAt(0)->winner == 0;
+        for (int t = 0; t < 60 && BoardAt(0)->winner >= 0; t++) BoardsUpdate(0.25f);
+    }
+    Check(won && AccountXp() == xp + 10, "a game won against the townsman (in %d): +10 experience (%ld)", played, AccountXp() - xp);
+    G.player.pos = (Vector3){ G.player.pos.x + 3.0f, G.player.pos.y, G.player.pos.z };
+    SyncSelf();
+    BoardsUpdate(0.1f);
+    Check(BoardOf(0) < 0 && BoardAt(0)->seat[1] == SEAT_NONE, "up and away from the table: the seat is free, the townsman goes back to his ale");
+    G.role = role;
+
+    // In the alehouse no one is hurt from outside; and those after someone come up its stairs.
+    Vector3 in = BoardSeat(1, 0, NULL), out = { in.x, 0, in.z + 12.0f };
+    G.player.pos = in;
+    SyncSelf();
+    float h0 = G.health;
+    HurtSlotFrom(G.self, 10.0f, BY_WOLF, &out);
+    float outside = h0 - G.health;
+    Vector3 near = { in.x + 1.0f, in.y, in.z };
+    HurtSlotFrom(G.self, 10.0f, BY_WOLF, &near);
+    Check(outside == 0 && G.health < h0, "inside the alehouse nothing from outside hurts (%.0f), from inside it does", outside);
+    G.health = HEALTH_MAX;
+    Vector3 up2 = BoardSeat(2, 0, NULL), door = { -71.0f, 0, 24.5f };   // before the door, on the street
+    Vitals w = { 0 };
+    w.at = (Vector3){ door.x, TerrainHeight(door.x, door.z), door.z };
+    bool there = false;
+    for (float s = 0; s < 40 && !there; s += 0.05f) {
+        PathNewFrame();
+        there = StepTowardForTest(&w, up2, 3.0f, 0.05f) && fabsf(w.at.y - up2.y) < 0.4f;
+    }
+    if (!there) {
+        Vector3 o[PATH_MAX];
+        PathNewFrame();
+        int m = FindPath((Vector3){ door.x, TerrainHeight(door.x, door.z), door.z }, up2, o, PATH_MAX);
+        printf("    stopped at (%.1f %.1f %.1f); path %d:", w.at.x, w.at.y, w.at.z, m);
+        for (int q = 0; q < m; q++) printf(" (%.1f %.1f %.1f)", o[q].x, o[q].y, o[q].z);
+        printf("\n");
+    }
+    Check(there && InAlehouse(w.at), "from the street in at the door and up the alehouse's stairs to the table above (%.1f m up)", w.at.y);
+    SetParty(true);
+    Check(!BoardsOn(), "no board games in a party (nor a battle royale)");
+    SetParty(false);
+}
+
 static void TestAlehouse(void)
 {
     int talkers = 0;
     for (int i = 0; i < G.villagerCount; i++) talkers += G.villagers[i].talks && InAlehouse(VillagerPos(&G.villagers[i]));
-    Check(talkers == 8, "%d townsfolk sit talking in the alehouse", talkers);
+    Check(talkers == 10, "%d townsfolk sit talking in the alehouse, two of them upstairs", talkers);
     G.self = G.actor = 0;
     PlaceAt(-60, 26, 0);
     UpdatePlayer(0.02f, false);
@@ -2756,6 +2915,7 @@ static void RunTests(void)
     TestPartridges();
     TestFaster();
     TestAlehouse();
+    TestBoards();
     TestDockFisher();
     TestPaths();
     TestDawn();

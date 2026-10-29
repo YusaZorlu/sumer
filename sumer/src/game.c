@@ -46,6 +46,7 @@ void GameInit(void)
     BuildCaravans();
     ShapeRoyale();
     ShapeParty();
+    BoardsInit();
     // The world comes from a fixed seed; animals and weather differ every game.
     SetRandomSeed((unsigned int)time(NULL));
     InitWildlife();
@@ -637,6 +638,8 @@ void GameUpdate(void)
     UpdateWorld(dt);
     RoyaleUpdate(dt);
     PartyUpdate(dt);
+    BoardsUpdate(dt);
+    BoardsLocal();
     UpdateWatch();
     UpdateClock(dt);
     UpdateSleep(dt);
@@ -706,6 +709,7 @@ void ServerTick(float dt)
     UpdateWorld(dt);
     RoyaleUpdate(dt);
     PartyUpdate(dt);
+    BoardsUpdate(dt);
     UpdateTime(dt / HOUR_SECONDS);
     UpdateDawn();
     UpdateWeather();
@@ -738,6 +742,7 @@ void GameDraw(void)
     DrawPeers();
     DrawPlayer();
     DrawRoyale();
+    DrawBoards();
     if (ExtraFigures) ExtraFigures();
     DrawEffects();
     DrawRain();

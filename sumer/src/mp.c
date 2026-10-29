@@ -11,7 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define NET_VERSION   16
+#define NET_VERSION   17
 #define RECORD_FORMAT 1        // the first byte of a player's things as server.py keeps them
 #define STATUS_EVERY  2.0f
 #define SNAP_EVERY    0.1f
@@ -234,6 +234,7 @@ static void WriteSnapshot(Writer *w, bool slow)
     W16(w, (unsigned)G.seasonSeen);
     if (Royale()) WriteRoyale(w);
     if (Party()) WriteParty(w);
+    if (BoardsOn()) WriteBoards(w);
 
     for (int s = 0; s < MAX_PLAYERS; s++) {
         const Peer *p = &G.peers[s];
@@ -383,6 +384,7 @@ static void ReadSnapshot(Reader *r)
     G.seasonSeen = (int)R16(r);
     if (Royale()) ReadRoyale(r);
     if (Party()) ReadParty(r);
+    if (BoardsOn()) ReadBoards(r);
 
     for (int s = 0; s < MAX_PLAYERS; s++) {
         Peer *p = &G.peers[s];
