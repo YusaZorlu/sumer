@@ -149,6 +149,28 @@ The five minigames:
   being found; the seeker gains 6 for each hider found, but loses the game by bringing down 5 townsfolk.
   The game ends early once every hider is found.
 
+### Games at the alehouse
+
+In survival, PvP and single-player games (not in battle royale or a party) the alehouse has three game tables.
+Walk up to a stool and press E to sit; play another player who sits across, or press Enter (or the button) to
+play a townsman. Space throws, a click or the number keys move a piece, Esc steps away from the panel while you
+keep your place, and getting up (the button, or walking off) gives up the game. Look on at a full table with E.
+The only stake is experience for the winner: +20 for beating a player, +10 for beating a townsman. Getting up
+from a game against a player loses it only once twenty moves have been made, so a quick sit-and-stand earns
+nobody anything; if you sit and do nothing for 45 seconds, the game plays your turn for you.
+
+- **The Royal Game of Ur** (one table downstairs, one upstairs). Boards like it were found in the Royal Cemetery at Ur (about 2600 to
+  2400 BC); the rules are Irving Finkel's reading of a Babylonian tablet of 177 BC. Each side has seven pieces
+  and throws four two-sided dice (0 to 4). A piece enters on your own row, runs four squares, then eight down the
+  shared middle row, then two back on your own row and off by an exact throw. Landing on an opponent in the middle
+  row sends it back; you cannot land on your own piece. The five rosettes give another throw, and a piece on the
+  middle rosette is safe. First to bring all seven off wins.
+- **Fifty-eight holes** ("hounds and jackals", the other table downstairs). Boards of this game are known from Egypt to
+  Mesopotamia from about 2000 BC; the rules are lost, so these are a modern reconstruction. Each side has five pins
+  and throws two knucklebones (each lands 1, 3, 4 or 6). Pins go up your own side of 29 holes to the shared goal;
+  lines join hole 6 with 20 and 8 with 10, and a pin that lands on one end goes to the other, up or down. No two of your pins share a hole. First to bring all five
+  home wins.
+
 ### Playing together
 
 - Each player has a house of their own and wears its color: blue for the first in, then red, green,
@@ -375,6 +397,9 @@ Trees and fields: `palm_tree_bark` (bark on every trunk), `forest_leaves_02` (le
 (straw: the standing crop, stubble and sheaves) from ambientCG, all **CC0**, in `assets/detail3.png`. The same
 script builds all of them. Everything else is drawn in code.
 
+The game boards' wood frame is `wood_table_001` from Poly Haven (**CC0**), darkened into `assets/board.png` by
+`python3 -I tools/assets/make_detail.py board`.
+
 ## Where things are
 
 The city follows the plan of Ur around 2000 BC: an oval mud-brick wall with towers, the temple precinct
@@ -461,10 +486,12 @@ fields outside. Gates: south (main road), east, west, north, plus the harbor wat
 - Out on the land: feathery tamarisk by the water, low camelthorn on the dry steppe, fallen limbs and
   stumps of dead wood, flat stone slabs and scatters of stones on the rises. None of it is in your way
 - The alehouse, beside the potters' quarter in the west of the city with its door on the street (a reed
-  awning and two jars mark it): two long tables where townsfolk sit and talk, a counter of big jars at the
-  back, lamps on the walls. The oldest such place we know of stood in the potters' district of Lagash,
-  about 2700 BC. Weapons are put away as you step in (you cannot take them up inside) and come back to
-  hand as you step out
+  awning and two jars mark it): a long hall of two floors, with stairs up to an upper room of rugs and low
+  tables. Two long tables where townsfolk sit and talk, a counter of big jars, lamps on the walls, and
+  three game tables (two below, one upstairs). The oldest such place we know of stood in the potters'
+  district of Lagash, about 2700 BC. Weapons are put away as you step in (you cannot take them up inside)
+  and come back to hand as you step out, and nothing from outside can hurt you in there: no arrow, blow or
+  bite from the street reaches a player inside
 - Torches line the streets, gates and temple, lit from five in the evening and brighter as the dusk turns to night; guards and caravans carry torches
 - At night distant things fade into the dark; torchlit places stay visible
 - Townsfolk walk all over the city: along the streets from crossing to crossing, keeping to the right,
@@ -756,7 +783,8 @@ Animals you kill stay gone until the next spring, when their herds are full agai
 | `src/jobs.c` | Craft quarter, docks, the old landing stages, mine, woodcutters' camp, farmhands, daylight workers, smith |
 | `src/caravan.c` | Trade-road caravans, their stalls and offers |
 | `src/farm.c` | Seasons, weather and rain, farm plots, ditch and well, buckets, coop and hens, city farms, crop stages |
-| `src/village.c` | Home stations, pen, market traders and offers, villagers, recipes, blessing |
+| `src/village.c` | Home stations, pen, market traders and offers, villagers, recipes, blessing, the alehouse |
+| `src/boards.c` | The alehouse games (Royal Game of Ur, fifty-eight holes): rules, the townsman's play, seats, experience, their snapshot, the boards drawn on the tables |
 | `src/wildlife.c` | Animal herds and stats, awareness AI, wolf packs, boar charges, snakes, reactions to arrows, spring return, arrows, melee and war-mace strikes |
 | `src/items.c` | Item table and stack sizes, baskets, storage, barter checks, armor table |
 | `src/player.c` | Movement, jumping, stairs, crouch, ladders, equipment, bow, camera |

@@ -364,6 +364,14 @@ static Texture2D LoadAsset(const char *name, bool repeat)
     return t;
 }
 
+// The wood of the game boards on the alehouse's panel (assets/board.png), loaded when first wanted.
+Texture2D BoardTexture(void)
+{
+    static Texture2D t;
+    if (t.id == 0) t = LoadAsset("board.png", true);
+    return t;
+}
+
 static void LoadDetail(void)
 {
     detailTex = LoadAsset("detail.png", true);
@@ -840,6 +848,7 @@ static void CatchMoving(void)
     DrawPeers();
     DrawPlayer();
     DrawRoyale();
+    DrawBoards();
     if (ExtraFigures) ExtraFigures();
     SetMaterial(MAT_THING);
     DrawArrows();

@@ -90,6 +90,16 @@ static void BuildPrompts(void)
     case TGT_STATUE:
         StatuePrompt(i, G.promptE, n, &G.okE);
         break;
+    case TGT_BOARD: {
+        const Board *x = BoardAt(i);
+        const char *game = L(x->kind == BG_UR ? "the Royal Game of Ur" : "fifty-eight holes");
+        bool free = x->seat[0] == SEAT_NONE || x->seat[1] == SEAT_NONE || ((x->seat[0] == SEAT_NPC || x->seat[1] == SEAT_NPC) && x->moves == 0);
+        G.okE = true;
+        if (BoardSide(i, G.self) >= 0) Fmt(G.promptE, n, "[E] Back to the board");
+        else if (free && BoardOf(G.self) < 0) Fmt(G.promptE, n, "[E] Sit down to play %s", game);
+        else Fmt(G.promptE, n, "[E] Watch the game of %s", game);
+        break;
+    }
     case TGT_TRADER:
         G.okE = true;
         Fmt(G.promptE, n, "[E] Barter with the %s", L(G.traders[i].name));
@@ -140,6 +150,7 @@ void FindTarget(bool play)
         for (int i = 0; i < STN_COUNT; i++)
             if (i != STN_FERRY_E && i != STN_FERRY_W && !(Match() && UselessStation(i))) Consider(&best, &score, TGT_STATION, i, G.stations[i], 1.9f);
         for (int i = 0; i < StatueCount(); i++) Consider(&best, &score, TGT_STATUE, i, StatuePos(i), 2.8f);
+        for (int i = 0; i < (BoardsOn() ? BOARDS : 0); i++) Consider(&best, &score, TGT_BOARD, i, BoardSpot(i), 1.9f);
         for (int i = 0; i < MAX_PLOTS; i++)
             if (G.plots[i].state != PLOT_PALM) Consider(&best, &score, TGT_PLOT, i, G.plots[i].pos, 2.1f);
         Consider(&best, &score, TGT_COOP, 0, G.coop, 4.2f);
@@ -340,6 +351,9 @@ bool ServeRequest(int slot, int kind, const int *args, int n, int *res, int *nre
         if (n >= 1) PartyDeath(slot, a >= BY_PLAYER && a < BY_PLAYER + MAX_PLAYERS ? a - BY_PLAYER : -1);
         CalmFor(slot);
         return true;
+    case RQ_BOARD:
+        *nres = 1;
+        return n >= 3 && BoardRequest(slot, a, b, args[2], &res[0]);
     case RQ_STATUE:
         res[0] = ClaimStatue(a, by, slot);
         res[1] = a;
@@ -356,6 +370,9 @@ void ApplyReply(int kind, const int *args, int n, bool ok, const int *res, int n
     int a = n > 0 ? args[0] : 0, b = n > 1 ? args[1] : 0;
 
     switch (kind) {
+    case RQ_BOARD:
+        BoardReply(a, b, ok, nres > 0 ? res[0] : -1);
+        break;
     case RQ_STATUE:
         if (ok && nres >= 2) GrantBoon(res[1], res[0]);
         else Say("Someone reached the statue first: its blessing is gone.");
@@ -463,6 +480,14 @@ void Interact(bool alt)
         break;
     case TGT_WATER:   if (!alt) FillBucket(); break;
     case TGT_STATUE:  if (!alt && G.okE) Act(RQ_STATUE, &i, 1); break;
+    case TGT_BOARD: {
+        const Board *x = BoardAt(i);
+        bool free = x->seat[0] == SEAT_NONE || x->seat[1] == SEAT_NONE || ((x->seat[0] == SEAT_NPC || x->seat[1] == SEAT_NPC) && x->moves == 0);
+        if (alt) break;
+        if (BoardSide(i, G.self) < 0 && free && BoardOf(G.self) < 0) BoardAct(i, BA_SIT, 0);
+        else BoardWatch(i);
+        break;
+    }
     case TGT_TRADER:
         if (!alt) {
             G.trader = i;

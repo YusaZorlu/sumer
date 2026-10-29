@@ -456,6 +456,209 @@ static void DrawNetPausePanel(void)
 }
 
 // The party's five games: while everyone waits, a vote to drop one; during the party, the order played.
+// ---- A board game at the alehouse (boards.c) ----
+
+static const Color PIECE_UI[2] = { { 40, 40, 54, 255 }, { 236, 230, 214, 255 } };
+
+// A piece on the panel's board: its disc, a ring if it can move (with its number), a faint one if it moved last.
+// True if it was clicked.
+static bool BoardPiece(Vector2 c, float rad, int side, int number, bool last)
+{
+    DrawCircleV((Vector2){ c.x + 2, c.y + 3 }, rad, Fade(BLACK, 0.35f));
+    DrawCircleV(c, rad, PIECE_UI[side]);
+    DrawCircleLines((int)c.x, (int)c.y, rad, side ? (Color){ 150, 140, 120, 255 } : (Color){ 10, 10, 16, 255 });
+    for (int k = 0; k < 5; k++) {   // the five dots of the old pieces
+        float a = (float)k * 2.0f * PI / 5.0f;
+        DrawCircleV((Vector2){ c.x + cosf(a) * rad * 0.5f, c.y + sinf(a) * rad * 0.5f }, rad * 0.11f, side ? (Color){ 60, 50, 40, 255 } : (Color){ 220, 214, 200, 255 });
+    }
+    if (last) DrawCircleLines((int)c.x, (int)c.y, rad + 3, Fade(C_GOLD, 0.6f));
+    if (number <= 0) return false;
+    DrawRing(c, rad + 2, rad + 5, 0, 360, 32, C_GOLD);
+    CenterText(TextFormat("%d", number), c.x + rad * 0.9f, c.y - rad - 16, 16, C_GOLD);
+    return CheckCollisionPointCircle(UiMouse(), c, rad + 4) && MousePressed(MOUSE_BUTTON_LEFT);
+}
+
+// The number to show on piece i of the player's own side (1, 2 ...: its place among the moves), or 0.
+static int MoveNumber(const int *moves, int n, int i)
+{
+    for (int k = 0; k < n; k++)
+        if (moves[k] == i) return k + 1;
+    return 0;
+}
+
+// The Royal Game of Ur from above, 'view' nearest. Returns the piece clicked, or -1.
+static int DrawUrPanel(Rectangle a, const Board *b, int view, const int *moves, int nm)
+{
+    float S = fminf(a.width / 9.0f, (a.height - 110) / 3.0f);
+    float ox = a.x + (a.width - 8 * S) / 2, oy = a.y + 56;
+    const Color lapis = { 40, 62, 128, 255 }, shell = { 230, 218, 190, 255 }, red = { 186, 70, 54, 255 };
+    Texture2D wood = BoardTexture();   // the board's box of wood under the squares
+    Rectangle frame = { ox - 12, oy - 12, 8 * S + 24, 3 * S + 24 };
+    DrawTexturePro(wood, (Rectangle){ 0, 0, frame.width, frame.height }, frame, (Vector2){ 0, 0 }, 0, WHITE);
+    DrawRectangleLinesEx(frame, 2, (Color){ 30, 20, 14, 255 });
+    for (int row = 0; row < 3; row++)
+        for (int col = 0; col < 8; col++) {
+            if (!UrSquareExists(col, row)) continue;
+            Rectangle q = { ox + (float)col * S, oy + (float)row * S, S, S };
+            DrawRectangleRec(q, lapis);
+            DrawRectangle((int)(q.x + 3), (int)(q.y + 3), (int)(S - 6), (int)(S - 6), shell);
+            Vector2 c = { q.x + S / 2, q.y + S / 2 };
+            if (UrRosetteSquare(col, row)) {
+                for (int k = 0; k < 8; k++) {
+                    float t = (float)k * PI / 4;
+                    DrawCircleV((Vector2){ c.x + cosf(t) * S * 0.24f, c.y + sinf(t) * S * 0.24f }, S * 0.11f, k & 1 ? lapis : red);
+                }
+                DrawCircleV(c, S * 0.1f, red);
+            } else if ((col + row) % 3 == 0) {
+                for (int k = 0; k < 5; k++) DrawCircleV((Vector2){ c.x + (k == 4 ? 0 : (k & 1 ? 1 : -1) * S * 0.22f), c.y + (k == 4 ? 0 : (k & 2 ? 1 : -1) * S * 0.22f) }, S * 0.07f, lapis);
+            } else if ((col + row) % 3 == 1) {
+                DrawCircleV(c, S * 0.26f, lapis);
+                DrawCircleV(c, S * 0.17f, shell);
+                DrawCircleV(c, S * 0.07f, red);
+            } else {
+                for (int k = 0; k < 4; k++) DrawCircleV((Vector2){ c.x + ((float)k - 1.5f) * S * 0.18f, c.y }, S * 0.06f, lapis);
+                DrawLineEx((Vector2){ c.x - S * 0.32f, c.y - S * 0.18f }, (Vector2){ c.x + S * 0.32f, c.y - S * 0.18f }, 2, lapis);
+                DrawLineEx((Vector2){ c.x - S * 0.32f, c.y + S * 0.18f }, (Vector2){ c.x + S * 0.32f, c.y + S * 0.18f }, 2, lapis);
+            }
+        }
+    int clicked = -1;
+    float rad = S * 0.32f;
+    for (int s = 0; s < 2; s++) {
+        int waiting = 0, home = 0;
+        float yOff = s == view ? oy + 3 * S + 26 : oy - 26;   // waiting and home rows below (own) or above
+        for (int i = 0; i < UR_PIECES; i++) {
+            int p = b->pos[s][i], col, row;
+            Vector2 c;
+            if (p == 0) c = (Vector2){ ox + rad + (float)waiting++ * rad * 1.35f, yOff };
+            else if (p >= 15) c = (Vector2){ ox + 8 * S - rad - (float)home++ * rad * 1.35f, yOff };
+            else {
+                UrSquare(view, s, p, &col, &row);
+                c = (Vector2){ ox + ((float)col + 0.5f) * S, oy + ((float)row + 0.5f) * S };
+            }
+            int num = s == view ? MoveNumber(moves, nm, i) : 0;
+            if (BoardPiece(c, p == 0 || p >= 15 ? rad * 0.8f : rad, s, num, b->last == i && b->lastSide == s && b->moves > 0) && num) clicked = i;
+        }
+    }
+    Text("waiting", ox, oy + 3 * S + 46, 14, C_DIM);
+    Text("home", ox + 8 * S - (float)Measure(L("home"), 14), oy + 3 * S + 46, 14, C_DIM);
+    return clicked;
+}
+
+// Fifty-eight holes from above, 'view' on the left. Returns the piece clicked, or -1.
+static int DrawHolesPanel(Rectangle a, const Board *b, int view, const int *moves, int nm)
+{
+    float bh = a.height - 40, bw = fminf(a.width - 140, bh * 0.82f), ox = a.x + (a.width - bw) / 2, oy = a.y + 30;
+    const Color ivory = { 226, 210, 176, 255 }, line = { 120, 80, 50, 255 }, hole = { 70, 52, 40, 255 };
+    Texture2D wood = BoardTexture();   // a wooden board with an ivory face inlaid
+    DrawTexturePro(wood, (Rectangle){ 0, 0, bw + 24, bh + 24 }, (Rectangle){ ox - 12, oy - 12, bw + 24, bh + 24 }, (Vector2){ 0, 0 }, 0, WHITE);
+    DrawRectangleRounded((Rectangle){ ox, oy, bw, bh }, 0.18f, 8, ivory);
+    DrawRectangleRoundedLinesEx((Rectangle){ ox, oy, bw, bh }, 0.18f, 8, 2, line);
+    #define HOLE_AT(s, p) (Vector2){ ox + HolesHole(view, s, p).x * bw, oy + (1.0f - HolesHole(view, s, p).y) * bh }
+    for (int s = 0; s < 2; s++) {
+        DrawLineEx(HOLE_AT(s, 6), HOLE_AT(s, 20), 3, line);
+        DrawLineEx(HOLE_AT(s, 8), HOLE_AT(s, 10), 3, line);
+        for (int p = 1; p <= 29; p++) {
+            Vector2 c = HOLE_AT(s, p);
+            DrawCircleV(c, p == 6 || p == 8 || p == 10 || p == 20 ? 8 : 6, hole);
+            if (p == 1 || p == 15 || p == 29) Text(TextFormat("%d", p), c.x + (s == view ? -26.0f : 12.0f), c.y - 8, 13, C_DIM);
+        }
+    }
+    DrawCircleV(HOLE_AT(0, 30), 12, hole);
+    int clicked = -1;
+    for (int s = 0; s < 2; s++) {
+        int waiting = 0, home = 0;
+        for (int i = 0; i < HOLES_PIECES; i++) {
+            int p = b->pos[s][i];
+            Vector2 c;
+            float side = s == view ? -1.0f : 1.0f;
+            if (p == 0) c = (Vector2){ ox + bw / 2 + side * (bw / 2 + 40), oy + bh - 20 - (float)waiting++ * 26 };
+            else if (p >= 30) c = (Vector2){ ox + bw / 2 + side * (18 + (float)home++ * 14), oy + 0.06f * bh - 16 };
+            else c = HOLE_AT(s, p);
+            int num = s == view ? MoveNumber(moves, nm, i) : 0;
+            if (BoardPiece(c, 10, s, num, b->last == i && b->lastSide == s && b->moves > 0) && num) clicked = i;
+        }
+    }
+    #undef HOLE_AT
+    return clicked;
+}
+
+// The throw as it fell: Ur's four pyramid dice (a white tip is a point), or the two knucklebones.
+static void DrawThrow(const Board *b, float x, float y)
+{
+    if (b->kind == BG_UR) {
+        for (int k = 0; k < 4; k++) {
+            float cx = x + 22 + (float)k * 44;
+            DrawTriangle((Vector2){ cx, y }, (Vector2){ cx - 18, y + 32 }, (Vector2){ cx + 18, y + 32 }, (Color){ 150, 112, 70, 255 });
+            DrawTriangleLines((Vector2){ cx, y }, (Vector2){ cx - 18, y + 32 }, (Vector2){ cx + 18, y + 32 }, (Color){ 80, 56, 34, 255 });
+            if (b->roll >= 0 && b->dice[k]) DrawCircleV((Vector2){ cx, y + 6 }, 5, RAYWHITE);
+        }
+    } else {
+        for (int k = 0; k < 2; k++) {
+            Rectangle bone = { x + (float)k * 80, y, 64, 34 };
+            DrawRectangleRounded(bone, 0.6f, 6, (Color){ 232, 222, 198, 255 });
+            DrawRectangleRoundedLinesEx(bone, 0.6f, 6, 1, (Color){ 120, 100, 80, 255 });
+            if (b->roll >= 0) CenterText(TextFormat("%d", b->dice[k]), bone.x + 32, bone.y + 7, 20, (Color){ 60, 40, 30, 255 });
+        }
+    }
+}
+
+static void DrawBoardPanel(void)
+{
+    int bi = BoardViewing();
+    const Board *b = BoardAt(bi);
+    if (!b || !BoardsOn()) {
+        SetPanel(PANEL_NONE);
+        return;
+    }
+    Rectangle r = PanelRect(fminf(860.0f, UiWidth() - 20.0f), fminf(520.0f, UiHeight() - 16.0f));
+    int me = BoardSide(bi, G.self), view = me >= 0 ? me : 0, other = 1 - view;
+    bool ur = b->kind == BG_UR, opponent = b->seat[0] != SEAT_NONE && b->seat[1] != SEAT_NONE;
+    bool mine = me >= 0 && opponent && b->turn == me && b->winner < 0;
+    int moves[8], nm = mine && b->roll >= 0 ? BoardMoves(b, me, moves) : 0;
+    Text(ur ? "The Royal Game of Ur" : "Fifty-eight holes", r.x + 24, r.y + 16, 26, C_GOLD);
+
+    Rectangle area = { r.x + 16, r.y + 50, r.width - 290, r.height - 66 };
+    int clicked = ur ? DrawUrPanel(area, b, view, moves, nm) : DrawHolesPanel(area, b, view, moves, nm);
+
+    // At the right: who plays, the throw, what happens now, and what can be done.
+    float x = r.x + r.width - 262, y = r.y + 60;
+    const char *names[2];
+    for (int s = 0; s < 2; s++)
+        names[s] = b->seat[s] >= 0 ? G.peers[b->seat[s]].name : b->seat[s] == SEAT_NPC ? L("A townsman") : L("(nobody)");
+    DrawCircleV((Vector2){ x + 8, y + 9 }, 7, PIECE_UI[view]);
+    Text(me >= 0 ? L("You") : names[view], x + 22, y, 18, C_TEXT);
+    DrawCircleV((Vector2){ x + 8, y + 35 }, 7, PIECE_UI[other]);
+    Text(names[other], x + 22, y + 26, 18, C_TEXT);
+    y += 64;
+    DrawThrow(b, x, y);
+    if (b->roll >= 0) Text(TextFormat(L("Thrown: %d"), b->roll), x, y + 42, 18, C_GOLD);
+    y += 74;
+    const char *status;
+    if (!opponent) status = me >= 0 ? L("Waiting for someone to sit across, or play a townsman.") : L("Nobody is playing here.");
+    else if (b->winner >= 0) status = b->winner == me ? L("You won the game!") : TextFormat(L("%s won the game."), names[b->winner]);
+    else if (!mine) status = me >= 0 ? TextFormat(L("%s's turn."), names[b->turn]) : TextFormat(L("%s's turn (watching)."), names[b->turn]);
+    else if (b->roll < 0) status = L("Your turn: throw (Space).");
+    else if (nm == 0) status = b->roll == 0 ? L("Nothing thrown: the turn passes.") : L("No piece can move with that: the turn passes.");
+    else status = L("Pick a piece to move: click it, or its number.");
+    y += Paragraph(status, x, y, 240, 17, 21) + 14;
+
+    if (me >= 0) {
+        if (Button((Rectangle){ x, y, 240, 34 }, "Throw (Space)", mine && b->roll < 0, KEY_SPACE)) BoardAct(bi, BA_THROW, 0);
+        y += 42;
+        if (!opponent && Button((Rectangle){ x, y, 240, 34 }, "Play a townsman (Enter)", true, KEY_ENTER)) BoardAct(bi, BA_NPC, 0);
+        if (!opponent) y += 42;
+        if (Button((Rectangle){ x, y, 240, 34 }, "Get up", true, 0)) {
+            BoardAct(bi, BA_LEAVE, 0);
+            SetPanel(PANEL_NONE);
+            return;
+        }
+    }
+    Text(me >= 0 ? "Esc: away from the board (you keep your place)" : "Esc: close", r.x + 24, r.y + r.height - 26, 14, C_DIM);
+    for (int k = 0; k < nm && k < 7; k++)
+        if (KeyPressed(KEY_ONE + k)) clicked = moves[k];
+    if (clicked >= 0 && mine && b->roll >= 0) BoardAct(bi, BA_MOVE, clicked);
+}
+
 static void DrawPartyPanel(void)
 {
     Rectangle r = PanelRect(760, 470);
@@ -719,6 +922,9 @@ static void DrawHelpPanel(void)
         "Battle royale and Sumer Party begin once everyone in (two or more) is ready: Enter, the Ready button at the top, or Ready in the Esc menu. "
         "A party is four of five minigames, four minutes each (vote one out in the Esc menu): floor is lava, date stashing, "
         "one-shot archers, city defence, hide and seek. Each game's top three gain +10, +6, +3; the party's top three gain experience.",
+        "The alehouse has game tables (not in battle royale or a party): sit with E and play the Royal Game of Ur or fifty-eight "
+        "holes against another player or a townsman (Enter). Space throws, click or 1-7 moves. The winner gains 20 experience "
+        "against a player, 10 against a townsman. Nothing from outside can hurt you inside the alehouse.",
     };
     const int nk = (int)(sizeof(keys) / sizeof(keys[0])), nt = (int)(sizeof(tips) / sizeof(tips[0]));
     Rectangle r = PanelRect(fminf(1200.0f, UiWidth() - 20.0f), fminf(690.0f, UiHeight() - 16.0f));
@@ -1295,6 +1501,7 @@ void DrawUI(void)
     case PANEL_TRADE:   DrawTradePanel(); break;
     case PANEL_PAUSE:   DrawPausePanel(); break;
     case PANEL_PARTY:   DrawPartyPanel(); break;
+    case PANEL_BOARD:   DrawBoardPanel(); break;
     case PANEL_HELP:    DrawHelpPanel(); break;
     case PANEL_COOP:    DrawCoopPanel(); break;
     case PANEL_LOOK:    DrawLookPanel(); break;

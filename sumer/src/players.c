@@ -120,6 +120,9 @@ void HurtSlot(int s, float dmg, int by)
 // Like HurtSlot, with the place the blow came from, so the one hit can see which way to turn.
 void HurtSlotFrom(int s, float dmg, int by, const Vector3 *src)
 {
+    // No one in the alehouse is hurt by anyone (or anything) outside it: a blow or an arrow through the
+    // door does nothing. Weapons are put away inside, so no one there strikes either.
+    if (src && InAlehouse(PlayerAt(s)) && !InAlehouse(*src)) return;
     if (s == G.self) HurtPlayerFrom(dmg, by, src);
     else if (G.role == NET_HOST && PlayerIn(s)) NetHurt(s, dmg, by, src);
 }

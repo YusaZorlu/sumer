@@ -3,7 +3,8 @@
 // something. "info" answers with the world as JSON; "cmd N a b" runs command N:
 // 9 set the hour to a; 20 start a battle royale round; 21 skip the round's clock to a s; 22 the next
 // round in a s; 30 a party's clock: a game's time to a s, a countdown or break to a s at most; 31 in hide
-// and seek, the seeker's blow finds player a.
+// and seek, the seeker's blow finds player a; 40 board a near its end: side 0's pieces home but one, and b
+// (0 or 1) the side whose turn it is.
 #include "game.h"
 #include <stdio.h>
 #include <string.h>
@@ -76,6 +77,19 @@ void HostTest(const char *in, char *out, int size)
     case 21: RoyaleSkipTo(a); break;
     case 22: RoyaleCountdownTo(a); break;
     case 30: PartySkipTo(a); break;
+    case 40: {
+        Board *x = BoardAt((int)a);
+        if (!x) break;
+        int n = BoardPieces(x->kind);
+        for (int k = 0; k < n; k++) x->pos[0][k] = (unsigned char)BoardHome(x->kind);
+        x->pos[0][0] = (unsigned char)(x->kind == BG_UR ? 12 : 24);
+        for (int k = 0; k < n; k++) x->pos[1][k] = 0;
+        x->turn = (unsigned char)b;
+        x->roll = -1;
+        x->moves = 30;
+        x->winner = -1;
+        break;
+    }
     case 31:
         if (PartySeeker() >= 0) {
             G.actor = PartySeeker();

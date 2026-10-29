@@ -8,9 +8,12 @@
 - assets/detail3.png: trees and fields: R palm bark, G leaves, B tilled soil (Poly Haven), A straw for the
   crops (ambientCG).
 - assets/flame.png: two frames of a flame side by side, from Kenney's Particle Pack (kenney.nl).
+- assets/board.png: the wood of the alehouse's game boards (their frame on the panel), in its own colors,
+  from Poly Haven's wood_table_001.
 
 The game keeps its own colors and takes only light and dark from the textures.
-Usage: python3 -I tools/assets/make_detail.py   (needs Pillow and the network; downloads into tools/out/assets)
+Usage: python3 -I tools/assets/make_detail.py [board]   (needs Pillow and the network; downloads into
+tools/out/assets; 'board' builds assets/board.png alone)
 """
 import json
 import os
@@ -86,8 +89,19 @@ def detail(path):
     return out
 
 
+def board():
+    # The one picture kept in color: a 256x256 square of the table's wood, a little darker.
+    im = Image.open(fetch('wood_table_001')).convert('RGB').resize((256, 256), Image.LANCZOS)
+    im = im.point(lambda v: int(v * 0.85))
+    im.save(os.path.join(ROOT, 'assets', 'board.png'), optimize=True)
+
+
 def main():
     os.makedirs(CACHE, exist_ok=True)
+    if sys.argv[1:] == ['board']:
+        board()
+        print('wrote assets/board.png')
+        return 0
     chans = [detail(fetch(a)) for a in SOURCES]
     Image.merge('RGBA', chans).save(os.path.join(ROOT, 'assets', 'detail.png'), optimize=True)
     chans = [detail(fetch_cg(a, k)) for a, k in PEOPLE]
@@ -95,7 +109,8 @@ def main():
     chans = [detail(fetch(a) if site == 'ph' else fetch_cg(a, 'Color')) for site, a in TREES]
     Image.merge('RGBA', chans).save(os.path.join(ROOT, 'assets', 'detail3.png'), optimize=True)
     flames()
-    print('wrote assets/detail.png, detail2.png, detail3.png and flame.png')
+    board()
+    print('wrote assets/detail.png, detail2.png, detail3.png, flame.png and board.png')
 
 
 if __name__ == '__main__':

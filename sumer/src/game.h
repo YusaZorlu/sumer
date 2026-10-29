@@ -266,8 +266,8 @@ typedef enum {
     STN_BED, STN_STORAGE, STN_QUERN, STN_TROUGH, STN_OVEN, STN_KILN, STN_SMELTER, STN_BENCH, STN_ALTAR, STN_STASH, STN_STASH2,
     STN_STASH3, STN_STASH4, STN_WELL, STN_DITCH, STN_FERRY_E, STN_FERRY_W, STN_COUNT
 } StationId;
-typedef enum { PANEL_NONE, PANEL_BAG, PANEL_STORAGE, PANEL_TRADE, PANEL_PAUSE, PANEL_HELP, PANEL_COOP, PANEL_LOOK, PANEL_SETTINGS, PANEL_CHAT, PANEL_PARTY } Panel;
-typedef enum { TGT_NONE, TGT_CARCASS, TGT_RES, TGT_STATION, TGT_PLOT, TGT_COOP, TGT_TRADER, TGT_BODY, TGT_OFFER, TGT_LADDER, TGT_WATER, TGT_STATUE } TargetKind;
+typedef enum { PANEL_NONE, PANEL_BAG, PANEL_STORAGE, PANEL_TRADE, PANEL_PAUSE, PANEL_HELP, PANEL_COOP, PANEL_LOOK, PANEL_SETTINGS, PANEL_CHAT, PANEL_PARTY, PANEL_BOARD } Panel;
+typedef enum { TGT_NONE, TGT_CARCASS, TGT_RES, TGT_STATION, TGT_PLOT, TGT_COOP, TGT_TRADER, TGT_BODY, TGT_OFFER, TGT_LADDER, TGT_WATER, TGT_STATUE, TGT_BOARD } TargetKind;
 enum { SPRING, SUMMER, FALL, WINTER };
 typedef struct { TargetKind kind; int index; } Target;
 
@@ -368,7 +368,7 @@ typedef struct { int kind, from; const unsigned char *data; int len; } NetMessag
 // What a guest asks the host before it changes the shared world (shots and blows need no answer).
 enum {
     RQ_SHOOT = 1, RQ_STRIKE, RQ_CARCASS, RQ_GATHER, RQ_STASH, RQ_PLOT, RQ_DITCH, RQ_COOPWATER, RQ_EGGS, RQ_FEED,
-    RQ_SLAUGHTER, RQ_HEN, RQ_LOOT, RQ_COLLAPSE, RQ_STATUE
+    RQ_SLAUGHTER, RQ_HEN, RQ_LOOT, RQ_COLLAPSE, RQ_STATUE, RQ_BOARD
 };
 #define REQ_ARGS 12
 enum { WARN_WOLF, WARN_SNAKE, WARN_KINDS };
@@ -609,6 +609,60 @@ Vector3 VillageCenter(int v);
 const char *VillageName(int v);
 int VillageAt(Vector3 p);
 bool InAlehouse(Vector3 p);
+Vector3 BoardSpot(int b);
+Vector3 BoardSeat(int b, int side, float *face);
+
+// Board games at the alehouse (boards.c): board 0 and 2 the Royal Game of Ur, board 1 fifty-eight holes.
+#define BOARDS        3
+#define UR_PIECES     7
+#define HOLES_PIECES  5
+#define SEAT_NONE     (-1)
+#define SEAT_NPC      (-2)
+enum { BG_UR, BG_HOLES };
+enum { BA_SIT, BA_LEAVE, BA_NPC, BA_THROW, BA_MOVE };
+// 'seat': a player's slot, SEAT_NPC or SEAT_NONE for each side; 'pos': each piece's place on its side's
+// way (0 waiting, BoardHome() home); 'roll' -1 until thrown; 'last' the piece last moved (by 'lastSide').
+typedef struct {
+    unsigned char kind;
+    signed char seat[2];
+    unsigned char pos[2][UR_PIECES];
+    unsigned char turn;
+    signed char roll;
+    unsigned char dice[4];
+    signed char winner, last;
+    unsigned char lastSide;
+    unsigned short moves;
+    float wait, idle;
+} Board;
+bool BoardsOn(void);
+void BoardsInit(void);
+Board *BoardAt(int b);
+int BoardPieces(int kind);
+int BoardHome(int kind);
+bool UrRosette(int p);
+int HolesLink(int p);
+int BoardTarget(const Board *b, int side, int i);
+int BoardMoves(const Board *b, int side, int *out);
+void BoardThrow(Board *b);
+bool BoardMove(Board *b, int i);
+int BoardBest(const Board *b);
+int BoardOf(int slot);
+int BoardSide(int b, int slot);
+void BoardsUpdate(float dt);
+bool BoardRequest(int slot, int b, int act, int arg, int *sat);
+void BoardAct(int b, int act, int arg);
+void BoardReply(int b, int act, bool ok, int side);
+void BoardWatch(int b);
+int BoardViewing(void);
+void BoardsLocal(void);
+bool UrSquare(int view, int side, int p, int *col, int *row);
+bool UrSquareExists(int col, int row);
+bool UrRosetteSquare(int col, int row);
+Vector2 HolesHole(int view, int side, int p);
+void DrawBoards(void);
+Texture2D BoardTexture(void);
+void WriteBoards(Writer *w);
+void ReadBoards(Reader *r);
 Rectangle FoldArea(void);
 
 bool InsideWalls(float x, float z, float margin);

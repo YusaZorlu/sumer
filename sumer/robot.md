@@ -227,6 +227,18 @@ in `src/game.h`) holds the whole world.
 - **Alehouse** (`BuildAlehouse`, `AlehouseFolk`, `InAlehouse` in `village.c`; the rule in `AlehouseRule` and
   `SetEquip` in `player.c`): built before the city's houses so they keep clear of it. Its folk are appended
   last (`Villager.talks`: they turn and gesture while drawn). No drink is sold there yet, by the owner's wish.
+  Two floors (frame `ALE`, rot 3: local -x is the door side); the streets pass both long sides, so it grows
+  along the street, not deeper. `InAlehouse` covers both floors: `HurtSlotFrom` drops any harm whose source
+  is outside while the player is inside (blows, arrows, bites all pass a source there).
+- **Alehouse games** (`boards.c`; tables at `GAME_TABLES` in `village.c`, `BoardSpot`/`BoardSeat`): the host
+  keeps `Board boards[BOARDS]` and throws the dice; guests ask with `RQ_BOARD` (`BoardRequest` on the host,
+  `BoardReply` on the guest), and `WriteBoards`/`ReadBoards` carry them in the snapshot (only when `BoardsOn()`,
+  i.e. not a Royale or Party; a change there needs a `NET_VERSION` bump). Seats are a slot, `SEAT_NPC` or
+  `SEAT_NONE`; a seated player more than 2.2 m from the stool stands up. The panel is `PANEL_BOARD`
+  (`DrawBoardPanel` in `ui.c`); Esc closes it but keeps the seat. Experience goes through `AwardXp`. Rules,
+  the townsman's choice (`BoardBest`) and seating are checked by `TestBoards` (harness); `boards.js` plays
+  both against a townsman and between two players in the browser, with test hook cmd 25 (stand at a seat) and
+  host cmd 40 (a board one move from the end).
 - **Leaf crowns**: a blob in leaf color (alpha 253) is lumpy (`Lump()` in `render.c`, the same waves at every level of
   detail) and gets no normal, so the shader lights it facet by facet. Trees add two hashed clumps (no `RandF`).
 - **Partridges** (`AN_PARTRIDGE`, item `IT_PARTRIDGE`): herds appended at the end of `HERDS` because saves keep the
