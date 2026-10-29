@@ -520,10 +520,12 @@ void BoardReply(int b, int act, bool ok, int side)
 // Seated at a board: sitting on the stool.
 void BoardsLocal(void)
 {
-    int b = BoardOf(G.self);
-    if (b < 0 || Dedicated()) return;
-    int side = BoardSide(b, G.self);
-    if (XZDist(G.player.pos, BoardSeat(b, side, NULL)) < 0.6f) G.player.crouching = true;
+    static bool sat;   // the crouch is the stool's: it goes when the player gets up or walks off
+    int b = Dedicated() ? -1 : BoardOf(G.self);
+    bool on = b >= 0 && XZDist(G.player.pos, BoardSeat(b, BoardSide(b, G.self), NULL)) < 0.6f;
+    if (on) G.player.crouching = true;
+    else if (sat) G.player.crouching = false;
+    sat = on;
 }
 
 // The board on the table seen from above: local x across (toward side 1), z along; rot 3 as the alehouse.
