@@ -47,6 +47,7 @@ void GameInit(void)
     ShapeRoyale();
     ShapeParty();
     BoardsInit();
+    PetsInit();
     // The world comes from a fixed seed; animals and weather differ every game.
     SetRandomSeed((unsigned int)time(NULL));
     InitWildlife();
@@ -510,11 +511,20 @@ static bool HandleWindow(void)
 
     if (!OnWeb()) return paused;
     bool captured = PointerCaptured();
-    if (G.wasCaptured && !captured && G.panel == PANEL_NONE && !OnPhone()) {
+    // (Not when an Esc has just closed a panel that kept the mouse: that Esc released it, and play waits for a click.)
+    if (G.wasCaptured && !captured && G.panel == PANEL_NONE && !OnPhone() && G.escQuiet <= 0) {
         SetPanel(PANEL_PAUSE);
         paused = true;
         // The Esc that released the mouse can reach the game a frame later; it must not close the menu again.
         G.escQuiet = 0.3f;
+    } else if (G.wasCaptured && !captured && G.panel != PANEL_NONE && G.panel != PANEL_PAUSE && !OnPhone()) {
+        // A window that kept the mouse, and the browser took it back (Esc, which Firefox may keep to itself):
+        // the window closes as Esc closes it, and play waits for a click. The Esc itself, if it comes, is spent.
+        SetPanel(PANEL_NONE);
+        LockMouse(false);
+        WantPointer(true);
+        G.cursorLocked = false;
+        G.escQuiet = 0.4f;
     }
     G.wasCaptured = captured;
     // The click that takes the mouse back is not a shot.
@@ -523,8 +533,11 @@ static bool HandleWindow(void)
 }
 
 // 'paused': the Esc that released the mouse already opened the pause menu; it does not close it again.
+static bool closedWithE;   // this frame's E closed a window: it does not open the same one again
+
 static void HandleMenus(bool paused)
 {
+    closedWithE = false;
     if (G.escQuiet > 0) G.escQuiet -= GetFrameTime();
     bool esc = KeyPressed(KEY_ESCAPE) && !paused && G.escQuiet <= 0;
     if (esc || TouchPressed(TB_MENU)) {
@@ -538,6 +551,9 @@ static void HandleMenus(bool paused)
             G.cursorLocked = false;
             G.escQuiet = 0.4f;
         }
+    } else if (KeyPressed(KEY_E) && (G.panel == PANEL_TRADE || G.panel == PANEL_STORAGE || G.panel == PANEL_COOP || G.panel == PANEL_BOARD)) {
+        SetPanel(PANEL_NONE);   // E closes what E opened, and the mouse stays with the game (Esc gives it back)
+        closedWithE = true;
     } else if (KeyPressed(KEY_ENTER) && !IsKeyDown(KEY_LEFT_ALT) && !IsKeyDown(KEY_RIGHT_ALT) && G.panel == PANEL_NONE && LobbyWaiting()) {
         ToggleReady();
     } else if (KeyPressed(KEY_H) && (G.panel == PANEL_NONE || G.panel == PANEL_PAUSE || G.panel == PANEL_HELP)) {
@@ -640,6 +656,7 @@ void GameUpdate(void)
     PartyUpdate(dt);
     BoardsUpdate(dt);
     BoardsLocal();
+    UpdatePets(dt);
     UpdateWatch();
     UpdateClock(dt);
     UpdateSleep(dt);
@@ -661,7 +678,7 @@ void GameUpdate(void)
     FindTarget(play);
 
     if (play) {
-        if (KeyPressed(KEY_E) || TouchPressed(TB_USE)) Interact(false);
+        if ((KeyPressed(KEY_E) && !closedWithE) || TouchPressed(TB_USE)) Interact(false);
         if (KeyPressed(KEY_F)) Interact(true);
         if (KeyPressed(KEY_R)) RefillQuiver();
         if (KeyPressed(KEY_ONE)) SetEquip(EQ_BOW);
@@ -710,6 +727,7 @@ void ServerTick(float dt)
     RoyaleUpdate(dt);
     PartyUpdate(dt);
     BoardsUpdate(dt);
+    UpdatePets(dt);
     UpdateTime(dt / HOUR_SECONDS);
     UpdateDawn();
     UpdateWeather();
@@ -743,6 +761,7 @@ void GameDraw(void)
     DrawPlayer();
     DrawRoyale();
     DrawBoards();
+    DrawPets();
     if (ExtraFigures) ExtraFigures();
     DrawEffects();
     DrawRain();

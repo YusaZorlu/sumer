@@ -267,7 +267,7 @@ typedef enum {
     STN_STASH3, STN_STASH4, STN_WELL, STN_DITCH, STN_FERRY_E, STN_FERRY_W, STN_COUNT
 } StationId;
 typedef enum { PANEL_NONE, PANEL_BAG, PANEL_STORAGE, PANEL_TRADE, PANEL_PAUSE, PANEL_HELP, PANEL_COOP, PANEL_LOOK, PANEL_SETTINGS, PANEL_CHAT, PANEL_PARTY, PANEL_BOARD } Panel;
-typedef enum { TGT_NONE, TGT_CARCASS, TGT_RES, TGT_STATION, TGT_PLOT, TGT_COOP, TGT_TRADER, TGT_BODY, TGT_OFFER, TGT_LADDER, TGT_WATER, TGT_STATUE, TGT_BOARD } TargetKind;
+typedef enum { TGT_NONE, TGT_CARCASS, TGT_RES, TGT_STATION, TGT_PLOT, TGT_COOP, TGT_TRADER, TGT_BODY, TGT_OFFER, TGT_LADDER, TGT_WATER, TGT_STATUE, TGT_BOARD, TGT_PET } TargetKind;
 enum { SPRING, SUMMER, FALL, WINTER };
 typedef struct { TargetKind kind; int index; } Target;
 
@@ -368,7 +368,7 @@ typedef struct { int kind, from; const unsigned char *data; int len; } NetMessag
 // What a guest asks the host before it changes the shared world (shots and blows need no answer).
 enum {
     RQ_SHOOT = 1, RQ_STRIKE, RQ_CARCASS, RQ_GATHER, RQ_STASH, RQ_PLOT, RQ_DITCH, RQ_COOPWATER, RQ_EGGS, RQ_FEED,
-    RQ_SLAUGHTER, RQ_HEN, RQ_LOOT, RQ_COLLAPSE, RQ_STATUE, RQ_BOARD
+    RQ_SLAUGHTER, RQ_HEN, RQ_LOOT, RQ_COLLAPSE, RQ_STATUE, RQ_BOARD, RQ_PET
 };
 #define REQ_ARGS 12
 enum { WARN_WOLF, WARN_SNAKE, WARN_KINDS };
@@ -609,6 +609,23 @@ Vector3 VillageCenter(int v);
 const char *VillageName(int v);
 int VillageAt(Vector3 p);
 bool InAlehouse(Vector3 p);
+
+// Cats and dogs (pets.c)
+bool PetsOn(void);
+void PetsInit(void);
+void UpdatePets(float dt);
+void DrawPets(void);
+int PetCount(void);
+Vector3 PetPos(int i);
+Vector3 PetHomeAt(int i, float *range);
+bool PetIsDog(int i);
+int PetFriend(int i);
+bool PetEating(int i);
+int PetFood(int i);
+bool PetServe(int slot, int i);
+void PetReply(int i, int item, bool ok);
+Vector2 PushOutPets(Vector2 q, float r);
+bool WalkToward(Vitals *v, Vector3 goal, float speed, float dt, float stop);
 Vector3 BoardSpot(int b);
 Vector3 BoardSeat(int b, int side, float *face);
 
@@ -663,6 +680,8 @@ void DrawBoards(void);
 Texture2D BoardTexture(void);
 void WriteBoards(Writer *w);
 void ReadBoards(Reader *r);
+void WritePets(Writer *w);
+void ReadPets(Reader *r);
 Rectangle FoldArea(void);
 
 bool InsideWalls(float x, float z, float margin);
@@ -952,6 +971,7 @@ void MountStorage(void);
 bool StorageReady(void);
 void SyncStorage(void);
 void WantPointer(bool captured);
+void KeepPointer(void);
 bool PointerCaptured(void);
 void NoGrab(const Rectangle *r, int n);
 void WatchClicks(void);

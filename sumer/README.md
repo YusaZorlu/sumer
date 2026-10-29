@@ -153,8 +153,9 @@ The five minigames:
 
 In survival, PvP and single-player games (not in battle royale or a party) the alehouse has three game tables.
 Walk up to a stool and press E to sit; play another player who sits across, or press Enter (or the button) to
-play a townsman. Space throws, a click or the number keys move a piece, Esc steps away from the panel while you
+play a townsman. Space throws, a click or the number keys move a piece, E or Esc steps away from the panel while you
 keep your place, and getting up (the button, or walking off) gives up the game. Look on at a full table with E.
+Rules (R, or the button) shows both games' rules in short in place of the board.
 The only stake is experience for the winner: +20 for beating a player, +10 for beating a townsman. Getting up
 from a game against a player loses it only once twenty moves have been made, so a quick sit-and-stand earns
 nobody anything; if you sit and do nothing for 45 seconds, the game plays your turn for you.
@@ -289,7 +290,7 @@ The controls show on a phone or tablet, and on any other screen once a finger to
 | V | Strike with the melee weapon |
 | Right mouse or Q | Parry with the melee weapon or the mace |
 | Z | Arrow camera on/off |
-| E / F | Use, talk, pick up, climb a ladder, search a body, fill or pour a bucket, open the coop / alternate action (plant a date) |
+| E / F | Use, talk, pick up, climb a ladder, search a body, fill or pour a bucket, open the coop, feed a cat or a dog / alternate action (plant a date). E also closes what it opened (barter, storeroom, coop, a game board) |
 | R | Refill quiver from carried arrow baskets |
 | B | Torch on/off (it burns from 17:00, brighter as dusk turns to night; also a button in Tab, see Combat) |
 | Tab | Baskets (inventory), equipment and armor |
@@ -308,6 +309,11 @@ The controls show on a phone or tablet, and on any other screen once a finger to
 Panels also take number keys (barter offer N, with 0, - and = for offers 10-12; use basket N; coop actions
 1-4), so nothing depends on a click landing. The game pauses when the window loses focus (a screenshot tool, switching apps);
 Resume or Esc takes the mouse back.
+
+In a browser only Esc gives the mouse back. A window opened over the game (Tab, barter, the storeroom, the coop, a
+game board, chat) keeps it and shows the game's own arrow, which the mouse moves; closing the window with Tab or E goes
+straight back to looking round, with no click. Esc in a window closes it and gives the mouse back (a click takes it
+again); Esc in play opens the pause menu.
 
 ## Game settings
 
@@ -450,7 +456,7 @@ fields outside. Gates: south (main road), east, west, north, plus the harbor wat
 - Every village keeps a guard with a hunting bow, always in hand. When the village turns on you, its
   guard shoots at you from where it stands. City guards with bows carry them slung on the back and take
   them in hand when the one they chase is out of a spear's reach
-- Eastern hills: copper mine and woodcutters' forest; more forest along the river, in the hills and
+- Eastern hills: copper mine (see below) and woodcutters' forest; more forest along the river, in the hills and
   around the hunters
 - Gazelles south-east and around the hunters' basin, onagers north-east, boars in the south-west marsh
   and the eastern woods, geese on the river
@@ -733,6 +739,22 @@ People who come after you, or go back to their posts, find their way: round hous
 down the ziggurat's stairs, over bridges, and across a canal with a jump, instead of pressing into
 whatever stands in the straight line.
 
+## Cats, dogs and the mine
+
+Cats keep to the city's streets (the harbor quay, by the alehouse, the west and east streets, the main street)
+and round the fishers' village; dogs live in the villages (the hunters' slim salukis, the herders' big flock dogs,
+the fishers' dog) and two lie by the temple gate. Like the sheep and cattle they are solid but come to no harm. Give
+a cat a fish (or a grilled one) or a dog roast meat (E) and it eats, then follows you about for a couple of minutes
+before it wanders home. Everyone in a shared game sees whose friend it is. There are none in a battle royale or a
+party (no guards, no townsfolk's animals), so they cost those games nothing.
+
+The copper mine in the eastern hills is worked as such mines were in the third millennium BC, at Timna and Feinan
+or in Magan (today's Oman), whence Sumer had its copper: a rocky ridge with green malachite seams, an adit timbered
+at its mouth, a shaft with a notched log for a ladder and a frame to haul baskets up; ore broken with stone hammers
+on anvil stones and sorted by hand under a reed shade, rich green from grey waste (the spoil heap); two bowl furnaces
+of clay blown through clay pipes by pot bellows, charcoal and wood beside them, the black slag thrown on a heap, and
+the copper cast in bun-shaped ingots.
+
 ## Wolves and animals
 
 Wolves hunt you only when you are alone outside the walls: no worker, villager, traveller or caravan
@@ -784,6 +806,7 @@ Animals you kill stay gone until the next spring, when their herds are full agai
 | `src/caravan.c` | Trade-road caravans, their stalls and offers |
 | `src/farm.c` | Seasons, weather and rain, farm plots, ditch and well, buckets, coop and hens, city farms, crop stages |
 | `src/village.c` | Home stations, pen, market traders and offers, villagers, recipes, blessing, the alehouse |
+| `src/pets.c` | Cats and dogs: homes, wandering, feeding and following, their part of the snapshot, drawing |
 | `src/boards.c` | The alehouse games (Royal Game of Ur, fifty-eight holes): rules, the townsman's play, seats, experience, their snapshot, the boards drawn on the tables |
 | `src/wildlife.c` | Animal herds and stats, awareness AI, wolf packs, boar charges, snakes, reactions to arrows, spring return, arrows, melee and war-mace strikes |
 | `src/items.c` | Item table and stack sizes, baskets, storage, barter checks, armor table |

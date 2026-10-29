@@ -18,9 +18,11 @@
 enum { CLICK_NONE, CLICK_LEFT, CLICK_RIGHT };
 
 static char hoverText[256];
+static bool boardRules;   // the board panel shows the rules in place of the board
 
 void SetPanel(Panel p)
 {
+    if (p == PANEL_BOARD && G.panel != PANEL_BOARD) boardRules = false;
     G.panel = p;
     G.player.aiming = false;
     G.player.draw = 0;
@@ -29,6 +31,11 @@ void SetPanel(Panel p)
         WantPointer(true);
         G.cursorLocked = true;
         G.ignoreClick = true;
+    } else if (OnWeb() && p != PANEL_PAUSE && PointerCaptured()) {
+        // In a browser only Esc gives the mouse back: a panel over the game is worked with the game's own
+        // cursor while the page keeps the mouse, so closing it goes straight back to play (a browser hands
+        // the mouse over again only on a click).
+        KeepPointer();
     } else {
         LockMouse(false);
         WantPointer(false);
@@ -399,7 +406,7 @@ static void DrawTradePanel(void)
         const char *label = i < 9 ? TextFormat(L("[%d] Barter"), i + 1) : i < 12 ? extraLabels[i - 9] : "Barter";
         if (Button((Rectangle){ r.x + r.width - 136, y + 4, 112, 30 }, label, ok, key)) Barter(G.trader, i);
     }
-    Text("Click Barter or press the offer's number    Esc: close", r.x + 24, r.y + r.height - 34, 16, C_DIM);
+    Text("Click Barter or press the offer's number    E or Esc: close", r.x + 24, r.y + r.height - 34, 16, C_DIM);
 }
 
 // Playing with others the world goes on while the menu is open, and there are no save slots: the server
@@ -464,13 +471,19 @@ static const Color PIECE_UI[2] = { { 40, 40, 54, 255 }, { 236, 230, 214, 255 } }
 // True if it was clicked.
 #if defined(SUMER_TEST)
 // Test builds: where on the board panel to tap (UI units; x < 0 when not shown): Throw, Play a townsman,
-// Get up, then the pieces that can move, by their number.
-static Vector2 boardTap[3 + UR_PIECES];
+// Get up, the pieces that can move by their number, then Rules.
+#define BOARD_TAPS (4 + UR_PIECES)
+static Vector2 boardTap[BOARD_TAPS];
 #define BOARD_TAP(k, v) (boardTap[k] = (v))
+
+bool BoardRulesShown(void)
+{
+    return boardRules;
+}
 
 bool BoardTapAt(int k, Vector2 *c)
 {
-    if (k < 0 || k >= 3 + UR_PIECES || boardTap[k].x < 0) return false;
+    if (k < 0 || k >= BOARD_TAPS || boardTap[k].x < 0) return false;
     *c = Vector2Scale(boardTap[k], UiScale() / PixelRatio());
     return true;
 }
@@ -620,6 +633,40 @@ static void DrawThrow(const Board *b, float x, float y)
     }
 }
 
+// The rules in short, shown over the board (the Rules button), for whoever has never played.
+static void DrawBoardRules(Rectangle a, bool ur)
+{
+    static const char *const UR[] = {
+        "Goal: be the first to take all seven of your pieces round the board and off it.",
+        "Throw the four dice: every white tip counts one, so a throw is 0 to 4. Then move one piece that many squares.",
+        "A piece comes on at the start of your own row, runs along it, down the whole middle row, back onto the end of your row and off. Going off takes the exact throw.",
+        "You cannot land on your own piece. Land on your opponent's piece in the middle row and it goes back to start.",
+        "A rosette (the flower squares) gives you another throw. A piece on the middle row's rosette is safe.",
+        "A throw of 0, or no piece that can move: the turn passes.",
+    };
+    static const char *const HOLES[] = {
+        "Goal: be the first to bring all five of your pins up to the shared hole at the top.",
+        "Throw the two knucklebones: each lands on 1, 3, 4 or 6, and the two are added (2 to 12). Then move one pin that many holes up your side.",
+        "Pins come on at the bottom and climb your side's 29 holes; a throw that reaches past the last one brings the pin home.",
+        "The lines join hole 6 with 20, and 8 with 10: a pin that lands on one end goes along the line to the other, up or down.",
+        "Two of your pins cannot share a hole. Pins never take each other.",
+        "No pin that can move: the turn passes.",
+    };
+    const char *const *lines = ur ? UR : HOLES;
+    int n = ur ? (int)(sizeof(UR) / sizeof(UR[0])) : (int)(sizeof(HOLES) / sizeof(HOLES[0]));
+    DrawRectangleRec(a, (Color){ 40, 34, 28, 255 });
+    DrawRectangleLinesEx(a, 1, C_EDGE);
+    Text("How to play", a.x + 16, a.y + 12, 20, C_GOLD);
+    float y = a.y + 44, w = a.width - 44;
+    for (int i = 0; i < n; i++) {
+        DrawCircleV((Vector2){ a.x + 22, y + 9 }, 3, C_GOLD);
+        y += Paragraph(lines[i], a.x + 32, y, w, 16, 20) + 8;
+    }
+    y += 6;
+    y += Paragraph("The winner gains 20 experience against a player, 10 against a townsman. Getting up gives the "
+                   "game away once twenty moves are made.", a.x + 16, y, a.width - 32, 15, 19);
+}
+
 static void DrawBoardPanel(void)
 {
     int bi = BoardViewing();
@@ -629,7 +676,7 @@ static void DrawBoardPanel(void)
         return;
     }
 #if defined(SUMER_TEST)
-    for (int k = 0; k < 3 + UR_PIECES; k++) boardTap[k] = (Vector2){ -1, -1 };
+    for (int k = 0; k < BOARD_TAPS; k++) boardTap[k] = (Vector2){ -1, -1 };
 #endif
     Rectangle r = PanelRect(fminf(860.0f, UiWidth() - 20.0f), fminf(520.0f, UiHeight() - 16.0f));
     int me = BoardSide(bi, G.self), view = me >= 0 ? me : 0, other = 1 - view;
@@ -639,7 +686,9 @@ static void DrawBoardPanel(void)
     Text(ur ? "The Royal Game of Ur" : "Fifty-eight holes", r.x + 24, r.y + 16, 26, C_GOLD);
 
     Rectangle area = { r.x + 16, r.y + 50, r.width - 290, r.height - 66 };
-    int clicked = ur ? DrawUrPanel(area, b, view, moves, nm) : DrawHolesPanel(area, b, view, moves, nm);
+    int clicked = -1;
+    if (boardRules) DrawBoardRules((Rectangle){ area.x, area.y, area.width, area.height - 30 }, ur);
+    else clicked = ur ? DrawUrPanel(area, b, view, moves, nm) : DrawHolesPanel(area, b, view, moves, nm);
 
     // At the right: who plays, the throw, what happens now, and what can be done.
     float x = r.x + r.width - 262, y = r.y + 60;
@@ -677,10 +726,14 @@ static void DrawBoardPanel(void)
             return;
         }
     }
+    Rectangle rb = { x, r.y + r.height - 76, 240, 34 };
+    BOARD_TAP(3 + UR_PIECES, ((Vector2){ rb.x + 120, rb.y + 17 }));
+    if (Button(rb, boardRules ? (TouchOn() ? "Back to the board" : "Back to the board (R)") : (TouchOn() ? "Rules" : "Rules (R)"), true, KEY_R))
+        boardRules = !boardRules;
     if (TouchOn()) {   // the Close button in the Menu button's place
         if (me >= 0) Text("Close: away from the board (you keep your place)", r.x + 24, r.y + r.height - 26, 14, C_DIM);
     } else {
-        Text(me >= 0 ? "Esc: away from the board (you keep your place)" : "Esc: close", r.x + 24, r.y + r.height - 26, 14, C_DIM);
+        Text(me >= 0 ? "E or Esc: away from the board (you keep your place)" : "E or Esc: close", r.x + 24, r.y + r.height - 26, 14, C_DIM);
     }
     for (int k = 0; k < nm && k < 7; k++)
         if (KeyPressed(KEY_ONE + k)) clicked = moves[k];
@@ -896,7 +949,7 @@ static void DrawCoopPanel(void)
         }
         y += 44;
     }
-    const char *foot = G.slaughterStep > 0 ? "Click the hen's button again to confirm, Esc to cancel" : "Click or 1-4    Esc: close";
+    const char *foot = G.slaughterStep > 0 ? "Click the hen's button again to confirm, Esc to cancel" : "Click or 1-4    E or Esc: close";
     Text(foot, x0, r.y + r.height - 34, 16, G.slaughterStep > 0 ? C_GOLD : C_DIM);
 }
 
@@ -952,7 +1005,12 @@ static void DrawHelpPanel(void)
         "one-shot archers, city defence, hide and seek. Each game's top three gain +10, +6, +3; the party's top three gain experience.",
         "The alehouse has game tables (not in battle royale or a party): sit with E and play the Royal Game of Ur or fifty-eight "
         "holes against another player or a townsman (Enter). Space throws, click or 1-7 moves. The winner gains 20 experience "
-        "against a player, 10 against a townsman. Nothing from outside can hurt you inside the alehouse.",
+        "against a player, 10 against a townsman; Rules (R) at the board explains both games. Nothing from outside can hurt "
+        "you inside the alehouse.",
+        "Cats live in the city's streets and round the fishers' village, dogs in the villages and by the temple gate. Give a "
+        "cat a fish or a dog roast meat (E) and it follows you about for a while.",
+        "In a browser the mouse stays with the game while a window is open over it (bag, barter, storeroom, coop, board): "
+        "E or Tab closes it and play goes straight on. Esc gives the mouse back; a click takes it again.",
     };
     const int nk = (int)(sizeof(keys) / sizeof(keys[0])), nt = (int)(sizeof(tips) / sizeof(tips[0]));
     Rectangle r = PanelRect(fminf(1200.0f, UiWidth() - 20.0f), fminf(690.0f, UiHeight() - 16.0f));
@@ -1468,6 +1526,17 @@ static void DrawPrompts(void)
     }
 }
 
+// The cursor of a panel opened while the page keeps the mouse (SetPanel): an arrow where the mouse's
+// movements have taken it.
+static void DrawGameCursor(void)
+{
+    Vector2 m = UiMouse();
+    Vector2 a = m, b = { m.x, m.y + 20 }, c = { m.x + 14, m.y + 14 };
+    DrawTriangle((Vector2){ a.x + 1, a.y + 2 }, (Vector2){ b.x + 1, b.y + 2 }, (Vector2){ c.x + 1, c.y + 2 }, Fade(BLACK, 0.4f));
+    DrawTriangle(a, b, c, RAYWHITE);
+    DrawTriangleLines(a, b, c, (Color){ 40, 30, 20, 255 });
+}
+
 void DrawUI(void)
 {
     UiBegin();
@@ -1538,6 +1607,7 @@ void DrawUI(void)
     }
 
     DrawTouch();
+    if (G.panel != PANEL_NONE && OnWeb() && PointerCaptured()) DrawGameCursor();
     if (G.hurtT > 0) DrawRectangle(0, 0, sw, sh, Fade(RED, G.hurtT * 0.6f));
     DrawHitLights(sw, sh);
     if (G.sleeping) {

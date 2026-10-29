@@ -100,6 +100,18 @@ static void BuildPrompts(void)
         else Fmt(G.promptE, n, "[E] Watch the game of %s", game);
         break;
     }
+    case TGT_PET: {
+        bool dog = PetIsDog(i);
+        int food = PetFood(i);
+        if (PetEating(i)) Fmt(G.promptE, n, dog ? "The dog is eating." : "The cat is eating.");
+        else if (PetFriend(i) == G.self) Fmt(G.promptE, n, dog ? "The dog follows you about." : "The cat follows you about.");
+        else if (food == IT_NONE) Fmt(G.promptE, n, dog ? "A dog: it would take some roast meat." : "A cat: it would take a fish.");
+        else {
+            G.okE = true;
+            Fmt(G.promptE, n, dog ? "[E] Give the dog some roast meat" : food == IT_GRILLED ? "[E] Give the cat a grilled fish" : "[E] Give the cat a fish");
+        }
+        break;
+    }
     case TGT_TRADER:
         G.okE = true;
         Fmt(G.promptE, n, "[E] Barter with the %s", L(G.traders[i].name));
@@ -151,6 +163,7 @@ void FindTarget(bool play)
             if (i != STN_FERRY_E && i != STN_FERRY_W && !(Match() && UselessStation(i))) Consider(&best, &score, TGT_STATION, i, G.stations[i], 1.9f);
         for (int i = 0; i < StatueCount(); i++) Consider(&best, &score, TGT_STATUE, i, StatuePos(i), 2.8f);
         for (int i = 0; i < (BoardsOn() ? BOARDS : 0); i++) Consider(&best, &score, TGT_BOARD, i, BoardSpot(i), 1.9f);
+        for (int i = 0; i < PetCount(); i++) Consider(&best, &score, TGT_PET, i, PetPos(i), 1.6f);
         for (int i = 0; i < MAX_PLOTS; i++)
             if (G.plots[i].state != PLOT_PALM) Consider(&best, &score, TGT_PLOT, i, G.plots[i].pos, 2.1f);
         Consider(&best, &score, TGT_COOP, 0, G.coop, 4.2f);
@@ -320,6 +333,8 @@ bool ServeRequest(int slot, int kind, const int *args, int n, int *res, int *nre
         res[0] = EggsServe(a);
         *nres = 1;
         return res[0] > 0;
+    case RQ_PET:
+        return PetServe(slot, a);   // where the animal is differs from screen to screen: no distance to check
     case RQ_FEED:
         if (XZDist(G.coop, by) > REACH + 2.0f) return false;
         res[0] = FeedServe(a != 0, b, &res[1]);
@@ -372,6 +387,9 @@ void ApplyReply(int kind, const int *args, int n, bool ok, const int *res, int n
     switch (kind) {
     case RQ_BOARD:
         BoardReply(a, b, ok, nres > 0 ? res[0] : -1);
+        break;
+    case RQ_PET:
+        PetReply(a, b, ok);
         break;
     case RQ_STATUE:
         if (ok && nres >= 2) GrantBoon(res[1], res[0]);
@@ -486,6 +504,13 @@ void Interact(bool alt)
         if (alt) break;
         if (BoardSide(i, G.self) < 0 && free && BoardOf(G.self) < 0) BoardAct(i, BA_SIT, 0);
         else BoardWatch(i);
+        break;
+    }
+    case TGT_PET: {
+        int food = PetFood(i);
+        if (alt || food == IT_NONE || PetEating(i) || PetFriend(i) == G.self) break;
+        int args[2] = { i, food };
+        Act(RQ_PET, args, 2);
         break;
     }
     case TGT_TRADER:

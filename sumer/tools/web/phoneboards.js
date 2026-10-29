@@ -11,7 +11,7 @@ const PHONE = {
   userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36',
 };
 const PANEL_BOARD = 11, SEAT_NPC = -2, ATTACK = 0, USE = 2, MENU = 6;
-const THROW = 0, TOWNSMAN = 1, GET_UP = 2, PIECE = 3;
+const THROW = 0, TOWNSMAN = 1, GET_UP = 2, PIECE = 3, RULES = 10;
 let fails = 0;
 function check(ok, what) { console.log((ok ? 'PASS: ' : 'FAIL: ') + what); if (!ok) fails++; }
 const shown = c => c && c[0] >= 0;
@@ -40,10 +40,19 @@ const onScreen = c => shown(c) && c[0] < 844 && c[1] < 390;
   await page.screenshot({ path: __dirname + '/shots/phone-board.png', timeout: 180000 });
   const still = await info(page);
   await tap([200, 200]);   // on the board, off any piece
-  await tap([560, 330]);   // under the buttons
+  await tap([720, 120]);   // by the dice, no button there
   i = await info(page);
   check(Math.abs(i.yaw - still.yaw) < 0.01 && Math.hypot(i.x - still.x, i.z - still.z) < 0.05 && i.swing <= 0,
         `taps on the board neither turn, move nor strike (yaw ${still.yaw.toFixed(2)} -> ${i.yaw.toFixed(2)})`);
+
+  // Rules, by a tap, in place of the board; a tap again and the board is back.
+  await tap(i.boardTaps[RULES]);
+  i = await waitFor(page, 'the rules', j => j.rules === 1, 20000).catch(e => null) || await info(page);
+  check(i.rules === 1 && !shown(i.boardTaps[PIECE]), 'a tap on Rules shows the rules in place of the board');
+  await page.screenshot({ path: __dirname + '/shots/phone-board-rules.png', timeout: 180000 });
+  await tap(i.boardTaps[RULES]);
+  i = await waitFor(page, 'the board again', j => j.rules === 0, 20000).catch(e => null) || await info(page);
+  check(i.rules === 0, 'and a tap again brings the board back');
 
   await tap(i.boardTaps[TOWNSMAN]);
   i = await waitFor(page, 'a townsman', j => j.boards[0].seat[1] === SEAT_NPC, 20000).catch(e => null) || await info(page);
@@ -67,7 +76,7 @@ const onScreen = c => shown(c) && c[0] < 844 && c[1] < 390;
   }
   i = await waitFor(page, 'experience', j => j.xp >= xp0 + 10, 20000).catch(e => null) || await info(page);
   check(threw && moved && i.boards[0].winner === 0 && i.xp === xp0 + 10,
-        `taps throw and move a piece until Pia wins: +10 experience (winner ${i.boards[0].winner}, +${i.xp - xp0})`);
+        `taps throw and move a piece until Pia wins: +10 experience (threw ${threw}, moved ${moved}, winner ${i.boards[0].winner}, +${i.xp - xp0})`);
   await page.screenshot({ path: __dirname + '/shots/phone-board-won.png', timeout: 180000 });
 
   // Close (the Menu button's place) puts the board away; the seat is kept, and Use brings it back.
