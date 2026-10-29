@@ -67,7 +67,7 @@ const onScreen = c => shown(c) && c[0] < 844 && c[1] < 390;
   }
   i = await waitFor(page, 'experience', j => j.xp >= xp0 + 10, 20000).catch(e => null) || await info(page);
   check(threw && moved && i.boards[0].winner === 0 && i.xp === xp0 + 10,
-        `taps throw and move a piece until Pia wins: +10 experience (winner ${i.boards[0].winner}, +${i.xp - xp0})`);
+        `taps throw and move a piece until Pia wins: +10 experience (threw ${threw}, moved ${moved}, winner ${i.boards[0].winner}, +${i.xp - xp0})`);
   await page.screenshot({ path: __dirname + '/shots/phone-board-won.png', timeout: 180000 });
 
   // Close (the Menu button's place) puts the board away; the seat is kept, and Use brings it back.
