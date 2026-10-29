@@ -21,7 +21,7 @@ async function bobSwings(ann, bob) {
   // game time) takes a second or more here: wait until it has landed or for 9 s.
   // The server's world runs in real time, so a mark lasts 0.8 s: Ann is looked at every time round, Bob every
   // other time.
-  const seen = { warn: false, hit: false, light: [0, 0, 0, 0], bobSawWarn: false, bobFelt: 0 };
+  const seen = { warn: false, hit: false, light: [0, 0, 0, 0], bobSawWarn: false, bobFelt: 0, msgs: [] };
   for (let k = 0, t0 = Date.now(); Date.now() - t0 < 9000; k++) {
     const a = await info(ann), b = k % 2 ? await info(bob) : null;
     const m = a && a.peers && a.peers.find(p => p.name === BOB);
@@ -30,12 +30,15 @@ async function bobSwings(ann, bob) {
     const mb = b && b.peers && b.peers.find(p => p.name === BOB);
     if (mb && mb.mark === 1) seen.bobSawWarn = true;
     if (b && b.shake > seen.bobFelt) seen.bobFelt = b.shake;
+    if (a && a.msg && !seen.msgs.includes(a.msg)) seen.msgs.push(a.msg);   // a caravan's news can follow at once
     if (a && a.hitLight) seen.light = seen.light.map((v, i) => Math.max(v, a.hitLight[i]));
     if (Date.now() - t0 > 2500 && (seen.hit || (a && a.health < before.health))) break;
     await sleep(20);
   }
   await sleep(800);
-  return { before, after: await info(ann), bob: await info(bob), seen };
+  const after = await info(ann);
+  if (after.msg && !seen.msgs.includes(after.msg)) seen.msgs.push(after.msg);
+  return { before, after, bob: await info(bob), seen };
 }
 
 async function game(kind) {
@@ -67,7 +70,7 @@ async function game(kind) {
   // The yellow shows for the blow's 0.3 s, the red 0.8 s, in real time: a page this slow catches one or both.
   check(r.seen.warn || r.seen.hit, `Ann sees the mark over Bob: yellow while he swings, red when it lands (warn ${r.seen.warn}, hit ${r.seen.hit})`);
   check(r.seen.light[1] > 0.5 && r.seen.light[0] < 0.2, `Bob struck her from behind: the bottom light, not the top (${r.seen.light.join(' ')})`);
-  check(r.after.health < r.before.health && /attacks you/.test(r.after.msg), `Bob's blow hurts Ann (${r.before.health} -> ${r.after.health}): "${r.after.msg}"`);
+  check(r.after.health < r.before.health && r.seen.msgs.some(m => /attacks you/.test(m)), `Bob's blow hurts Ann (${r.before.health} -> ${r.after.health}): "${r.seen.msgs.join('" "')}"`);
   check(r.seen.bobFelt > 0, `Bob feels his blow land on Ann over the network: his view kicks (${r.seen.bobFelt.toFixed(2)})`);
   const bobAtAnn = r.after.peers.find(p => p.name === BOB);
   check(bobAtAnn && bobAtAnn.wanted === 0, `Bob started a fight in the city, and the guards stay out of it (wanted ${bobAtAnn ? bobAtAnn.wanted : '?'})`);
