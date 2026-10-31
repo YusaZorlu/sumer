@@ -7,7 +7,7 @@
 #define LIGHT_MAX     0.95f
 
 static int fireCount;
-static Vector3 fires[24];
+static Vector3 fires[48];
 static float flicker = 1.0f;
 
 void AddTorch(float x, float y, float z, bool pole)
@@ -36,6 +36,13 @@ void AddFireLight(float x, float y, float z)
 static void AddFire(float x, float y, float z)
 {
     AddFireLight(x, y, z);
+}
+
+// Where fires burn (hearths, camp fires, braziers, the kiln, the smelter, your oven): life.c sends smoke up from them.
+int FireSpots(const Vector3 **spots)
+{
+    *spots = fires;
+    return fireCount;
 }
 
 static void PlaceTorches(void)

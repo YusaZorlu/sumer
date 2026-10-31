@@ -28,7 +28,8 @@ static Color Tag(Color c, int t)
 }
 
 static const Color P_DARK = { 26, 20, 18, 255 }, P_EYE = { 226, 220, 206, 255 }, P_GOLD = { 222, 178, 70, 255 - T_METAL },
-                   P_LAPIS = { 40, 70, 168, 255 }, P_CARNELIAN = { 188, 70, 40, 255 }, P_SANDAL = { 96, 66, 44, 255 - T_LEATHER };
+                   P_LAPIS = { 40, 70, 168, 255 }, P_CARNELIAN = { 188, 70, 40, 255 }, P_SANDAL = { 96, 66, 44, 255 - T_LEATHER },
+                   P_PUPIL = { 16, 18, 30, 255 };   // the statues' pupils are lapis or bitumen
 static const Color P_BRONZE = { 190, 130, 60, 255 - T_METAL };   // COL_BRONZE, as metal
 
 // ---- Shapes ----
@@ -624,18 +625,20 @@ static void Head(const Look *l, const Build *b, float y)
     // The strong straight nose of the statues.
     Tube(V3(0, y + 1.808f, 0.112f), V3(0, y + 1.748f, 0.148f), 0.019f, 0.024f, lod == LOD_FINE ? 6 : 4, Mix(skin, P_DARK, 0.06f));
     if (lod == LOD_FINE) {
-        // Wide open eyes under a strong brow, and ears.
+        // The statues' great inlaid eyes: shell set in a dark rim round a wide dark pupil, under brows
+        // that all but meet over the nose; and ears.
         for (int s = -1; s <= 1; s += 2) {
-            float x = 0.043f * (float)s;
-            Ball(V3(x, y + 1.802f, 0.103f), V3(0.025f, 0.0145f, 0.014f), LOD_FAR, P_EYE);
-            Bit(x, y + 1.802f, 0.116f, 0.013f, 0.013f, 0.006f, P_DARK);
-            Bit(x, y + 1.826f, 0.112f, 0.052f, 0.012f, 0.02f, Mix(l->hair, P_DARK, 0.3f));
+            float x = 0.044f * (float)s;
+            Ball(V3(x, y + 1.803f, 0.105f), V3(0.0335f, 0.0215f, 0.0125f), LOD_FAR, P_DARK);
+            Ball(V3(x, y + 1.803f, 0.107f), V3(0.0285f, 0.0165f, 0.0135f), LOD_FAR, P_EYE);
+            Bit(x, y + 1.803f, 0.12f, 0.017f, 0.017f, 0.006f, P_PUPIL);
+            Bit(x * 0.92f, y + 1.83f, 0.113f, 0.06f, 0.013f, 0.022f, Mix(l->hair, P_DARK, 0.3f));
             Ball(V3(0.111f * (float)s, y + 1.785f, -0.005f), V3(0.018f, 0.034f, 0.026f), LOD_FAR, skin);
             if (l->jewel == JEWEL_GOLD) Ball(V3(0.116f * (float)s, y + 1.738f, 0.0f), V3(0.016f, 0.026f, 0.016f), LOD_FAR, P_GOLD);
         }
         if (l->beard < BEARD_FULL || b->woman) Bit(0, y + 1.712f, 0.112f, 0.04f, 0.009f, 0.01f, Mix(skin, (Color){ 120, 40, 36, 255 }, 0.45f));
     } else if (lod == LOD_MID) {
-        Bit(0, y + 1.81f, 0.105f, 0.12f, 0.022f, 0.02f, Mix(skin, P_DARK, 0.6f));
+        Bit(0, y + 1.808f, 0.106f, 0.13f, 0.028f, 0.02f, Mix(skin, P_DARK, 0.65f));
     }
     Hair(l, b, y);
     Beard(l, b, y);
@@ -796,11 +799,94 @@ void SlungBow(Vector3 pos, float facing)
 
 static float flashWas;
 
-static void Body(Vector3 at, float stride, Look look, bool crouch, bool bow, float draw, int lod)
+// What the next person drawn carries on their head (CarryNext): a water jar or a wide basket, one hand up
+// to steady it. The callers never ask it of anyone in hide and seek, where the players can carry nothing.
+static int carry, loadsDrawn;
+
+void CarryNext(int what)
+{
+    carry = what;
+}
+
+// How many people were drawn with a load on the head since last asked (for the tests).
+int LoadsDrawn(void)
+{
+    int n = loadsDrawn;
+    loadsDrawn = 0;
+    return n;
+}
+
+static void SetGrip(int hand, Vector3 at)
+{
+    grips[hand].at = at;
+    grips[hand].set = true;
+    grips[hand].local = true;
+}
+
+// The load on the head, from its crown 'top' up; the hand that steadies it reaches for its side.
+static void HeadLoad(int what, float top, int lod)
+{
+    int sides = lod == LOD_FINE ? 14 : lod == LOD_MID ? 8 : 5;
+    Color pad = Tag((Color){ 176, 150, 104, 255 }, T_CLOTH);
+    Ball(V3(0, top + 0.012f, 0), V3(0.075f, 0.022f, 0.075f), LOD_FAR, pad);
+    if (what == CARRY_JAR) {
+        Color pot = COL_POT, lip = Mix(COL_POT, P_DARK, 0.25f);
+        Ball(V3(0, top + 0.15f, 0), V3(0.12f, 0.135f, 0.12f), lod == LOD_FINE ? LOD_MID : LOD_FAR, pot);
+        Tube(V3(0, top + 0.25f, 0), V3(0, top + 0.33f, 0), 0.055f, 0.045f, sides, pot);
+        Tube(V3(0, top + 0.33f, 0), V3(0, top + 0.355f, 0), 0.066f, 0.066f, sides, lip);
+    } else {
+        Color weave = Tag((Color){ 168, 138, 84, 255 }, T_CLOTH), rim = Tag((Color){ 128, 100, 58, 255 }, T_CLOTH);
+        Tube(V3(0, top + 0.02f, 0), V3(0, top + 0.13f, 0), 0.15f, 0.21f, sides, weave);
+        Tube(V3(0, top + 0.12f, 0), V3(0, top + 0.145f, 0), 0.215f, 0.215f, sides, rim);
+        Ball(V3(0, top + 0.13f, 0), V3(0.19f, 0.055f, 0.19f), LOD_FAR, COL_DATES);
+    }
+}
+
+// Standing at ease, people change how they hold their hands now and then: at their sides, clasped before
+// the chest as the temple's statues stand, a hand or both on the hips, behind the back; and they shift
+// their weight from foot to foot. One rule for everyone, players too, worked out from where they stand
+// and the time, so a player standing among the townsfolk stands just as they do.
+enum { IDLE_SIDES, IDLE_CLASPED, IDLE_HIP, IDLE_HIPS, IDLE_BEHIND };
+
+static int IdlePose(int cell, int n)
+{
+    float h = Hash2(cell, n);
+    return h < 0.34f ? IDLE_SIDES : h < 0.56f ? IDLE_CLASPED : h < 0.76f ? IDLE_HIP : h < 0.86f ? IDLE_HIPS : IDLE_BEHIND;
+}
+
+// Where hand s rests in pose k (with the other hand free or not), and which way its elbow points.
+static void IdleHand(int k, int s, bool bothFree, float shoulderX, float y, Vector3 *target, Vector3 *hint)
+{
+    float side = s == HAND_WEAPON ? 1.0f : -1.0f;
+    if (k == IDLE_HIP) k = s == HAND_WEAPON ? IDLE_HIPS : IDLE_SIDES;
+    else if (!bothFree) k = IDLE_SIDES;
+    switch (k) {
+    case IDLE_CLASPED:
+        *target = V3(side * 0.03f, 1.2f + y, 0.2f);
+        *hint = V3(side, -0.6f, -0.2f);
+        break;
+    case IDLE_HIPS:
+        *target = V3(side * 0.235f, 1.03f + y, 0.0f);
+        *hint = V3(side, 0.0f, -0.5f);
+        break;
+    case IDLE_BEHIND:
+        *target = V3(side * 0.03f, 0.98f + y, -0.17f);
+        *hint = V3(side * 0.8f, -0.5f, 0.6f);
+        break;
+    default:
+        *target = V3(side * (shoulderX + 0.065f), 0.93f + y, 0.04f);
+        *hint = V3(side * 0.6f, -0.4f, -1.0f);
+    }
+}
+
+// 'atEase': someone standing who may shift their weight and their hands (not someone lying down).
+static void Body(Vector3 at, float stride, Look look, bool crouch, bool bow, float draw, int lod, bool atEase)
 {
     Build b = { lod, lod == LOD_FINE ? 16 : lod == LOD_MID ? 8 : 4, lod == LOD_FINE ? 10 : 6, look.woman, 0 };
-    bool longDress = LongDress(&look);
+    bool longDress = LongDress(&look), walking = stride != 0.0f && !crouch;
     float swing = sinf(stride);
+    int load = carry;
+    carry = CARRY_NONE;
 
     if (!(look.trim.r == look.skin.r && look.trim.g == look.skin.g)) look.trim = Tag(Clothe(look.trim, look.skin), T_CLOTH);
     look.cloth = Tag(Clothe(look.cloth, look.skin), look.dress == DRESS_FLEECE ? T_FLEECE : T_CLOTH);
@@ -823,23 +909,47 @@ static void Body(Vector3 at, float stride, Look look, bool crouch, bool bow, flo
     float y = b.lift;
     float sit = crouch ? 0.06f : 0.0f;
 
+    // Standing at ease: the pose of the moment, eased into from the one before.
+    bool idle = atEase && stride == 0.0f && !crouch && !bow;
+    int cell = (int)floorf(at.x * 2.0f) * 7919 + (int)floorf(at.z * 2.0f);
+    float clock = (float)GetTime() + 40.0f * Hash2(cell, 1), period = 8.0f + 6.0f * Hash2(cell, 2);
+    int n = (int)floorf(clock / period);
+    float ease = Clamp((clock - (float)n * period) / 0.8f, 0.0f, 1.0f);
+    ease = ease * ease * (3.0f - 2.0f * ease);
+    // The upper body sways over the foot that bears the weight: step by step walking, now and then at ease.
+    float dx = 0.0f;
+    if (walking) dx = 0.015f * cosf(stride);
+    else if (idle) dx = 0.01f * Lerp(Hash2(cell, n + 101) < 0.5f ? -1.0f : 1.0f, Hash2(cell, n + 102) < 0.5f ? -1.0f : 1.0f, ease);
+
     for (int s = 0; s < 2; s++) Leg(V3(s ? 0.095f : -0.095f, hipY + y, sit), thigh[s], bend[s], &look, &b);
 
+    float top = y - 0.025f + 1.795f + 0.128f;   // the crown of the head
+    if (load != CARRY_NONE) {
+        int hand = load == CARRY_JAR ? HAND_OTHER : HAND_WEAPON;
+        if (grips[hand].set || crouch || bow) load = CARRY_NONE;
+        else SetGrip(hand, V3(dx + (hand == HAND_WEAPON ? 1.0f : -1.0f) * (load == CARRY_JAR ? 0.13f : 0.2f), top + (load == CARRY_JAR ? 0.08f : 0.07f), 0.02f));
+    }
+
     rlPushMatrix();
-    rlTranslatef(0, 0, sit);
+    rlTranslatef(dx, 0, sit);
     Skirt(&look, &b);
     Torso(&look, &b);
     Necklace(&look, &b, y);
     Armor(&look, &b, y);
     Head(&look, &b, y - 0.025f);
+    if (load != CARRY_NONE) {
+        HeadLoad(load, top + 0.02f, lod);
+        loadsDrawn++;
+    }
     rlPopMatrix();
 
-    // The arms: swinging as they walk, drawing a bow, or reaching for what the hands hold.
+    // The arms: swinging as they walk, drawing a bow, reaching for what the hands hold, or at rest.
     float shoulderX = look.woman ? 0.19f : 0.215f, upper = 0.29f, lower = 0.26f;
+    bool bothFree = !grips[0].set && !grips[1].set;
     if (bow) DrawBow(V3(-0.2f, 1.48f + y, sit + 0.58f), V3(0.03f, 1.48f + y, sit + fmaxf(0.6f - 0.42f * draw, 0.16f)), draw);
     for (int s = 0; s < 2; s++) {
         float side = s == HAND_WEAPON ? 1.0f : -1.0f;
-        Vector3 sh = { side * shoulderX, 1.455f + y, sit }, target, hint = { side * 0.6f, -0.4f, -1.0f };
+        Vector3 sh = { side * shoulderX + dx, 1.455f + y, sit }, target, hint = { side * 0.6f, -0.4f, -1.0f };
         if (bow) {
             float string = fmaxf(0.6f - 0.42f * draw, 0.16f);
             target = s == HAND_WEAPON ? V3(0.03f, 1.48f + y, sit + string) : V3(-0.2f, 1.48f + y, sit + 0.58f);
@@ -847,9 +957,19 @@ static void Body(Vector3 at, float stride, Look look, bool crouch, bool bow, flo
         } else if (grips[s].set) {
             target = grips[s].at;
             hint = V3(side * 0.9f, -0.7f, -0.4f);
+            if (load != CARRY_NONE && s == (load == CARRY_JAR ? HAND_OTHER : HAND_WEAPON)) hint = V3(side, 0.2f, -0.3f);
+        } else if (idle) {
+            Vector3 t0, h0, t1, h1;
+            IdleHand(IdlePose(cell, n - 1), s, bothFree, shoulderX, y, &t0, &h0);
+            IdleHand(IdlePose(cell, n), s, bothFree, shoulderX, y, &t1, &h1);
+            target = Vector3Add(Vector3Lerp(t0, t1, ease), V3(dx, 0, 0));
+            hint = Vector3Lerp(h0, h1, ease);
         } else {
-            float a = (s == HAND_WEAPON ? -swing : swing) * (longDress ? 0.12f : 0.2f) * (stride != 0.0f);
-            target = V3(side * (shoulderX + 0.065f), 0.93f + y + fabsf(a) * 0.2f, sit + 0.04f + a);
+            // A fuller swing as they walk: forward the elbow bends and the hand comes in; back it stays
+            // straighter.
+            float k = longDress ? 0.17f : 0.27f;
+            float a = (s == HAND_WEAPON ? -swing : swing) * k * (stride != 0.0f), fwd = fmaxf(a, 0.0f) / k;
+            target = V3(side * (shoulderX + 0.065f - 0.05f * fwd) + dx, 0.93f + y + fabsf(a) * 0.25f + 0.06f * fwd, sit + 0.04f + a);
         }
         Vector3 elbow, wrist;
         Reach(sh, target, hint, upper, lower, &elbow, &wrist);
@@ -858,7 +978,6 @@ static void Body(Vector3 at, float stride, Look look, bool crouch, bool bow, flo
         if (look.armor == ARMOR_LEATHER) upperC = Tag((Color){ 96, 62, 40, 255 }, T_LEATHER);
         Arm(sh, elbow, wrist, upperC, look.skin, &look, &b, look.jewel == JEWEL_BANDS);
     }
-    (void)at;
 }
 
 static int LodFor(Vector3 p)
@@ -890,7 +1009,7 @@ void DrawHuman(Vector3 pos, float facing, float stride, Look look, bool crouch, 
     rlTranslatef(pos.x, pos.y, pos.z);
     rlRotatef(facing * RAD2DEG, 0, 1, 0);
     LocalGrips(pos);
-    Body(pos, stride, look, crouch, bow, draw, LodFor(pos));
+    Body(pos, stride, look, crouch, bow, draw, LodFor(pos), true);
     rlPopMatrix();
     grips[0].set = grips[1].set = false;
     SetDrawFlash(flashWas);
@@ -903,6 +1022,7 @@ void DrawPersonBody(Vector3 pos, float facing, Look look)
     rlTranslatef(pos.x, pos.y + 0.16f, pos.z);
     rlRotatef(facing * RAD2DEG, 0, 1, 0);
     rlRotatef(-90.0f, 1, 0, 0);
-    Body(pos, 0, look, false, false, 0, LodFor(pos));
+    carry = CARRY_NONE;
+    Body(pos, 0, look, false, false, 0, LodFor(pos), false);
     rlPopMatrix();
 }

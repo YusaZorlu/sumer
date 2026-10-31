@@ -951,9 +951,29 @@ static void DrawFish(int i, const Resource *r)
         DrawShadedBox((Vector3){ 0, 0, 0 }, (Vector3){ 0.04f, 0.01f, s * 0.42f }, c);
         rlPopMatrix();
     }
-    if (ph < 0.25f) {
-        float a = ph / 0.25f;
-        Part(r->pos.x + 0.6f * a - 0.3f, r->pos.y + 0.03f + 0.5f * sinf(a * PI), r->pos.z, 0.3f, 0.08f, 0.1f, (Color){ 170, 180, 186, 255 });
+    // Every few seconds a fish leaps clear of the water, nose up then down, and falls back with a splash.
+    float period = 3.5f + 3.0f * Hash2(i, 7), leap = fmodf((float)GetTime() + Hash2(i, 3) * period, period);
+    float dir = Hash2(i, 5) * 2.0f * PI, cx = cosf(dir), cz = sinf(dir);
+    if (leap < 0.75f) {
+        float a = leap / 0.75f;
+        const Color silver = { 138, 148, 150, 255 }, back = { 70, 82, 78, 255 };
+        rlPushMatrix();
+        rlTranslatef(r->pos.x + cx * (a - 0.5f) * 1.3f, r->pos.y + 0.05f + 0.62f * sinf(a * PI), r->pos.z + cz * (a - 0.5f) * 1.3f);
+        rlRotatef(90.0f - dir * RAD2DEG, 0, 1, 0);
+        rlRotatef((a - 0.5f) * 120.0f, 1, 0, 0);
+        DrawShadedBlob((Vector3){ 0, 0, 0 }, (Vector3){ 0.06f, 0.08f, 0.22f }, silver);
+        DrawShadedBox((Vector3){ 0, 0.06f, 0.02f }, (Vector3){ 0.03f, 0.05f, 0.18f }, back);
+        DrawShadedBox((Vector3){ 0, 0, -0.25f }, (Vector3){ 0.02f, 0.13f, 0.07f }, silver);
+        rlPopMatrix();
+    } else if (leap < 1.45f) {
+        float a = (leap - 0.75f) / 0.7f;
+        Color foam = Fade((Color){ 232, 238, 238, 255 }, 0.8f * (1.0f - a));
+        Vector3 at = { r->pos.x + cx * 0.65f, r->pos.y + 0.05f, r->pos.z + cz * 0.65f };
+        for (int k = 0; k < 6; k++) {   // a few drops thrown up and out
+            float b = (float)k * PI / 3.0f + dir;
+            Part(at.x + cosf(b) * 0.35f * a, at.y + 0.32f * sinf(a * PI) * (0.6f + 0.1f * (float)(k % 3)), at.z + sinf(b) * 0.35f * a, 0.05f, 0.05f, 0.05f, foam);
+        }
+        DrawShadedBlob(at, (Vector3){ 0.12f + 0.3f * a, 0.03f, 0.12f + 0.3f * a }, foam);
     }
 }
 

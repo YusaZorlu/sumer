@@ -1490,7 +1490,7 @@ static void DrawHelpPanel(void)
         "Guards fight raiders who follow you. Raiders camp south and north of the city, bandits roam the eastern hills; "
         "barbarians twice as strong camp across the river. Wade the canals and the river (the canals slow you by 60%, the river's current by 85%). The far north ford is wolf country.",
         "Roads on the map lead east to the hunters' village and south-west to the herders' village; the fishers live across "
-        "the river from the city and sell a fine net that doubles your catch. Each village has a guard with a bow. Travellers walk the "
+        "the river from the city and sell a fine net that doubles your catch (cast it where rings spread and fish leap). Each village has a guard with a bow. Travellers walk the "
         "roads, and wolves leave you alone in company. Only the shepherd sells sheepskin and sheep.",
         "Herbs grow in green meadows, most of all across the river: chew one from your baskets to heal fast. Snakes hide "
         "in long grass; a hiss means back off (crouch to creep by). Hurt a boar and its whole sounder charges. Arrows "

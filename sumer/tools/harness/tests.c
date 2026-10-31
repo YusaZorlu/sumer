@@ -2802,6 +2802,18 @@ static void TestParty(void)
 // who brings down too many townsfolk.
 void PartySeekerForTest(int s);
 
+// Townsfolk drawn as from the middle of the city, every one of them in sight: how many carry a load.
+static int LoadsInCity(void)
+{
+    Camera3D cam = G.cam;
+    G.cam.position = G.cam.target = (Vector3){ 0, 3, CITY_Z };
+    LoadsDrawn();
+    DrawVillage();
+    rlDrawRenderBatchActive();
+    G.cam = cam;
+    return LoadsDrawn();
+}
+
 static void TestHide(void)
 {
     SetParty(true);
@@ -2833,6 +2845,7 @@ static void TestHide(void)
     Check(PartySeeker() == 1 && PartyHider(0) && PartyHider(2) && !PartyHider(1), "one seeker, the others hiders");
     Check(UseArmor() == ARMOR_NONE && G.equip == EQ_NONE && PartyDisguise(0, &look) && !PartyDisguise(1, &look), "a hider wears no armor, carries nothing and looks like the townsfolk");
     Check(PartyMayHurt(1, 0) && !PartyMayHurt(0, 1) && !PartyMayHurt(2, 0), "only the seeker can hurt, and only hiders");
+    Check(LoadsInCity() == 0, "no one carries a load on the head, townsfolk included: it would set them apart from the hiders");
     for (int t = 0; t < 610; t++) {
         SyncSelf();
         PartyUpdate(0.1f);
@@ -2919,6 +2932,36 @@ static void TestSha256(void)
     for (unsigned n = 0; n < 100000 && first < 0; n++)
         if (WorkDone(challenge, "Ann", n, 12)) first = (int)n;
     Check(first == 4758 && WorkDone(challenge, "Ann", 4758, 12) && !WorkDone(challenge, "Bob", 4758, 12), "the work for a new account agrees with server.py's (%d)", first);
+}
+
+// Smoke, dust, birds and fireflies are only to look at: none of them draws on the game's random numbers,
+// so every machine's world and simulation stay the same. Every fire sends smoke up, and some of the
+// townsfolk carry a jar or a basket on the head (but no one does in hide and seek: see TestHide).
+static void TestLife(void)
+{
+    const Vector3 *fires;
+    int n = FireSpots(&fires), kiln = 0, smelter = 0;
+    for (int k = 0; k < n; k++) {
+        kiln += XZDist(fires[k], G.stations[STN_KILN]) < 2.5f;
+        smelter += XZDist(fires[k], G.stations[STN_SMELTER]) < 1.0f;
+    }
+    Check(n >= 12 && n < 48 && kiln == 1 && smelter == 1, "%d fires send smoke up, the kiln's and the smelter's among them (room for 48)", n);
+
+    Player keep = G.player;
+    Vector3 door = G.houses[0].door;
+    G.player.pos = (Vector3){ door.x, TerrainHeight(door.x, door.z), door.z };
+    G.player.running = G.player.moving = G.player.grounded = true;
+    SetRandomSeed(77);
+    int expect = GetRandomValue(0, 1 << 30);
+    SetRandomSeed(77);
+    int before = DustInAir();
+    for (int k = 0; k < 20; k++) UpdateLife(0.05f);
+    int raised = DustInAir() - before;
+    Check(raised >= 3 && GetRandomValue(0, 1 << 30) == expect, "running down a street raises dust (%d puffs) without touching the game's random numbers", raised);
+    G.player = keep;
+
+    int loads = LoadsInCity();
+    Check(loads >= 3, "some of the townsfolk carry a jar or a basket on the head (%d)", loads);
 }
 
 // A server's game keeps slot 0 for itself: its first player gets the first house and color.
@@ -3054,6 +3097,7 @@ static void RunTests(void)
     TestRoyale();
     TestParty();
     TestHide();
+    TestLife();
     TestLevels();
     TestSha256();
     TestSeats();

@@ -523,6 +523,10 @@ void DrawHuman(Vector3 pos, float facing, float stride, Look look, bool crouch, 
 extern void (*ExtraFigures)(void);
 void GripHere(int hand, float x, float y, float z);
 void GripAt(int hand, float x, float y, float z);
+// What the next person drawn carries on their head (figures.c), one hand up to steady it.
+enum { CARRY_NONE, CARRY_JAR, CARRY_BASKET };
+void CarryNext(int what);
+int LoadsDrawn(void);
 void HoldBow(Vector3 pos, float facing, bool crouch);
 void HoldBowFor(Vector3 pos, float facing, bool crouch, bool torch);
 void SlungBow(Vector3 pos, float facing);
@@ -541,6 +545,7 @@ const char *JewelName(int k);
 
 void AddTorch(float x, float y, float z, bool pole);
 void AddFireLight(float x, float y, float z);
+int FireSpots(const Vector3 **spots);
 void BuildLights(void);
 void UpdateLights(void);
 bool TorchesLit(void);
@@ -556,6 +561,11 @@ void SpawnBurst(Vector3 pos, Color c, int count, float speed);
 void SpawnRing(Vector3 pos, Color c);
 void UpdateEffects(float dt);
 void DrawEffects(void);
+// life.c: smoke, dust, birds and fireflies, only to look at (no game state, no shared random numbers).
+void UpdateLife(float dt);
+void DrawPuffs(void);
+void DrawLife(void);
+int DustInAir(void);
 
 enum { OWNER_PLAYER = 1, OWNER_VILLAGER = 1000, OWNER_WORKER = 2000, OWNER_TRADER = 3000, OWNER_CARAVAN = 4000, OWNER_RAIDER = 5000 };
 // Each caravan member has its own id, so a raider fighting one guard does not chase the other.
@@ -841,6 +851,7 @@ int AddNpc(NpcKind kind, Vector3 a, Vector3 b, float speed, Color robe, float fa
 void UpdateVillage(float dt);
 void AdvanceHours(float h);
 void DrawVillage(void);
+int VillagerLoad(int i, bool woman);
 Vector3 VillagerPos(const Villager *v);
 Vector3 VillagerLanePos(const Villager *v);
 int StreetNodeCount(void);

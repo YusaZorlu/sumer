@@ -651,6 +651,7 @@ static void UpdateWorld(float dt)
     }
     UpdateArrows(dt);
     UpdateEffects(dt);
+    UpdateLife(dt);
     UpdateHitFeel(dt);
 }
 
@@ -801,7 +802,9 @@ void GameDraw(void)
     DrawBoards();
     DrawPets();
     if (ExtraFigures) ExtraFigures();
+    DrawLife();
     DrawEffects();
+    DrawPuffs();
     DrawRain();
     EndMode3D();
     DrawUI();
