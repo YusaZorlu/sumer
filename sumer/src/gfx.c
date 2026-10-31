@@ -40,6 +40,7 @@ extern const char *SH_BRIGHT_FS, *SH_BLUR_FS, *SH_POST_FS;
 #define TEX_SKY         6                   // 6, 7 and 8: the sky's three pictures
 #define TEX_DETAIL4     5
 #define TEX_FOLIAGE     4
+#define TEX_DETAIL5     3
 #define SKY_MEAN        0.3f                // their mean brightness (make_detail.py's SKY_MEAN)
 
 // 24 bytes: position, normal (0 when the shader is to work it out), color, material.
@@ -61,7 +62,7 @@ typedef struct {
     int torchCol, fogDensity, time, worldHalf, night, wet, shadowTexel, shadowRange, groundTile, groundN;
     int heightScale, heightBase, torchSlots, gridN, gridCell, torchRadius, dynCount, dynLights, lightVP;
     int shadowMap, heightMap, torchGrid, torchData, moonDir, cloudy, texel, bloom, bloomAmt, dir, detailMap, detailMap2, detailMap3;
-    int skyDay, skyDusk, skyGrey, skyMix, skyTurn, skyLevel, detailMap4, foliageMap;
+    int skyDay, skyDusk, skyGrey, skyMix, skyTurn, skyLevel, detailMap4, detailMap5, foliageMap;
 } Locs;
 
 typedef struct {
@@ -88,7 +89,7 @@ static unsigned int quadIndex;
 static Block dynBlocks[MAX_DYN_BLOCKS], skyBlock;
 static int dynUsed;
 static VList dyn, scratch;
-static Texture2D heightTex, gridTex, torchTex, detailTex, detail2Tex, detail3Tex, detail4Tex, foliageTex, flameTex, skyTex[3];
+static Texture2D heightTex, gridTex, torchTex, detailTex, detail2Tex, detail3Tex, detail4Tex, detail5Tex, foliageTex, flameTex, skyTex[3];
 static float heightScale = 1.0f, heightBase;
 static RenderTexture2D scene, brightRT, blurRT, shadowRT;
 static int sceneW, sceneH, shadowSize, targetTier = -1;
@@ -347,7 +348,7 @@ static Locs Find(Shader s)
     L_(shadowTexel); L_(shadowRange); L_(groundTile); L_(groundN); L_(heightScale); L_(heightBase); L_(torchSlots);
     L_(gridN); L_(gridCell); L_(torchRadius); L_(dynCount); L_(dynLights); L_(lightVP); L_(shadowMap); L_(heightMap);
     L_(torchGrid); L_(torchData); L_(moonDir); L_(cloudy); L_(texel); L_(bloom); L_(bloomAmt); L_(dir); L_(detailMap); L_(detailMap2); L_(detailMap3);
-    L_(skyDay); L_(skyDusk); L_(skyGrey); L_(skyMix); L_(skyTurn); L_(skyLevel); L_(detailMap4); L_(foliageMap);
+    L_(skyDay); L_(skyDusk); L_(skyGrey); L_(skyMix); L_(skyTurn); L_(skyLevel); L_(detailMap4); L_(detailMap5); L_(foliageMap);
 #undef L_
     return l;
 }
@@ -427,6 +428,7 @@ static void LoadDetail(void)
     detail2Tex = LoadAsset("detail2.png", true);
     detail3Tex = LoadAsset("detail3.png", true);
     detail4Tex = LoadAsset("detail4.png", true);
+    detail5Tex = LoadAsset("detail5.png", true);
     foliageTex = LoadAsset("foliage.png", false);
     flameTex = LoadAsset("flame.png", false);
     static const char *const SKIES[3] = { "sky_day.jpg", "sky_dusk.jpg", "sky_grey.jpg" };
@@ -1184,6 +1186,7 @@ static void WorldUniforms(const SkyNow *s, Matrix lightVP, int quality)
     BindTexture(TEX_DETAIL2, detail2Tex.id, l->detailMap2);
     BindTexture(TEX_DETAIL3, detail3Tex.id, l->detailMap3);
     BindTexture(TEX_DETAIL4, detail4Tex.id, l->detailMap4);
+    BindTexture(TEX_DETAIL5, detail5Tex.id, l->detailMap5);
     BindTexture(TEX_FOLIAGE, foliageTex.id, l->foliageMap);
     rlActiveTextureSlot(0);
 }

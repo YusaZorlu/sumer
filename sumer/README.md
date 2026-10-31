@@ -280,6 +280,17 @@ and kept in `sumer.gfx` next to the saves:
   green only by the river, the canals, the irrigated fields and the villages' pastures, with sand and mud on
   the banks; tufts of photographed grass (green near water, dry on the plain) and reed beds with their plumes
   sway in the wind, and date palms carry fronds of real leaflets. Grass is drawn to 80 m (45 m on Low).
+  Buildings show their materials: mud plaster over the brick with patches fallen away, whitewash on the temple
+  and the brightest houses, woven reed on straw and reed (baskets, shades, mats, the fishers' houses and boats),
+  the foot of every wall darker where the damp rises, each house a slightly different shade, and the
+  ziggurat's great columns covered in red, black and white clay-cone mosaic, as at Uruk.
+
+**Daily life in every village** (all graphics settings): sacks, reed mats and baskets by the doors; firewood and
+pegged-out hides at the hunters', saddle querns and ground looms at the herders', baskets of fish and coiled
+nets at the fishers'; jars with necks and lips, baskets with their dates or grain showing; reed arches over the
+fishers' reed houses (the marsh's mudhif) and reed boats with curling ends; cloth shades over the village
+traders' counters; a thatched roof, perches, a nest and a water dish at your hen coop; buttresses along the
+temple's wall. None of it is solid, so it changes no one's way through the streets.
 - **Low**: the same look made cheaper for phones: a smaller picture scaled up, sharper-edged shadows over a
   smaller area, no glow, fewer torches at once, buildings far away left out sooner (the sky's pictures stay).
 - **Classic**: the old way, colors lit on the processor. It also runs by itself where the shaders cannot
@@ -448,7 +459,9 @@ in light grey in `assets/clay.png` (`make_detail.py clay`).
 The grass, reeds and palm fronds are built from the blades and plumes of ambientCG's `Foliage001`, `Foliage002`
 and `Foliage004` (**CC0**) into `assets/foliage.png` (`make_detail.py foliage`); the open land's surfaces are
 Poly Haven's `cracked_red_ground`, `sparse_grass`, `coast_sand_01` and `brown_mud_dry` (**CC0**) in
-`assets/detail4.png` (`make_detail.py ground`).
+`assets/detail4.png` (`make_detail.py ground`). Buildings take their plaster, thatch and stucco from Poly Haven's
+`clay_plaster`, `patterned_clay_plaster`, `reed_roof_04` and `white_stucco` (**CC0**) in `assets/detail5.png`
+(`make_detail.py walls`).
 
 The sky is three Poly Haven HDRIs (**CC0**): `kloofendal_48d_partly_cloudy_puresky` (the day),
 `kloppenheim_06_puresky` (the sunset) and `overcast_soil_puresky` (rain), their upper halves with the sun

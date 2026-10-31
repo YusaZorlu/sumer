@@ -81,7 +81,7 @@ const char *SH_WORLD_FS =
     "uniform int torchSlots; uniform int gridN; uniform float gridCell; uniform float torchRadius;\n"
     "uniform int dynCount; uniform vec4 dynLights[8];\n"
     "uniform mat4 lightVP; uniform sampler2D shadowMap; uniform sampler2D heightMap; uniform sampler2D torchGrid; uniform sampler2D torchData;\n"
-    "uniform sampler2D detailMap; uniform sampler2D detailMap2; uniform sampler2D detailMap3; uniform sampler2D detailMap4; uniform sampler2D foliageMap;\n"
+    "uniform sampler2D detailMap; uniform sampler2D detailMap2; uniform sampler2D detailMap3; uniform sampler2D detailMap4; uniform sampler2D detailMap5; uniform sampler2D foliageMap;\n"
     // A photo's light and dark, about -1..1: on the faces turned most toward each axis, blended (no UVs needed)
     "float det(vec3 p,vec3 n,float s,int c){ vec3 w=pow(abs(n),vec3(4.0)); w/=w.x+w.y+w.z;\n"
     "  return (texture(detailMap,p.zy*s)[c]*w.x+texture(detailMap,p.xz*s)[c]*w.y+texture(detailMap,p.xy*s)[c]*w.z)*3.2-1.6; }\n"
@@ -146,6 +146,15 @@ const char *SH_WORLD_FS =
     "    n=normalize(vec3(-(hx-h0)/e*0.35,1.0,-(hz-h0)/e*0.35)); n=normalize(mix(n,vec3(0.0,1.0,0.0),1.0-near*0.8));\n"
     "    rough=0.05; spec=0.02; float deep=max(wpos.y-groundAt(wpos.xz),0.0);\n"
     "    base=mix(vec3(0.05,0.10,0.08),vec3(0.015,0.05,0.055),smoothstep(0.2,2.0,deep));\n"
+    "  } else if(vmat!=4 && vmat!=7 && vcol.a>0.974 && vcol.a<0.979){\n"   // a clay-cone mosaic: zigzags of red, black and white cone heads
+    "    float ang=atan(fn.z,fn.x)*6.0/3.14159, row=floor(wpos.y*4.0); vec2 cell=fract(vec2(ang*2.0,wpos.y*4.0))-0.5;\n"
+    "    float zig=mod(floor(ang*2.0)+row+floor(abs(fract(wpos.y*0.5)-0.5)*8.0),3.0);\n"
+    "    vec3 cone=zig<1.0?vec3(0.62,0.18,0.10):zig<2.0?vec3(0.06,0.05,0.05):vec3(0.80,0.74,0.62);\n"
+    "    base=mix(base*0.55,cone*cone,smoothstep(0.42,0.32,length(cell))); rough=0.6;\n"
+    "  } else if(vmat!=4 && vmat!=7 && vcol.a>0.979 && vcol.a<0.982){\n"   // reed and straw: thatch, mats, baskets
+    "    vec3 w=pow(abs(fn),vec3(4.0)); w/=w.x+w.y+w.z;\n"
+    "    float th=texture(detailMap5,wpos.zy*vec2(0.5,0.9)).b*w.x+texture(detailMap5,wpos.xz*0.5).b*w.y+texture(detailMap5,wpos.xy*vec2(0.5,0.9)).b*w.z;\n"
+    "    base*=max(1.0+(th-0.5)*1.3*mix(0.45,1.0,near),0.3); rough=0.9;\n"
     "  } else if(vmat!=4 && vmat!=7 && vcol.a>0.982 && vcol.a<0.998){\n" // trees and fields: bark, leaves, tilled earth, straw
     "    int tag=int(255.0-vcol.a*255.0+0.5); float s=tag==1?0.9:tag==2?0.9:tag==3?0.3:1.3;\n"
     "    base*=max(1.0+det3(wpos,n,s,tag-1)*(tag==2?0.7:tag==1?0.6:0.5)*mix(0.4,1.0,near),0.2);\n"
@@ -154,11 +163,12 @@ const char *SH_WORLD_FS =
     "    if(abs(fn.y)<0.35){\n"
     "      float u=abs(fn.x)>abs(fn.z)?wpos.z:wpos.x; vec2 uv=vec2(u,wpos.y)*0.55;\n"
     "      float b=texture(detailMap,uv).g, by=texture(detailMap,uv+vec2(0.0,0.003)).g-b;\n"
-    "      float worn=fbm(wpos*1.3);\n"
-    "      float plaster=smoothstep(0.45,0.6,fbm(wpos*0.35+vec3(5.0)));\n"   // patches where the plaster still holds
+    "      float worn=fbm(wpos*1.3), white=smoothstep(0.78,0.84,lum);\n"   // whitewashed walls: the temple's, the rich houses'
+    "      float plaster=max(smoothstep(0.45,0.6,fbm(wpos*0.35+vec3(5.0))),white);\n"   // patches where the plaster still holds
+    "      vec4 d5=texture(detailMap5,uv*0.7);\n"
     "      vec3 brick=base*(1.0+(b-0.5)*0.9*mix(0.4,1.0,near))*(0.85+0.3*worn);\n"
-    "      vec3 plast=base*(1.02+(b-0.5)*0.15+0.1*noise(wpos*6.0)*near);\n"
-    "      base=mix(brick,plast,plaster*0.65);\n"
+    "      vec3 plast=base*(1.0+(mix(d5.r,d5.a,white)-0.5)*0.55*mix(0.4,1.0,near)+0.06*(d5.g-0.5));\n"
+    "      base=mix(brick,plast,plaster*mix(0.7,1.0,white));\n"
     "      n=normalize(n+vec3(0.0,-by*6.0,0.0)*(1.0-plaster)*near);\n"
     "    } else { base*=0.86+0.2*fbm(wpos*0.9)+0.25*det(wpos,fn,0.31,0)*0.25*near; }\n"
     "  } else if(vmat!=4 && vmat!=7 && vcol.g>vcol.r*1.05 && vcol.g>vcol.b){\n" // leaves: blotches and a sheen
@@ -177,9 +187,13 @@ const char *SH_WORLD_FS =
     "    } else { base*=0.92+0.12*noise(wpos*40.0)*near; rough=0.7; }\n"
     "  } else if(sat<0.12){ base*=0.9+0.12*fbm(wpos*1.6)+det(wpos,n,0.35,3)*0.2*mix(0.4,1.0,near);\n"   // stone, rock
     "  } else { base*=0.88+0.22*fbm(wpos*1.6); }\n"
+    "  float above=wpos.y-groundAt(wpos.xz);\n"
+    "  if(vmat==5){\n"   // built: each house a little different, and the foot of a wall darker where the damp rises
+    "    base*=0.94+0.12*hash(vec3(floor(wpos.x/7.0),0.0,floor(wpos.z/7.0)));\n"
+    "    float damp=(1.0-smoothstep(0.08,0.5+0.35*noise(wpos*vec3(1.7,0.0,1.7)),above))*step(abs(fn.y),0.5);\n"
+    "    base*=1.0-0.3*damp; base=mix(base,base*vec3(0.9,0.94,1.0),damp*0.5); }\n"
     "  float ndl=max(dot(n,lightDir),0.0);\n"
     "  float sh=ndl>0.0?shadowAt(wpos,n,ndl):0.0;\n"
-    "  float above=wpos.y-groundAt(wpos.xz);\n"
     "  float ao=(vmat==1||vmat==7||water)?1.0:mix(0.5,1.0,smoothstep(0.0,1.6,above))*(0.78+0.22*max(n.y,0.0));\n"
     "  vec3 amb=mix(ambGround,ambSky,n.y*0.5+0.5)*ao;\n"
     "  vec3 torch=night>0.0?torchLight(wpos,n):vec3(0.0);\n"
@@ -194,7 +208,7 @@ const char *SH_WORLD_FS =
     "  float fog=1.0-exp(-dist*fogDensity*(0.55+0.75*exp(-max(wpos.y,0.0)*0.05)));\n"   // thicker down by the ground
     "  vec3 haze=skyFlat(-V); float hl=dot(haze,vec3(0.3,0.59,0.11));\n"
     "  col=mix(col,mix(haze,vec3(0.78,0.66,0.52)*hl*1.15,0.22)*1.05,fog);\n"
-    "  finalColor=vec4(toScreen(col),(vmat==4||vmat==1||vcol.a>0.982)?1.0:vcol.a);\n"
+    "  finalColor=vec4(toScreen(col),(vmat==4||vmat==1||vcol.a>0.97)?1.0:vcol.a);\n"
     "}\n";
 
 // The sun's view, for the shadow: depth packed into the color, which every WebGL 2 device can render

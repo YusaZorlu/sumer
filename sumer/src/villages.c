@@ -39,6 +39,22 @@ static const Offer FISHER[] = {
 };
 
 static const char *const NAMES[VILLAGES] = { "Hunters' village", "Herders' village", "Fishers' village" };
+
+// Where the villages' homes, reed houses and boats stand, for the things of daily life put round them once
+// everything is built (BuildDetails).
+#define MAX_HOMES 24
+typedef struct { float x, z, ox, oz, r; int village; } Home;   // (ox, oz): the way out of the door
+static Home homes[MAX_HOMES];
+static int homeCount;
+static struct { float x, z, len; bool alongX; } reedHouses[8];
+static int reedHouseCount;
+static Vector2 boats[8];
+static int boatCount;
+
+static void NoteHome(float x, float z, float ox, float oz, float r, int village)
+{
+    if (homeCount < MAX_HOMES) homes[homeCount++] = (Home){ x, z, ox, oz, r, village };
+}
 static const float CENTERS[VILLAGES][2] = { { HUNTERS_X, HUNTERS_Z }, { HERDERS_X, HERDERS_Z }, { FISHERS_X, FISHERS_Z } };
 
 Vector3 VillageCenter(int v)
@@ -130,6 +146,7 @@ static void HideTent(float x, float z, float r, Color hide, float fx, float fz)
         AddShape(x + cosf(a) * 0.14f, y + 2.8f, z + sinf(a) * 0.14f, 0.08f, 1.0f, 0.08f, COL_WOOD, false, SHAPE_CYL);
     }
     AddBox(x + to.x * r * 0.62f, y - 0.05f, z + to.y * r * 0.62f, 0.9f, 1.45f, 0.9f, COL_DOORWAY, false);
+    NoteHome(x, z, to.x, to.y, r, 0);
 }
 
 static void DryingRack(float x, float z, bool alongX)
@@ -308,6 +325,7 @@ static void MudHouse(float x, float z, float w, float d, Color c, float fx, floa
     float dx = side ? (fx > x ? w / 2 : -w / 2) : 0.0f, dz = side ? 0.0f : (fz > z ? d / 2 : -d / 2);
     AddBox(x + dx, y - 0.1f, z + dz, side ? 0.12f : 1.0f, 2.0f, side ? 1.0f : 0.12f, COL_DOORWAY, false);
     AddBox(x + dx * 1.02f, y + 1.9f, z + dz * 1.02f, side ? 0.18f : 1.3f, 0.16f, side ? 1.3f : 0.18f, COL_WOOD, false);
+    NoteHome(x, z, dx > 0 ? 1.0f : dx < 0 ? -1.0f : 0.0f, dz > 0 ? 1.0f : dz < 0 ? -1.0f : 0.0f, fmaxf(w, d) / 2, 1);
 }
 
 static void BuildHerders(void)
@@ -376,7 +394,7 @@ static void BuildHerders(void)
 // A reed house in the marsh style: a long barrel vault of bundled reeds, its door toward (fx, fz).
 static void ReedHouse(float x, float z, float len, bool alongX)
 {
-    const Color reed = { 196, 176, 112, 255 }, dark = { 150, 132, 80, 255 };
+    const Color reed = { 196, 176, 112, 250 }, dark = { 150, 132, 80, 250 };   // thatched (alpha 250)
     float y = Ground(x, z), w = 3.6f;
     float sx = alongX ? len : w, sz = alongX ? w : len;
     AddBox(x, y, z, sx, 1.4f, sz, reed, true);
@@ -387,6 +405,13 @@ static void ReedHouse(float x, float z, float len, bool alongX)
     }
     if (alongX) AddBox(x + len / 2 + 0.02f, y, z, 0.06f, 1.5f, 1.0f, COL_DOORWAY, false);
     else AddBox(x, y, z + len / 2 + 0.02f, 1.0f, 1.5f, 0.06f, COL_DOORWAY, false);
+    NoteHome(x, z, alongX ? 1.0f : 0.0f, alongX ? 0.0f : 1.0f, len / 2, 2);
+    if (reedHouseCount < 8) {
+        reedHouses[reedHouseCount].x = x;
+        reedHouses[reedHouseCount].z = z;
+        reedHouses[reedHouseCount].len = len;
+        reedHouses[reedHouseCount++].alongX = alongX;
+    }
 }
 
 // Fish split and hung to dry in the sun.
@@ -403,6 +428,7 @@ static void FishRack(float x, float z)
 static void BeachedBoat(float x, float z)
 {
     float y = Ground(x, z);
+    if (boatCount < 8) boats[boatCount++] = (Vector2){ x, z };
     AddBox(x, y + 0.1f, z, 1.0f, 0.36f, 3.6f, COL_STRAW, false);
     AddBox(x, y + 0.3f, z - 1.75f, 0.7f, 0.5f, 0.35f, COL_STRAW, false);
     AddBox(x, y + 0.3f, z + 1.75f, 0.7f, 0.5f, 0.35f, COL_STRAW, false);
@@ -474,8 +500,188 @@ static void Traveller(int road, float t, float dir, float speed, Color robe)
     G.villagers[i].side = -dir;
 }
 
+// ---- The things of daily life, put round once everything is built ----
+// Only to look at: none of it is solid, so no one's way is changed (the townsfolk's paths, hide and seek),
+// and it comes after every other box, so nothing else moves. Placed by Hash2, never RandF.
+
+static bool Room(int n)
+{
+    return G.boxCount + n < MAX_BOXES - 2500;   // kept free for what is made during play
+}
+
+static void Bits(float x, float z, float w, float h, float d, Color c, int shape)
+{
+    AddShape(x, Ground(x, z) - (shape == SHAPE_BLOB ? h * 0.3f : 0.0f), z, w, h, d, c, false, shape);
+}
+
+// A sack of grain or flour, tied at the top.
+static void Sack(float x, float z, int seed)
+{
+    Color linen = Mix((Color){ 200, 184, 150, 255 }, (Color){ 156, 136, 104, 255 }, Hash2(seed, 3));
+    float y = Ground(x, z);
+    AddShape(x, y + 0.18f, z, 0.56f, 0.5f, 0.46f, linen, false, SHAPE_BLOB);
+    AddShape(x, y + 0.5f, z, 0.16f, 0.16f, 0.16f, Mix(linen, COL_MUD_DARK, 0.3f), false, SHAPE_CONE);
+}
+
+// A saddle quern: the long stone the grain is ground on, and the stone that rubs it.
+static void Quern(float x, float z, bool alongX)
+{
+    float y = Ground(x, z);
+    AddBox(x, y, z, alongX ? 0.8f : 0.38f, 0.16f, alongX ? 0.38f : 0.8f, COL_STONE, false);
+    AddShape(x, y + 0.16f, z, alongX ? 0.3f : 0.16f, 0.1f, alongX ? 0.16f : 0.3f, Mix(COL_STONE, COL_ROCK, 0.5f), false, SHAPE_BLOB);
+}
+
+// Firewood: three lengths of palm and tamarisk, laid down.
+static void Firewood(float x, float z, bool alongX, int seed)
+{
+    float y = Ground(x, z);
+    for (int k = 0; k < 3; k++) {
+        float o = ((float)k - 1.0f) * 0.13f, l = 1.1f + 0.3f * Hash2(seed, k);
+        AddBox(x + (alongX ? 0 : o), y + (k == 1 ? 0.12f : 0.0f), z + (alongX ? o : 0), alongX ? l : 0.11f, 0.11f, alongX ? 0.11f : l, Mix(COL_WOOD, COL_PALM_TRUNK, Hash2(k, seed)), false);
+    }
+}
+
+// A ground loom: two posts, a beam, and the warp stretched down to the ground.
+static void Loom(float x, float z, bool alongX)
+{
+    float y = Ground(x, z);
+    for (int k = -1; k <= 1; k += 2) AddBox(x + (alongX ? 0.6f * (float)k : 0), y, z + (alongX ? 0 : 0.6f * (float)k), 0.07f, 1.2f, 0.07f, COL_WOOD, false);
+    AddBox(x, y + 1.15f, z, alongX ? 1.35f : 0.07f, 0.07f, alongX ? 0.07f : 1.35f, COL_WOOD, false);
+    AddBox(x, y + 0.6f, z, alongX ? 1.1f : 0.02f, 1.05f, alongX ? 0.02f : 1.1f, (Color){ 214, 200, 170, 255 }, false);
+    AddBox(x, y + 0.3f, z, alongX ? 1.1f : 0.03f, 0.5f, alongX ? 0.03f : 1.1f, (Color){ 160, 70, 52, 255 }, false);   // what is woven so far
+}
+
+// A basket with its load showing: dates, grain or fish.
+static void Basket(float x, float z, Color load)
+{
+    float y = Ground(x, z);
+    AddShape(x, y, z, 0.6f, 0.36f, 0.6f, COL_STRAW, false, SHAPE_CYL);
+    AddShape(x, y + 0.33f, z, 0.64f, 0.06f, 0.64f, Mix(COL_STRAW, COL_MUD_DARK, 0.3f), false, SHAPE_CYL);
+    AddShape(x, y + 0.36f, z, 0.5f, 0.16f, 0.5f, load, false, SHAPE_BLOB);
+}
+
+// What a household leaves outside its door, on either side of it (never in it), by its village: mats and
+// sacks everywhere; firewood and a stretched hide at the hunters', a quern and a loom at the herders', fish
+// and nets at the fishers'.
+static void HomeThings(const Home *h, int seed)
+{
+    float ax = -h->oz, az = h->ox;   // along the front
+    float fx = h->x + h->ox * (h->r + 0.7f), fz = h->z + h->oz * (h->r + 0.7f);
+    int left = Hash2(seed, 1) < 0.5f ? -1 : 1;
+    float lx = fx + ax * 1.7f * (float)left, lz = fz + az * 1.7f * (float)left;   // one side of the door
+    float rx = fx - ax * 1.7f * (float)left, rz = fz - az * 1.7f * (float)left;   // the other
+    AddBox(lx + h->ox * 0.4f, Ground(lx, lz) + 0.01f, lz + h->oz * 0.4f, ax != 0 ? 1.4f : 1.0f, 0.03f, az != 0 ? 1.4f : 1.0f, COL_STRAW, false);   // a reed mat
+    Sack(rx, rz, seed);
+    Sack(rx + ax * 0.55f + h->ox * 0.2f, rz + az * 0.55f + h->oz * 0.2f, seed + 1);
+    if (h->village == 0) {
+        Firewood(lx + h->ox * 1.4f, lz + h->oz * 1.4f, ax != 0, seed);
+        AddBox(rx + h->ox * 1.4f, Ground(rx, rz) + 0.02f, rz + h->oz * 1.4f, 1.1f, 0.03f, 0.8f, (Color){ 150, 112, 74, 255 }, false);   // a hide pegged out
+        for (int k = 0; k < 4; k++) Bits(rx + h->ox * 1.4f + ((k & 1) ? 0.55f : -0.55f), rz + h->oz * 1.4f + ((k & 2) ? 0.4f : -0.4f), 0.05f, 0.14f, 0.05f, COL_WOOD, SHAPE_CYL);
+    } else if (h->village == 1) {
+        Quern(lx + h->ox * 1.3f, lz + h->oz * 1.3f, ax != 0);
+        Loom(rx + h->ox * 1.6f + ax * 0.6f, rz + h->oz * 1.6f + az * 0.6f, ax != 0);
+        Basket(lx + ax * 0.9f, lz + az * 0.9f, (Color){ 214, 186, 100, 255 });
+    } else {
+        Basket(lx + ax * 0.9f, lz + az * 0.9f, (Color){ 170, 176, 168, 255 });
+        AddShape(rx + h->ox * 1.3f, Ground(rx, rz), rz + h->oz * 1.3f, 0.9f, 0.18f, 0.9f, (Color){ 110, 100, 80, 255 }, false, SHAPE_BLOB);   // a coiled net
+    }
+}
+
+// The fishers' reed houses as the marsh builds them (the mudhif): arches of bundled reeds over the roof.
+static void ReedRibs(float x, float z, float len, bool alongX)
+{
+    const Color rib = { 150, 132, 80, 250 };
+    float y = Ground(x, z), w = 3.6f, r = w / 2 + 0.05f;
+    int arches = (int)(len / 1.1f);
+    for (int a = 0; a <= arches; a++) {
+        float t = -len / 2 + 0.3f + (len - 0.6f) * (float)a / (float)arches;
+        for (int k = 0; k <= 16; k++) {   // close enough to run together into one bundle
+            float ang = PI * (float)k / 16.0f, across = cosf(ang) * r, up = sinf(ang) * 1.05f;
+            float px = alongX ? x + t : x + across, pz = alongX ? z + across : z + t;
+            AddShape(px, y + 0.95f + up, pz, alongX ? 0.2f : 0.42f, 0.42f, alongX ? 0.42f : 0.2f, rib, false, SHAPE_BLOB);
+        }
+    }
+}
+
+// A reed boat on the bank, its bow and stern curling up.
+static void BoatEnds(float x, float z)
+{
+    float y = Ground(x, z);
+    for (int e = -1; e <= 1; e += 2)
+        for (int k = 0; k < 3; k++)
+            AddShape(x, y + 0.3f + 0.22f * (float)k, z + (float)e * (1.85f + 0.2f * (float)k), 0.5f - 0.1f * (float)k, 0.34f, 0.34f, COL_STRAW, false, SHAPE_BLOB);
+}
+
+// The temple wall's buttresses and niches, as Sumerian temples had them: shallow piers all along the outside.
+static void Buttresses(void)
+{
+    const float x0 = -28, x1 = 28, z0 = -66, z1 = -6, h = 5.2f;
+    Color pier = Mix(COL_HOUSE_DARK, COL_HOUSE, 0.4f);
+    for (float x = x0 + 1.2f; x < x1 - 0.6f && Room(4); x += 2.4f) {
+        if (fabsf(x) > 7.5f) AddBox(x, 0, z1 + 0.12f, 0.7f, h, 0.25f, pier, false);
+        AddBox(x, 0, z0 - 0.12f, 0.7f, h, 0.25f, pier, false);
+    }
+    for (float z = z0 + 1.2f; z < z1 - 0.6f && Room(4); z += 2.4f) {
+        AddBox(x0 - 0.12f, 0, z, 0.25f, h, 0.7f, pier, false);
+        AddBox(x1 + 0.12f, 0, z, 0.25f, h, 0.7f, pier, false);
+    }
+}
+
+// The hen coop in your yard (farm.c builds it at 15..21 x 29..34): a thatched roof over the mud-brick
+// house, perches, a nesting basket and a water dish.
+static void CoopThings(void)
+{
+    AddShape(16.1f, 1.3f, 30.0f, 2.2f, 0.8f, 2.0f, COL_STRAW, false, SHAPE_BLOB);
+    for (int k = 0; k < 2; k++) AddBox(18.6f + 1.2f * (float)k, 0, 30.3f, 0.07f, 0.95f, 0.07f, COL_WOOD, false);
+    for (int k = 0; k < 2; k++) AddBox(18.6f + 1.2f * (float)k, 0, 32.4f, 0.07f, 0.95f, 0.07f, COL_WOOD, false);
+    AddBox(18.6f, 0.9f, 31.35f, 0.06f, 0.06f, 2.2f, COL_WOOD, false);
+    AddBox(19.8f, 0.6f, 31.35f, 0.06f, 0.06f, 2.2f, COL_WOOD, false);
+    AddShape(16.4f, 0, 32.6f, 0.6f, 0.26f, 0.6f, COL_STRAW, false, SHAPE_CYL);
+    AddShape(16.4f, 0.2f, 32.6f, 0.46f, 0.1f, 0.46f, (Color){ 214, 196, 150, 255 }, false, SHAPE_BLOB);
+    AddShape(17.6f, 0, 33.3f, 0.6f, 0.12f, 0.6f, COL_CLAY, false, SHAPE_CYL);
+    AddShape(17.6f, 0.11f, 33.3f, 0.48f, 0.02f, 0.48f, COL_WATER, false, SHAPE_CYL);
+}
+
+// The villages' traders keep their counters in the shade of a cloth on four poles.
+static void StallShade(int trader, Color cloth)
+{
+    Vector3 p = G.traders[trader].pos;
+    float x = p.x - 1.1f, z = p.z, y = Ground(x, z);   // the counter, 1.1 m from where the trader stands
+    for (int k = 0; k < 4; k++) AddBox(x + ((k & 1) ? 0.85f : -0.85f), y, z + ((k & 2) ? 1.5f : -1.5f), 0.08f, 2.4f, 0.08f, COL_WOOD, false);
+    AddBox(x, y + 2.4f, z, 2.0f, 0.06f, 3.3f, cloth, false);
+    AddBox(x + 1.0f, y + 2.15f, z, 0.04f, 0.5f, 3.3f, Mix(cloth, COL_MUD_DARK, 0.25f), false);   // a fringe hanging at the front
+}
+
+void BuildDetails(void)
+{
+    // Jars get a neck and a lip, baskets a rim and what is in them (the city's doors and the villages').
+    int n = G.boxCount;
+    for (int i = 0; i < n && Room(3); i++) {
+        const Box *b = &G.boxes[i];
+        Vector3 p = b->pos, sz = b->size;
+        if (b->shape == SHAPE_BLOB && b->color.r == COL_POT.r && b->color.g == COL_POT.g && sz.y > 0.4f && sz.y < 0.8f) {
+            float top = p.y + sz.y / 2;
+            AddShape(p.x, top - 0.06f, p.z, sz.x * 0.36f, 0.16f, sz.z * 0.36f, Mix(COL_POT, COL_MUD_DARK, 0.15f), false, SHAPE_CYL);
+            AddShape(p.x, top + 0.08f, p.z, sz.x * 0.48f, 0.05f, sz.z * 0.48f, COL_POT, false, SHAPE_CYL);
+        } else if (b->shape == SHAPE_CYL && b->color.r == COL_STRAW.r && b->color.g == COL_STRAW.g && sz.y > 0.3f && sz.y < 0.6f && sz.x > 0.4f && sz.x < 0.8f) {
+            float top = p.y + sz.y / 2;
+            static const Color loads[3] = { { 150, 72, 30, 255 }, { 214, 186, 100, 255 }, { 236, 228, 206, 255 } };
+            AddShape(p.x, top - 0.05f, p.z, sz.x * 1.06f, 0.07f, sz.z * 1.06f, Mix(COL_STRAW, COL_MUD_DARK, 0.3f), false, SHAPE_CYL);
+            AddShape(p.x, top, p.z, sz.x * 0.8f, 0.18f, sz.z * 0.8f, loads[(int)(Hash2((int)(p.x * 10), (int)(p.z * 10)) * 2.99f)], false, SHAPE_BLOB);
+        }
+    }
+    for (int k = 0; k < homeCount && Room(30); k++) HomeThings(&homes[k], 400 + k * 7);
+    for (int k = 0; k < reedHouseCount && Room(140); k++) ReedRibs(reedHouses[k].x, reedHouses[k].z, reedHouses[k].len, reedHouses[k].alongX);
+    for (int k = 0; k < boatCount && Room(6); k++) BoatEnds(boats[k].x, boats[k].y);
+    Buttresses();
+    if (Room(12)) CoopThings();
+    if (Room(8)) StallShade(TR_HUNTER, (Color){ 150, 112, 74, 255 });
+    if (Room(8)) StallShade(TR_FISHER, (Color){ 214, 200, 170, 255 });
+}
+
 void BuildVillages(void)
 {
+    homeCount = reedHouseCount = boatCount = 0;
     BuildHunters();
     BuildHerders();
     BuildFishers();

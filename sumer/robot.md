@@ -441,6 +441,14 @@ in `src/game.h`) holds the whole world.
 - **The land's colors** (`BuildTerrain`): `Patches` noise for dust, cracked mud and pale ground, green by
   `Greenness`, sand within 7 m of water (`WaterDistance`); the ground shader picks detailMap4's surface (cracked
   mud, grass, sand, dry mud) from that color, so keep the hues apart when changing them.
+- **Material tags in a color's alpha** (shaders.c): 254 bark, 253 leaves, 252 tilled earth, 251 straw crops (all
+  detailMap3), 250 woven reed and straw (detailMap5's thatch: `COL_STRAW`, the reed houses), 249 the clay-cone
+  mosaic (`COL_CONES`, a pattern). Built walls (`MAT_BUILT`) take detailMap5's plaster or, when bright, stucco,
+  darken at the foot (damp) and vary by a hash per 7 m. Never compare colors including alpha.
+- **Details after the world** (`BuildDetails`, villages.c, the last thing `BuildWorld` does): non-solid boxes
+  only, placed with Hash2, kept within `Room()` (2500 boxes stay free for play). The villages note their homes,
+  reed houses and boats while they are built (`NoteHome`); add to `HomeThings` for more. Because it comes last
+  and is not solid, no other box, path or random draw moves (check with `tools/worldcheck.sh`).
 - **The title's backdrop** (`TitleBackdrop` in game.c): `OpenLobby` calls `TitleReset`; the frame after, the lobby
   calls `GameInit` and from then on draws the world with `GfxDrawWorld` from an orbiting camera at dusk, the
   player moved underground. Only where `GfxTier()` is not Classic, so the browser tests (Classic unless `?gfx=`) keep

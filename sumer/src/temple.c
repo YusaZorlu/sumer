@@ -98,7 +98,7 @@ static void BuildTier1(void)
 
     AddBox(0, 0, ZIG_Z, 20, 0.06f, 20, COL_BRICK, false);
     for (int i = 0; i < 4; i++)
-        AddShape((i & 1) ? 4.5f : -4.5f, 0, ZIG_Z + ((i & 2) ? 3.5f : -3.5f), 1.0f, 6.0f, 1.0f, COL_MUD_PALE, true, SHAPE_CYL);
+        AddShape((i & 1) ? 4.5f : -4.5f, 0, ZIG_Z + ((i & 2) ? 3.5f : -3.5f), 1.0f, 6.0f, 1.0f, COL_CONES, true, SHAPE_CYL);
     for (int i = 0; i < 2; i++) {
         float x = i ? 3.0f : -3.0f;
         AddShape(x, 0, ZIG_Z + 8.0f, 0.5f, 0.9f, 0.5f, COL_STONE, true, SHAPE_CYL);
