@@ -633,6 +633,8 @@ Vector3 BoardSeat(int b, int side, float *face);
 #define BOARDS        3
 #define UR_PIECES     7
 #define HOLES_PIECES  5
+#define UR_HOME         15      // a piece off the Ur board
+#define HOLES_HOME      30      // a pin in the shared hole at the top
 #define SEAT_NONE     (-1)
 #define SEAT_NPC      (-2)
 enum { BG_UR, BG_HOLES };
@@ -678,6 +680,18 @@ bool UrRosetteSquare(int col, int row);
 Vector2 HolesHole(int view, int side, int p);
 void DrawBoards(void);
 Texture2D BoardTexture(void);
+// What the last move on a board did, as the screen tells it (boards.c).
+typedef struct {
+    signed char side;           // who moved (-1: nothing yet)
+    unsigned char piece, from, to, steps;
+    bool took, again, home, up, down;
+    float age;                  // seconds since
+} BoardEvent;
+void BoardsAnimate(float dt);
+void BoardAnim(int bi, int side, int i, int *a, int *b, float *k, float *lift);
+bool BoardMoving(int bi, int side, int i);
+float BoardTumble(int bi);
+const BoardEvent *BoardLastEvent(int bi);
 void WriteBoards(Writer *w);
 void ReadBoards(Reader *r);
 void WritePets(Writer *w);

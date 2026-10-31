@@ -11,7 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define NET_VERSION   18
+#define NET_VERSION   19
 #define RECORD_FORMAT 1        // the first byte of a player's things as server.py keeps them
 #define STATUS_EVERY  2.0f
 #define SNAP_EVERY    0.1f

@@ -118,6 +118,7 @@ static void CenterText(const char *s, float cx, float y, int size, Color c)
 
 // Breaks the translated text into lines no wider than 'width'; returns the height used.
 static bool paragraphDry;   // measuring only: nothing is drawn
+static const Color *paragraphColor;   // the text's colour when not the usual
 static float Paragraph(const char *s, float x, float y, float width, int size, float lineH)
 {
     char line[512], trial[512];
@@ -137,7 +138,7 @@ static float Paragraph(const char *s, float x, float y, float width, int size, f
         tl += wl;
         trial[tl] = '\0';
         if (len && Measure(trial, size) > (int)width) {
-            if (!paragraphDry) Text(line, x, y + used, size, C_TEXT);
+            if (!paragraphDry) Text(line, x, y + used, size, paragraphColor ? *paragraphColor : C_TEXT);
             used += lineH;
             memcpy(line, word, (size_t)wl);
             len = wl;
@@ -149,7 +150,7 @@ static float Paragraph(const char *s, float x, float y, float width, int size, f
         while (*s == ' ') s++;
     }
     if (len) {
-        if (!paragraphDry) Text(line, x, y + used, size, C_TEXT);
+        if (!paragraphDry) Text(line, x, y + used, size, paragraphColor ? *paragraphColor : C_TEXT);
         used += lineH;
     }
     return used;
@@ -491,36 +492,214 @@ bool BoardTapAt(int k, Vector2 *c)
 #define BOARD_TAP(k, v) ((void)0)
 #endif
 
-static bool BoardPiece(Vector2 c, float rad, int side, int number, bool last)
+static int boardSel = -1;   // on a touch screen: the piece tapped first (its way shown); a second tap moves it
+
+// A triangle whichever way round its corners are given.
+static void Tri(Vector2 a, Vector2 b, Vector2 c, Color col)
 {
-    DrawCircleV((Vector2){ c.x + 2, c.y + 3 }, rad, Fade(BLACK, 0.35f));
-    DrawCircleV(c, rad, PIECE_UI[side]);
-    DrawCircleLines((int)c.x, (int)c.y, rad, side ? (Color){ 150, 140, 120, 255 } : (Color){ 10, 10, 16, 255 });
-    for (int k = 0; k < 5; k++) {   // the five dots of the old pieces
-        float a = (float)k * 2.0f * PI / 5.0f;
-        DrawCircleV((Vector2){ c.x + cosf(a) * rad * 0.5f, c.y + sinf(a) * rad * 0.5f }, rad * 0.11f, side ? (Color){ 60, 50, 40, 255 } : (Color){ 220, 214, 200, 255 });
+    DrawTriangle(a, b, c, col);
+    DrawTriangle(a, c, b, col);
+}
+
+// A small arrowhead at 'at' pointing along 'dir'.
+static void Chevron(Vector2 at, Vector2 dir, float size, Color col)
+{
+    float len = Vector2Length(dir);
+    if (len < 0.001f) return;
+    Vector2 d = Vector2Scale(dir, 1.0f / len), n = { -d.y, d.x };
+    Vector2 tip = Vector2Add(at, Vector2Scale(d, size * 0.6f)), back = Vector2Subtract(at, Vector2Scale(d, size * 0.4f));
+    Tri(tip, Vector2Add(back, Vector2Scale(n, size * 0.55f)), Vector2Subtract(back, Vector2Scale(n, size * 0.55f)), col);
+}
+
+// A piece as the panel shows it: a disc with the five dots of the old pieces. 'glow' (0-1) rings one that
+// can move, brighter for the one pointed at; 'alpha' below 1 for the ghost showing where one would land.
+static void BoardPiece(Vector2 c, float rad, int side, float glow, float alpha)
+{
+    if (glow > 0) {
+        float pulse = 0.5f + 0.5f * sinf((float)GetTime() * 6.0f);
+        DrawRing(c, rad + 2, rad + 4 + 3 * glow * pulse, 0, 360, 36, Fade(C_GOLD, 0.45f + 0.5f * glow));
     }
-    if (last) DrawCircleLines((int)c.x, (int)c.y, rad + 3, Fade(C_GOLD, 0.6f));
-    if (number <= 0) return false;
-    DrawRing(c, rad + 2, rad + 5, 0, 360, 32, C_GOLD);
-    CenterText(TextFormat("%d", number), c.x + rad * 0.9f, c.y - rad - 16, 16, C_GOLD);
-    return CheckCollisionPointCircle(UiMouse(), c, rad + 4) && MousePressed(MOUSE_BUTTON_LEFT);
+    DrawCircleV((Vector2){ c.x + 2, c.y + 3 }, rad, Fade(BLACK, 0.35f * alpha));
+    DrawCircleV(c, rad, Fade(PIECE_UI[side], alpha));
+    DrawCircleLines((int)c.x, (int)c.y, rad, Fade(side ? (Color){ 150, 140, 120, 255 } : (Color){ 10, 10, 16, 255 }, alpha));
+    Color dots = Fade(side ? (Color){ 60, 50, 40, 255 } : (Color){ 220, 214, 200, 255 }, alpha);
+    for (int k = 0; k < 5; k++) {
+        float t = (float)k * 2.0f * PI / 5.0f;
+        DrawCircleV((Vector2){ c.x + cosf(t) * rad * 0.5f, c.y + sinf(t) * rad * 0.5f }, rad * 0.11f, dots);
+    }
 }
 
-// The number to show on piece i of the player's own side (1, 2 ...: its place among the moves), or 0.
-static int MoveNumber(const int *moves, int n, int i)
+// The last move: an arrow from where the piece stood to where it went, in the mover's colour.
+static void MoveArrow(Vector2 a, Vector2 b, int side, float alpha)
 {
-    for (int k = 0; k < n; k++)
-        if (moves[k] == i) return k + 1;
-    return 0;
+    Vector2 d = Vector2Subtract(b, a);
+    float len = Vector2Length(d);
+    if (len < 6) return;
+    d = Vector2Scale(d, 1.0f / len);
+    Vector2 n = { -d.y, d.x }, base = Vector2Subtract(b, Vector2Scale(d, 14));
+    Color edge = Fade(C_GOLD, alpha), fill = Fade(PIECE_UI[side], alpha);
+    DrawLineEx(a, base, 7, edge);
+    DrawLineEx(a, base, 3, fill);
+    Tri(b, Vector2Add(base, Vector2Scale(n, 10)), Vector2Subtract(base, Vector2Scale(n, 10)), edge);
 }
 
-// The Royal Game of Ur from above, 'view' nearest. Returns the piece clicked, or -1.
-static int DrawUrPanel(Rectangle a, const Board *b, int view, const int *moves, int nm)
+// A die as the panel shows it: an ivory cube face with its number. 'roll' (1 down to 0) while it is still
+// tumbling, turning over and showing any number.
+static void DieFace(Vector2 c, float size, int value, float roll, int seed)
+{
+    const Color ivory = { 242, 234, 214, 255 }, ink = { 52, 36, 26, 255 }, edge = { 128, 104, 78, 255 };
+    if (roll > 0) {
+        Vector2 at = { c.x, c.y - sinf(roll * PI) * 16.0f };
+        float turn = roll * 560.0f + (float)seed * 33.0f;
+        DrawRectanglePro((Rectangle){ at.x + 3, at.y + 4, size, size }, (Vector2){ size / 2, size / 2 }, turn, Fade(BLACK, 0.3f));
+        DrawRectanglePro((Rectangle){ at.x, at.y, size, size }, (Vector2){ size / 2, size / 2 }, turn, ivory);
+        CenterText(TextFormat("%d", 1 + ((int)(roll * 23.0f) + seed) % 6), at.x, at.y - size * 0.32f, (int)(size * 0.6f), Fade(ink, 0.6f));
+        return;
+    }
+    Rectangle q = { c.x - size / 2, c.y - size / 2, size, size };
+    DrawRectangleRounded((Rectangle){ q.x + 3, q.y + 4, size, size }, 0.22f, 6, Fade(BLACK, 0.35f));
+    DrawRectangleRounded(q, 0.22f, 6, ivory);
+    DrawRectangleRoundedLinesEx(q, 0.22f, 6, 2, edge);
+    CenterText(TextFormat("%d", value), c.x, c.y - size * 0.32f, (int)(size * 0.62f), ink);
+}
+
+// The throw: one die for Ur, two (and their sum) for the holes; empty outlines before anyone throws.
+static void DrawThrow(int bi, const Board *b, float x, float y)
+{
+    int dice = b->kind == BG_UR ? 1 : 2;
+    float roll = BoardTumble(bi);
+    for (int k = 0; k < dice; k++) {
+        Vector2 c = { x + 26 + (float)k * 62, y + 26 };
+        if (b->roll > 0 || roll > 0) DieFace(c, 48, b->dice[k], roll, bi * 3 + k);
+        else DrawRectangleRoundedLinesEx((Rectangle){ c.x - 24, c.y - 24, 48, 48 }, 0.22f, 6, 2, Fade(C_DIM, 0.6f));
+    }
+    if (dice == 2 && b->roll > 0 && roll <= 0) Text(TextFormat("= %d", b->roll), x + 132, y + 12, 28, C_GOLD);
+}
+
+// What happens to a piece pointed at: the way it would go and the ghost of it where it lands.
+typedef struct {
+    Vector2 at[40];
+    int n;
+    Vector2 land;
+    bool line;          // a line on the holes board carries it on from 'land'
+} Way;
+
+static void DrawWay(const Way *w, int side, float rad, const char *note, Color noteCol)
+{
+    for (int k = 0; k + 1 < w->n; k++) DrawCircleV(w->at[k], 4, Fade(C_GOLD, 0.85f));
+    if (w->line && w->n > 0) DrawLineEx(w->at[w->n - 1], w->land, 4, Fade(C_GOLD, 0.8f));
+    float pulse = 0.5f + 0.5f * sinf((float)GetTime() * 6.0f);
+    BoardPiece(w->land, rad, side, 0, 0.32f);   // a ghost of the piece, faint beside the real ones
+    for (int k = 0; k < 12; k += 2)   // ringed by a dashed circle
+        DrawRing(w->land, rad + 3, rad + 5 + 2 * pulse, (float)k * 30.0f, (float)k * 30.0f + 22.0f, 6, Fade(C_GOLD, 0.95f));
+    if (note) CenterText(note, w->land.x, w->land.y - rad - 22, 15, noteCol);
+}
+
+typedef struct { float ox, oy, S, rad; int view; } UrGeo;
+
+static Vector2 UrSpot(const UrGeo *g, int side, int p, int slot)
+{
+    float y = side == g->view ? g->oy + 3 * g->S + 26 : g->oy - 26;
+    if (p <= 0) return (Vector2){ g->ox + g->rad + (float)slot * g->rad * 1.35f, y };
+    if (p >= UR_HOME) return (Vector2){ g->ox + 8 * g->S - g->rad - (float)slot * g->rad * 1.35f, y };
+    int col, row;
+    UrSquare(g->view, side, p, &col, &row);
+    return (Vector2){ g->ox + ((float)col + 0.5f) * g->S, g->oy + ((float)row + 0.5f) * g->S };
+}
+
+// Pieces of both sides where the screen shows them (walking ones between squares), which of 'me' can move,
+// and the one pointed at. Shared by both boards: 'spot' places position p of a side, with its slot in the
+// start or home row.
+typedef Vector2 (*SpotFn)(const void *geo, int side, int p, int slot);
+
+typedef struct {
+    Vector2 c[2][UR_PIECES];
+    int slot[2][UR_PIECES];     // each piece's place in the start or home row
+    bool moving[2][UR_PIECES], can[UR_PIECES];
+    int waiting[2], home[2], focus, hover, order[UR_PIECES], orders;
+} Pieces;
+
+static void PlacePieces(int bi, const Board *b, SpotFn spot, const void *geo, float lift, int me, const int *moves, int nm, Pieces *out)
+{
+    int n = BoardPieces(b->kind), homeAt = BoardHome(b->kind);
+    memset(out, 0, sizeof(*out));
+    out->focus = out->hover = -1;
+    for (int s = 0; s < 2; s++) {
+        int waitSlot[UR_PIECES], homeSlot[UR_PIECES];
+        for (int i = 0; i < n; i++) {
+            waitSlot[i] = b->pos[s][i] == 0 ? out->waiting[s]++ : -1;
+            homeSlot[i] = b->pos[s][i] >= homeAt ? out->home[s]++ : -1;
+        }
+        for (int i = 0; i < n; i++) {
+            int pa, pb;
+            float k, up;
+            BoardAnim(bi, s, i, &pa, &pb, &k, &up);
+            int slot = waitSlot[i] >= 0 ? waitSlot[i] : homeSlot[i] >= 0 ? homeSlot[i] : (pa == 0 ? out->waiting[s] : out->home[s]);
+            out->slot[s][i] = slot;
+            Vector2 c = Vector2Lerp(spot(geo, s, pa, slot), spot(geo, s, pb, slot), k);
+            c.y -= up * lift;
+            out->c[s][i] = c;
+            out->moving[s][i] = BoardMoving(bi, s, i);
+        }
+    }
+    if (me < 0) return;
+    for (int m = 0; m < nm; m++) out->can[moves[m]] = true;
+    // The keys 1-7 and the order of taps: the pieces that can move, left to right.
+    for (int i = 0; i < n; i++)
+        if (out->can[i]) {
+            int at = out->orders++;
+            while (at > 0 && out->c[me][out->order[at - 1]].x > out->c[me][i].x) {
+                out->order[at] = out->order[at - 1];
+                at--;
+            }
+            out->order[at] = i;
+        }
+}
+
+// The panel's routine for both boards: the way of the piece in focus and every other one's landing faintly,
+// then the pieces (walking ones on top). Returns the piece clicked or tapped; *confirm when the landing
+// of the piece already picked was tapped.
+static int DrawPiecesAndWays(const Board *b, const Pieces *pc, int me, float rad, float homeRad, const Way *ways, const char *const *notes,
+                             const Color *noteCols, bool *confirm)
+{
+    int n = BoardPieces(b->kind), homeAt = BoardHome(b->kind), clicked = -1;
+    *confirm = false;
+    if (me >= 0)
+        for (int i = 0; i < n; i++)
+            if (pc->can[i] && i != pc->focus) DrawRing(ways[i].land, rad * 0.35f, rad * 0.5f, 0, 360, 24, Fade(C_GOLD, 0.55f));
+    if (me >= 0 && pc->focus >= 0) DrawWay(&ways[pc->focus], me, rad, notes[pc->focus], noteCols[pc->focus]);
+    for (int pass = 0; pass < 2; pass++)
+        for (int s = 0; s < 2; s++)
+            for (int i = 0; i < n; i++) {
+                if (pc->moving[s][i] != (pass == 1)) continue;
+                int p = b->pos[s][i];
+                bool can = s == me && pc->can[i];
+                BoardPiece(pc->c[s][i], (p == 0 || p >= homeAt) && !pc->moving[s][i] ? homeRad : rad, s,
+                           can ? (i == pc->focus ? 1.0f : 0.5f) : 0, 1.0f);
+            }
+    if (me < 0 || !MousePressed(MOUSE_BUTTON_LEFT)) return -1;
+    Vector2 m = UiMouse();
+    if (pc->focus >= 0 && CheckCollisionPointCircle(m, ways[pc->focus].land, rad + 6)) {
+        *confirm = true;
+        return pc->focus;
+    }
+    for (int i = 0; i < n; i++)
+        if (pc->can[i] && CheckCollisionPointCircle(m, pc->c[me][i], rad + 5)) clicked = i;
+    return clicked;
+}
+
+static Vector2 UrSpotFn(const void *geo, int side, int p, int slot)
+{
+    return UrSpot((const UrGeo *)geo, side, p, slot);
+}
+
+// The Royal Game of Ur from above, 'view' nearest, with your way round numbered.
+static int DrawUrPanel(Rectangle a, int bi, const Board *b, int view, int me, const int *moves, int nm, Pieces *pc, bool *confirm)
 {
     float S = fminf(a.width / 9.0f, (a.height - 110) / 3.0f);
-    float ox = a.x + (a.width - 8 * S) / 2, oy = a.y + 56;
-    const Color lapis = { 40, 62, 128, 255 }, shell = { 230, 218, 190, 255 }, red = { 186, 70, 54, 255 };
+    UrGeo g = { a.x + (a.width - 8 * S) / 2, a.y + 56, S, S * 0.32f, view };
+    float ox = g.ox, oy = g.oy;
+    const Color lapis = { 40, 62, 128, 255 }, shell = { 230, 218, 190, 255 }, red = { 186, 70, 54, 255 }, ink = { 92, 62, 40, 255 };
     Texture2D wood = BoardTexture();   // the board's box of wood under the squares
     Rectangle frame = { ox - 12, oy - 12, 8 * S + 24, 3 * S + 24 };
     DrawTexturePro(wood, (Rectangle){ 0, 0, frame.width, frame.height }, frame, (Vector2){ 0, 0 }, 0, WHITE);
@@ -539,98 +718,145 @@ static int DrawUrPanel(Rectangle a, const Board *b, int view, const int *moves, 
                 }
                 DrawCircleV(c, S * 0.1f, red);
             } else if ((col + row) % 3 == 0) {
-                for (int k = 0; k < 5; k++) DrawCircleV((Vector2){ c.x + (k == 4 ? 0 : (k & 1 ? 1 : -1) * S * 0.22f), c.y + (k == 4 ? 0 : (k & 2 ? 1 : -1) * S * 0.22f) }, S * 0.07f, lapis);
+                for (int k = 0; k < 5; k++) DrawCircleV((Vector2){ c.x + (k == 4 ? 0 : (k & 1 ? 1 : -1) * S * 0.22f), c.y + (k == 4 ? 0 : (k & 2 ? 1 : -1) * S * 0.22f) }, S * 0.07f, Fade(lapis, 0.75f));
             } else if ((col + row) % 3 == 1) {
-                DrawCircleV(c, S * 0.26f, lapis);
+                DrawCircleV(c, S * 0.26f, Fade(lapis, 0.75f));
                 DrawCircleV(c, S * 0.17f, shell);
                 DrawCircleV(c, S * 0.07f, red);
             } else {
-                for (int k = 0; k < 4; k++) DrawCircleV((Vector2){ c.x + ((float)k - 1.5f) * S * 0.18f, c.y }, S * 0.06f, lapis);
-                DrawLineEx((Vector2){ c.x - S * 0.32f, c.y - S * 0.18f }, (Vector2){ c.x + S * 0.32f, c.y - S * 0.18f }, 2, lapis);
-                DrawLineEx((Vector2){ c.x - S * 0.32f, c.y + S * 0.18f }, (Vector2){ c.x + S * 0.32f, c.y + S * 0.18f }, 2, lapis);
+                for (int k = 0; k < 4; k++) DrawCircleV((Vector2){ c.x + ((float)k - 1.5f) * S * 0.18f, c.y }, S * 0.06f, Fade(lapis, 0.75f));
+                DrawLineEx((Vector2){ c.x - S * 0.32f, c.y - S * 0.18f }, (Vector2){ c.x + S * 0.32f, c.y - S * 0.18f }, 2, Fade(lapis, 0.75f));
+                DrawLineEx((Vector2){ c.x - S * 0.32f, c.y + S * 0.18f }, (Vector2){ c.x + S * 0.32f, c.y + S * 0.18f }, 2, Fade(lapis, 0.75f));
             }
         }
-    int clicked = -1;
-    float rad = S * 0.32f;
-    for (int s = 0; s < 2; s++) {
-        int waiting = 0, home = 0;
-        float yOff = s == view ? oy + 3 * S + 26 : oy - 26;   // waiting and home rows below (own) or above
-        for (int i = 0; i < UR_PIECES; i++) {
-            int p = b->pos[s][i], col, row;
-            Vector2 c;
-            if (p == 0) c = (Vector2){ ox + rad + (float)waiting++ * rad * 1.35f, yOff };
-            else if (p >= 15) c = (Vector2){ ox + 8 * S - rad - (float)home++ * rad * 1.35f, yOff };
-            else {
-                UrSquare(view, s, p, &col, &row);
-                c = (Vector2){ ox + ((float)col + 0.5f) * S, oy + ((float)row + 0.5f) * S };
-            }
-            int num = s == view ? MoveNumber(moves, nm, i) : 0;
-            if (num) BOARD_TAP(2 + num, c);
-            if (BoardPiece(c, p == 0 || p >= 15 ? rad * 0.8f : rad, s, num, b->last == i && b->lastSide == s && b->moves > 0) && num) clicked = i;
+    // Your way round: each square numbered, arrows from one to the next, in from the start row and off at 15.
+    for (int p = 0; p <= 14; p++) {
+        Vector2 c0 = UrSpot(&g, view, p, 0), c1 = UrSpot(&g, view, p + 1, 0);
+        Chevron(Vector2Lerp(c0, c1, 0.5f), Vector2Subtract(c1, c0), S * 0.16f, Fade((Color){ 200, 150, 60, 255 }, 0.9f));
+        if (p >= 1) {
+            DrawRectangle((int)(c0.x - S / 2 + 4), (int)(c0.y - S / 2 + 4), p >= 10 ? 19 : 12, 15, Fade(shell, 0.85f));
+            Text(TextFormat("%d", p), c0.x - S / 2 + 5, c0.y - S / 2 + 4, 14, ink);
         }
     }
+    PlacePieces(bi, b, UrSpotFn, &g, S * 0.35f, me, moves, nm, pc);
+    // The last move, as an arrow a few seconds long.
+    const BoardEvent *e = BoardLastEvent(bi);
+    if (e && e->age < 5.0f)
+        MoveArrow(UrSpot(&g, e->side, e->from, pc->waiting[e->side]), UrSpot(&g, e->side, e->to, pc->slot[e->side][e->piece]),
+                  e->side, e->age < 4.0f ? 0.9f : 0.9f * (5.0f - e->age));
+    // Where each piece of yours that can move would land.
+    Way ways[UR_PIECES];
+    const char *notes[UR_PIECES];
+    Color noteCols[UR_PIECES];
+    for (int i = 0; i < UR_PIECES; i++) {
+        ways[i].n = 0;
+        notes[i] = NULL;
+        noteCols[i] = C_GOLD;
+        if (me < 0 || !pc->can[i]) continue;
+        int from = b->pos[me][i], to = BoardTarget(b, me, i);
+        for (int p = from + 1; p <= to && ways[i].n < 39; p++) ways[i].at[ways[i].n++] = UrSpot(&g, me, p, pc->home[me]);
+        ways[i].land = UrSpot(&g, me, to, pc->home[me]);
+        ways[i].line = false;
+        if (to >= UR_HOME) notes[i] = "Off";
+        else if (UrRosette(to)) notes[i] = "Throws again";
+        else if (to >= 5 && to <= 12)
+            for (int k = 0; k < UR_PIECES; k++)
+                if (b->pos[1 - me][k] == to) {
+                    notes[i] = "Takes";
+                    noteCols[i] = C_BAD;
+                }
+    }
+    // The piece in focus: the one pointed at, or on a touch screen the one tapped.
+    if (me >= 0 && !TouchOn())
+        for (int i = 0; i < UR_PIECES; i++)
+            if (pc->can[i] && CheckCollisionPointCircle(UiMouse(), pc->c[me][i], g.rad + 5)) pc->hover = i;
+    pc->focus = TouchOn() ? (boardSel >= 0 && boardSel < UR_PIECES && pc->can[boardSel] ? boardSel : -1) : pc->hover;
+    int clicked = DrawPiecesAndWays(b, pc, me, g.rad, g.rad * 0.8f, ways, notes, noteCols, confirm);
     Text("waiting", ox, oy + 3 * S + 46, 14, C_DIM);
     Text("home", ox + 8 * S - (float)Measure(L("home"), 14), oy + 3 * S + 46, 14, C_DIM);
     return clicked;
 }
 
-// Fifty-eight holes from above, 'view' on the left. Returns the piece clicked, or -1.
-static int DrawHolesPanel(Rectangle a, const Board *b, int view, const int *moves, int nm)
+typedef struct { float ox, oy, bw, bh; int view; } HoleGeo;
+
+static Vector2 HoleSpot(const void *geo, int side, int p, int slot)
 {
-    float bh = a.height - 40, bw = fminf(a.width - 140, bh * 0.82f), ox = a.x + (a.width - bw) / 2, oy = a.y + 30;
+    const HoleGeo *g = (const HoleGeo *)geo;
+    float sd = side == g->view ? -1.0f : 1.0f;
+    if (p <= 0) return (Vector2){ g->ox + g->bw / 2 + sd * (g->bw / 2 + 40), g->oy + g->bh - 20 - (float)slot * 26 };
+    if (p >= HOLES_HOME) return (Vector2){ g->ox + g->bw / 2 + sd * (18 + (float)slot * 14), g->oy + 0.06f * g->bh - 16 };
+    Vector2 uv = HolesHole(g->view, side, p);
+    return (Vector2){ g->ox + uv.x * g->bw, g->oy + (1.0f - uv.y) * g->bh };
+}
+
+// Fifty-eight holes from above, 'view' on the left: your holes numbered, arrows up your way, the lines that
+// carry a pin up (green end) or down (red end).
+static int DrawHolesPanel(Rectangle a, int bi, const Board *b, int view, int me, const int *moves, int nm, Pieces *pc, bool *confirm)
+{
+    float bh = a.height - 40, bw = fminf(a.width - 140, bh * 0.82f);
+    HoleGeo g = { a.x + (a.width - bw) / 2, a.y + 30, bw, bh, view };
+    float ox = g.ox, oy = g.oy;
     const Color ivory = { 226, 210, 176, 255 }, line = { 120, 80, 50, 255 }, hole = { 70, 52, 40, 255 };
+    const Color up = { 70, 150, 80, 255 }, down = { 190, 70, 50, 255 };
     Texture2D wood = BoardTexture();   // a wooden board with an ivory face inlaid
     DrawTexturePro(wood, (Rectangle){ 0, 0, bw + 24, bh + 24 }, (Rectangle){ ox - 12, oy - 12, bw + 24, bh + 24 }, (Vector2){ 0, 0 }, 0, WHITE);
     DrawRectangleRounded((Rectangle){ ox, oy, bw, bh }, 0.18f, 8, ivory);
     DrawRectangleRoundedLinesEx((Rectangle){ ox, oy, bw, bh }, 0.18f, 8, 2, line);
-    #define HOLE_AT(s, p) (Vector2){ ox + HolesHole(view, s, p).x * bw, oy + (1.0f - HolesHole(view, s, p).y) * bh }
     for (int s = 0; s < 2; s++) {
-        DrawLineEx(HOLE_AT(s, 6), HOLE_AT(s, 20), 3, line);
-        DrawLineEx(HOLE_AT(s, 8), HOLE_AT(s, 10), 3, line);
-        for (int p = 1; p <= 29; p++) {
-            Vector2 c = HOLE_AT(s, p);
-            DrawCircleV(c, p == 6 || p == 8 || p == 10 || p == 20 ? 8 : 6, hole);
-            if (p == 1 || p == 15 || p == 29) Text(TextFormat("%d", p), c.x + (s == view ? -26.0f : 12.0f), c.y - 8, 13, C_DIM);
-        }
-    }
-    DrawCircleV(HOLE_AT(0, 30), 12, hole);
-    int clicked = -1;
-    for (int s = 0; s < 2; s++) {
-        int waiting = 0, home = 0;
-        for (int i = 0; i < HOLES_PIECES; i++) {
-            int p = b->pos[s][i];
-            Vector2 c;
-            float side = s == view ? -1.0f : 1.0f;
-            if (p == 0) c = (Vector2){ ox + bw / 2 + side * (bw / 2 + 40), oy + bh - 20 - (float)waiting++ * 26 };
-            else if (p >= 30) c = (Vector2){ ox + bw / 2 + side * (18 + (float)home++ * 14), oy + 0.06f * bh - 16 };
-            else c = HOLE_AT(s, p);
-            int num = s == view ? MoveNumber(moves, nm, i) : 0;
-            if (num) BOARD_TAP(2 + num, c);
-            if (BoardPiece(c, 10, s, num, b->last == i && b->lastSide == s && b->moves > 0) && num) clicked = i;
-        }
-    }
-    #undef HOLE_AT
-    return clicked;
-}
-
-// The throw as it fell: Ur's four pyramid dice (a white tip is a point), or the two knucklebones.
-static void DrawThrow(const Board *b, float x, float y)
-{
-    if (b->kind == BG_UR) {
-        for (int k = 0; k < 4; k++) {
-            float cx = x + 22 + (float)k * 44;
-            DrawTriangle((Vector2){ cx, y }, (Vector2){ cx - 18, y + 32 }, (Vector2){ cx + 18, y + 32 }, (Color){ 150, 112, 70, 255 });
-            DrawTriangleLines((Vector2){ cx, y }, (Vector2){ cx - 18, y + 32 }, (Vector2){ cx + 18, y + 32 }, (Color){ 80, 56, 34, 255 });
-            if (b->roll >= 0 && b->dice[k]) DrawCircleV((Vector2){ cx, y + 6 }, 5, RAYWHITE);
-        }
-    } else {
+        static const int links[2][2] = { { 6, 20 }, { 8, 10 } };
         for (int k = 0; k < 2; k++) {
-            Rectangle bone = { x + (float)k * 80, y, 64, 34 };
-            DrawRectangleRounded(bone, 0.6f, 6, (Color){ 232, 222, 198, 255 });
-            DrawRectangleRoundedLinesEx(bone, 0.6f, 6, 1, (Color){ 120, 100, 80, 255 });
-            if (b->roll >= 0) CenterText(TextFormat("%d", b->dice[k]), bone.x + 32, bone.y + 7, 20, (Color){ 60, 40, 30, 255 });
+            Vector2 lo = HoleSpot(&g, s, links[k][0], 0), hi = HoleSpot(&g, s, links[k][1], 0);
+            DrawLineEx(lo, hi, 3, line);
+            Chevron(Vector2Lerp(lo, hi, 0.85f), Vector2Subtract(hi, lo), 12, up);
+            Chevron(Vector2Lerp(hi, lo, 0.85f), Vector2Subtract(lo, hi), 12, down);
+        }
+        for (int p = 1; p <= 29; p++) {
+            Vector2 c = HoleSpot(&g, s, p, 0);
+            DrawCircleV(c, p == 6 || p == 8 || p == 10 || p == 20 ? 8 : 6, hole);
+            if (p == 6 || p == 8) DrawRing(c, 8, 10, 0, 360, 20, up);   // land here: up the line
+            if (p == 10 || p == 20) DrawRing(c, 8, 10, 0, 360, 20, down);   // land here: down it
+            bool label = s == view ? (p == 1 || p % 5 == 0 || p == 29) : (p == 1 || p == 15 || p == 29);
+            if (label) Text(TextFormat("%d", p), c.x + (s == view ? -28.0f : 13.0f), c.y - 8, 13, s == view ? (Color){ 92, 62, 40, 255 } : C_DIM);
+            if (s == view && p < 29) {
+                Vector2 c1 = HoleSpot(&g, s, p + 1, 0);
+                if (p != 14) Chevron(Vector2Lerp(c, c1, 0.5f), Vector2Subtract(c1, c), 8, Fade((Color){ 200, 150, 60, 255 }, 0.8f));
+            }
         }
     }
+    Vector2 goal = { ox + 0.5f * bw, oy + (1.0f - 0.94f) * bh };
+    DrawCircleV(goal, 12, hole);
+    PlacePieces(bi, b, HoleSpot, &g, 18.0f, me, moves, nm, pc);
+    const BoardEvent *e = BoardLastEvent(bi);
+    if (e && e->age < 5.0f)
+        MoveArrow(HoleSpot(&g, e->side, e->from, pc->waiting[e->side]), HoleSpot(&g, e->side, e->to, pc->slot[e->side][e->piece]),
+                  e->side, e->age < 4.0f ? 0.9f : 0.9f * (5.0f - e->age));
+    Way ways[UR_PIECES];
+    const char *notes[UR_PIECES];
+    Color noteCols[UR_PIECES];
+    for (int i = 0; i < UR_PIECES; i++) {
+        ways[i].n = 0;
+        notes[i] = NULL;
+        noteCols[i] = C_GOLD;
+        if (me < 0 || i >= HOLES_PIECES || !pc->can[i]) continue;
+        int from = b->pos[me][i], to = BoardTarget(b, me, i), land = from + b->roll;
+        if (land > HOLES_HOME) land = HOLES_HOME;
+        for (int p = from + 1; p <= land && ways[i].n < 39; p++) ways[i].at[ways[i].n++] = HoleSpot(&g, me, p, pc->home[me]);
+        ways[i].land = HoleSpot(&g, me, to, pc->home[me]);
+        ways[i].line = to != land;
+        if (to >= HOLES_HOME) notes[i] = "Home";
+        else if (to > land) {
+            notes[i] = "Up the line";
+            noteCols[i] = C_GOOD;
+        } else if (to < land) {
+            notes[i] = "Down the line";
+            noteCols[i] = C_BAD;
+        }
+    }
+    if (me >= 0 && !TouchOn())
+        for (int i = 0; i < HOLES_PIECES; i++)
+            if (pc->can[i] && CheckCollisionPointCircle(UiMouse(), pc->c[me][i], 15)) pc->hover = i;
+    pc->focus = TouchOn() ? (boardSel >= 0 && boardSel < HOLES_PIECES && pc->can[boardSel] ? boardSel : -1) : pc->hover;
+    return DrawPiecesAndWays(b, pc, me, 10, 10, ways, notes, noteCols, confirm);
 }
 
 // The rules in short, shown over the board (the Rules button), for whoever has never played.
@@ -638,33 +864,50 @@ static void DrawBoardRules(Rectangle a, bool ur)
 {
     static const char *const UR[] = {
         "Goal: be the first to take all seven of your pieces round the board and off it.",
-        "Throw the four dice: every white tip counts one, so a throw is 0 to 4. Then move one piece that many squares.",
-        "A piece comes on at the start of your own row, runs along it, down the whole middle row, back onto the end of your row and off. Going off takes the exact throw.",
-        "You cannot land on your own piece. Land on your opponent's piece in the middle row and it goes back to start.",
-        "A rosette (the flower squares) gives you another throw. A piece on the middle row's rosette is safe.",
-        "A throw of 0, or no piece that can move: the turn passes.",
+        "On your turn throw the die and move one of your pieces that many squares. The numbers on the squares show your way round: in at 1 on your own row, along the whole middle row, back onto your row at 13 and 14, and off.",
+        "Any throw that reaches past square 14 takes the piece off the board.",
+        "You cannot land on your own piece. Land on your opponent's piece in the middle row (5 to 12) and it goes back to the start.",
+        "Land on a rosette (the flower squares) and you throw again. A piece on the middle rosette (8) cannot be taken.",
+        "If no piece can move, the turn passes.",
     };
     static const char *const HOLES[] = {
         "Goal: be the first to bring all five of your pins up to the shared hole at the top.",
-        "Throw the two knucklebones: each lands on 1, 3, 4 or 6, and the two are added (2 to 12). Then move one pin that many holes up your side.",
-        "Pins come on at the bottom and climb your side's 29 holes; a throw that reaches past the last one brings the pin home.",
-        "The lines join hole 6 with 20, and 8 with 10: a pin that lands on one end goes along the line to the other, up or down.",
+        "On your turn throw both dice, add them, and move one of your pins that many holes up your side. Your holes are numbered 1 to 29.",
+        "The lines join hole 6 with 20, and 8 with 10. Land exactly on one end and the pin goes along the line: from 6 up to 20, from 8 up to 10, from 20 down to 6, from 10 down to 8.",
+        "Any throw that reaches past hole 29 brings the pin home.",
         "Two of your pins cannot share a hole. Pins never take each other.",
-        "No pin that can move: the turn passes.",
+        "If no pin can move, the turn passes.",
     };
     const char *const *lines = ur ? UR : HOLES;
     int n = ur ? (int)(sizeof(UR) / sizeof(UR[0])) : (int)(sizeof(HOLES) / sizeof(HOLES[0]));
     DrawRectangleRec(a, (Color){ 40, 34, 28, 255 });
     DrawRectangleLinesEx(a, 1, C_EDGE);
     Text("How to play", a.x + 16, a.y + 12, 20, C_GOLD);
-    float y = a.y + 44, w = a.width - 44;
+    float y = a.y + 42, w = a.width - 44;
     for (int i = 0; i < n; i++) {
         DrawCircleV((Vector2){ a.x + 22, y + 9 }, 3, C_GOLD);
-        y += Paragraph(lines[i], a.x + 32, y, w, 16, 20) + 8;
+        y += Paragraph(lines[i], a.x + 32, y, w, 16, 20) + 7;
     }
-    y += 6;
-    y += Paragraph("The winner gains 20 experience against a player, 10 against a townsman. Getting up gives the "
-                   "game away once twenty moves are made.", a.x + 16, y, a.width - 32, 15, 19);
+    y += 4;
+    Paragraph("The winner gains 20 experience against a player, 10 against a townsman. Getting up gives the "
+              "game away once twenty moves are made.", a.x + 16, y, a.width - 32, 15, 19);
+}
+
+// What the last move did, in words (the arrow on the board shows where).
+static const char *MoveNews(const Board *b, const BoardEvent *e, int me, const char *mover)
+{
+    bool you = e->side == me, ur = b->kind == BG_UR;
+    int n = e->steps;
+    if (ur) {
+        if (e->home) return you ? TextFormat(L("You moved a piece %d squares and off the board."), n) : TextFormat(L("%s moved a piece %d squares and off the board."), mover, n);
+        if (e->took) return you ? TextFormat(L("You moved %d squares and took a piece: it goes back to the start."), n) : TextFormat(L("%s moved %d squares and took your piece: it goes back to the start."), mover, n);
+        if (e->again) return you ? TextFormat(L("You moved %d squares onto a rosette: throw again."), n) : TextFormat(L("%s moved %d squares onto a rosette and throws again."), mover, n);
+        return you ? TextFormat(L("You moved a piece %d squares."), n) : TextFormat(L("%s moved a piece %d squares."), mover, n);
+    }
+    if (e->home) return you ? TextFormat(L("You moved a pin %d holes and home."), n) : TextFormat(L("%s moved a pin %d holes and home."), mover, n);
+    if (e->up) return you ? TextFormat(L("You moved %d holes onto a line: up it goes."), n) : TextFormat(L("%s moved %d holes onto a line: up it goes."), mover, n);
+    if (e->down) return you ? TextFormat(L("You moved %d holes onto a line: down it goes."), n) : TextFormat(L("%s moved %d holes onto a line: down it goes."), mover, n);
+    return you ? TextFormat(L("You moved a pin %d holes."), n) : TextFormat(L("%s moved a pin %d holes."), mover, n);
 }
 
 static void DrawBoardPanel(void)
@@ -682,62 +925,97 @@ static void DrawBoardPanel(void)
     int me = BoardSide(bi, G.self), view = me >= 0 ? me : 0, other = 1 - view;
     bool ur = b->kind == BG_UR, opponent = b->seat[0] != SEAT_NONE && b->seat[1] != SEAT_NONE;
     bool mine = me >= 0 && opponent && b->turn == me && b->winner < 0;
-    int moves[8], nm = mine && b->roll >= 0 ? BoardMoves(b, me, moves) : 0;
+    bool rolling = BoardTumble(bi) > 0;
+    int moves[8], nm = mine && b->roll > 0 && !rolling ? BoardMoves(b, me, moves) : 0;
+    if (nm == 0) boardSel = -1;
     Text(ur ? "The Royal Game of Ur" : "Fifty-eight holes", r.x + 24, r.y + 16, 26, C_GOLD);
 
     Rectangle area = { r.x + 16, r.y + 50, r.width - 290, r.height - 66 };
     int clicked = -1;
+    bool confirm = false;
+    Pieces pc;
+    memset(&pc, 0, sizeof(pc));
     if (boardRules) DrawBoardRules((Rectangle){ area.x, area.y, area.width, area.height - 30 }, ur);
-    else clicked = ur ? DrawUrPanel(area, b, view, moves, nm) : DrawHolesPanel(area, b, view, moves, nm);
+    else if (ur) clicked = DrawUrPanel(area, bi, b, view, nm ? me : -1, moves, nm, &pc, &confirm);
+    else clicked = DrawHolesPanel(area, bi, b, view, nm ? me : -1, moves, nm, &pc, &confirm);
+    for (int k = 0; k < pc.orders && k < 7; k++) BOARD_TAP(3 + k, pc.c[me][pc.order[k]]);
 
-    // At the right: who plays, the throw, what happens now, and what can be done.
+    // At the right: who plays (whose turn it is lit), the throw, what happens now, what just happened.
     float x = r.x + r.width - 262, y = r.y + 60;
     const char *names[2];
     for (int s = 0; s < 2; s++)
         names[s] = b->seat[s] >= 0 ? G.peers[b->seat[s]].name : b->seat[s] == SEAT_NPC ? L("A townsman") : L("(nobody)");
+    if (opponent && b->winner < 0) DrawRectangleRounded((Rectangle){ x - 6, y - 4 + (b->turn == view ? 0 : 26), 246, 26 }, 0.4f, 6, Fade(C_GOLD, 0.22f));
     DrawCircleV((Vector2){ x + 8, y + 9 }, 7, PIECE_UI[view]);
     Text(me >= 0 ? L("You") : names[view], x + 22, y, 18, C_TEXT);
     DrawCircleV((Vector2){ x + 8, y + 35 }, 7, PIECE_UI[other]);
     Text(names[other], x + 22, y + 26, 18, C_TEXT);
-    y += 64;
-    DrawThrow(b, x, y);
-    if (b->roll >= 0) Text(TextFormat(L("Thrown: %d"), b->roll), x, y + 42, 18, C_GOLD);
-    y += 74;
+    y += 62;
+    DrawThrow(bi, b, x, y);
+    y += 66;
     const char *status;
+    bool touch = TouchOn();
     if (!opponent) status = me >= 0 ? L("Waiting for someone to sit across, or play a townsman.") : L("Nobody is playing here.");
     else if (b->winner >= 0) status = b->winner == me ? L("You won the game!") : TextFormat(L("%s won the game."), names[b->winner]);
     else if (!mine) status = me >= 0 ? TextFormat(L("%s's turn."), names[b->turn]) : TextFormat(L("%s's turn (watching)."), names[b->turn]);
-    else if (b->roll < 0) status = L(TouchOn() ? "Your turn: throw." : "Your turn: throw (Space).");
-    else if (nm == 0) status = b->roll == 0 ? L("Nothing thrown: the turn passes.") : L("No piece can move with that: the turn passes.");
-    else status = L(TouchOn() ? "Pick a piece to move: tap it." : "Pick a piece to move: click it, or its number.");
-    y += Paragraph(status, x, y, 240, 17, 21) + 14;
+    else if (b->roll < 0) status = L(ur ? (touch ? "Your turn: throw the die." : "Your turn: throw the die (Space).") : (touch ? "Your turn: throw the dice." : "Your turn: throw the dice (Space)."));
+    else if (rolling) status = "";
+    else if (nm == 0) status = TextFormat(L(ur ? "You threw %d, but no piece can move %d squares. The turn passes." : "You threw %d, but no pin can move %d holes. The turn passes."), b->roll, b->roll);
+    else if (ur) status = TextFormat(L(touch ? "You threw %d: move one of the glowing pieces %d squares. Tap a piece to see where it lands, then tap it again."
+                                              : "You threw %d: move one of the glowing pieces %d squares. Point at a piece to see where it lands."), b->roll, b->roll);
+    else status = TextFormat(L(touch ? "You threw %d: move one of the glowing pins %d holes. Tap a pin to see where it lands, then tap it again."
+                                      : "You threw %d: move one of the glowing pins %d holes. Point at a pin to see where it lands."), b->roll, b->roll);
+    if (status[0]) y += Paragraph(status, x, y, 240, 17, 21) + 8;
+    const BoardEvent *e = BoardLastEvent(bi);
+    if (e && e->age < 8.0f && opponent) {
+        const char *news = MoveNews(b, e, me, names[e->side]);
+        Color col = Fade(C_GOLD, e->age < 7.0f ? 0.95f : 0.95f * (8.0f - e->age));
+        paragraphColor = &col;
+        y += Paragraph(news, x, y, 240, 15, 19) + 8;
+        paragraphColor = NULL;
+    }
 
     if (me >= 0) {
         BOARD_TAP(0, ((Vector2){ x + 120, y + 17 }));
-        if (Button((Rectangle){ x, y, 240, 34 }, TouchOn() ? "Throw" : "Throw (Space)", mine && b->roll < 0, KEY_SPACE)) BoardAct(bi, BA_THROW, 0);
+        if (Button((Rectangle){ x, y, 240, 34 }, touch ? "Throw" : "Throw (Space)", mine && b->roll < 0, KEY_SPACE)) BoardAct(bi, BA_THROW, 0);
         y += 42;
         if (!opponent) BOARD_TAP(1, ((Vector2){ x + 120, y + 17 }));
-        if (!opponent && Button((Rectangle){ x, y, 240, 34 }, TouchOn() ? "Play a townsman" : "Play a townsman (Enter)", true, KEY_ENTER)) BoardAct(bi, BA_NPC, 0);
-        if (!opponent) y += 42;
-        BOARD_TAP(2, ((Vector2){ x + 120, y + 17 }));
-        if (Button((Rectangle){ x, y, 240, 34 }, "Get up", true, 0)) {
+        if (!opponent && Button((Rectangle){ x, y, 240, 34 }, touch ? "Play a townsman" : "Play a townsman (Enter)", true, KEY_ENTER)) BoardAct(bi, BA_NPC, 0);
+    }
+    // At the foot: the rules, and getting up.
+    Rectangle rb = { x, r.y + r.height - 76, me >= 0 ? 116 : 240, 34 };
+    BOARD_TAP(3 + UR_PIECES, ((Vector2){ rb.x + rb.width / 2, rb.y + 17 }));
+    if (Button(rb, boardRules ? (touch ? "Board" : "Board (R)") : (touch ? "Rules" : "Rules (R)"), true, KEY_R)) boardRules = !boardRules;
+    if (me >= 0) {
+        Rectangle gu = { x + 124, rb.y, 116, 34 };
+        BOARD_TAP(2, ((Vector2){ gu.x + 58, gu.y + 17 }));
+        if (Button(gu, "Get up", true, 0)) {
             BoardAct(bi, BA_LEAVE, 0);
             SetPanel(PANEL_NONE);
             return;
         }
     }
-    Rectangle rb = { x, r.y + r.height - 76, 240, 34 };
-    BOARD_TAP(3 + UR_PIECES, ((Vector2){ rb.x + 120, rb.y + 17 }));
-    if (Button(rb, boardRules ? (TouchOn() ? "Back to the board" : "Back to the board (R)") : (TouchOn() ? "Rules" : "Rules (R)"), true, KEY_R))
-        boardRules = !boardRules;
-    if (TouchOn()) {   // the Close button in the Menu button's place
+    if (touch) {   // the Close button in the Menu button's place
         if (me >= 0) Text("Close: away from the board (you keep your place)", r.x + 24, r.y + r.height - 26, 14, C_DIM);
     } else {
         Text(me >= 0 ? "E or Esc: away from the board (you keep your place)" : "E or Esc: close", r.x + 24, r.y + r.height - 26, 14, C_DIM);
     }
-    for (int k = 0; k < nm && k < 7; k++)
-        if (KeyPressed(KEY_ONE + k)) clicked = moves[k];
-    if (clicked >= 0 && mine && b->roll >= 0) BoardAct(bi, BA_MOVE, clicked);
+    // A move: clicked (or the keys 1-7, the glowing pieces left to right); on a touch screen the first tap only
+    // shows the piece's way, the second (on it or where it lands) moves it.
+    if (nm > 0 && !boardRules)
+        for (int k = 0; k < pc.orders && k < 7; k++)
+            if (KeyPressed(KEY_ONE + k)) {
+                clicked = pc.order[k];
+                confirm = true;
+            }
+    if (clicked >= 0 && nm > 0) {
+        if (touch && !confirm && boardSel != clicked) {
+            boardSel = clicked;
+        } else {
+            boardSel = -1;
+            BoardAct(bi, BA_MOVE, clicked);
+        }
+    }
 }
 
 static void DrawPartyPanel(void)

@@ -1172,17 +1172,26 @@ static void TestDockFisher(void)
 static void TestBoards(void)
 {
     Board b;
-    int counts[5] = { 0 };
+    int counts[13] = { 0 };
     memset(&b, 0, sizeof(b));
     b.kind = BG_UR;
-    for (int k = 0; k < 16000; k++) {
+    for (int k = 0; k < 18000; k++) {
         BoardThrow(&b);
         counts[b.roll]++;
     }
-    bool fair = true;
-    static const int want[5] = { 1, 4, 6, 4, 1 };
-    for (int k = 0; k < 5; k++) fair = fair && fabsf((float)counts[k] - 1000.0f * (float)want[k]) < 150.0f * (float)want[k];
-    Check(fair, "Ur's four pyramid dice: 0-4 as 1:4:6:4:1 in sixteen (%d %d %d %d %d)", counts[0], counts[1], counts[2], counts[3], counts[4]);
+    bool fair = counts[0] == 0 && b.dice[1] == 0;
+    for (int k = 1; k <= 6; k++) fair = fair && fabsf((float)counts[k] - 3000.0f) < 300.0f;
+    Check(fair, "Ur's die: 1-6 alike (%d %d %d %d %d %d)", counts[1], counts[2], counts[3], counts[4], counts[5], counts[6]);
+    memset(counts, 0, sizeof(counts));
+    b.kind = BG_HOLES;
+    bool sums = true;
+    for (int k = 0; k < 36000; k++) {
+        BoardThrow(&b);
+        counts[b.roll]++;
+        sums = sums && b.dice[0] >= 1 && b.dice[0] <= 6 && b.dice[1] >= 1 && b.dice[1] <= 6 && b.roll == b.dice[0] + b.dice[1];
+    }
+    Check(sums && fabsf((float)counts[7] - 6000.0f) < 500.0f && fabsf((float)counts[2] - 1000.0f) < 250.0f,
+          "fifty-eight holes: two dice 1-6 added (7 in %d of 36000, 2 in %d)", counts[7], counts[2]);
 
     int moves[8];
     memset(&b, 0, sizeof(b));
@@ -1205,15 +1214,13 @@ static void TestBoards(void)
     b.roll = 2;
     Check(BoardTarget(&b, 0, 0) < 0, "the middle rosette keeps a piece safe");
     b.pos[0][0] = 13;
-    b.roll = 3;
+    b.roll = 6;
     int over = BoardTarget(&b, 0, 0);
     b.roll = 2;
-    Check(over < 0 && BoardTarget(&b, 0, 0) == 15, "off the board only with the exact throw");
+    Check(over == 15 && BoardTarget(&b, 0, 0) == 15, "off the board with any throw that reaches past the end");
     b.pos[0][0] = 3;
     b.pos[0][1] = 5;
     Check(BoardTarget(&b, 0, 0) < 0, "no landing on one's own piece");
-    b.roll = 0;
-    Check(BoardMoves(&b, 0, moves) == 0, "nothing thrown, nothing moves");
     for (int k = 0; k < UR_PIECES; k++) b.pos[0][k] = 15;
     b.pos[0][6] = 14;
     b.roll = 1;
@@ -1233,8 +1240,6 @@ static void TestBoards(void)
     b.pos[0][2] = 27;
     b.roll = 9;
     Check(up == 20 && down == 6 && BoardTarget(&b, 0, 2) == 30, "fifty-eight holes: the line from 6 goes up to 20, from 20 down to 6; past the top is home");
-    BoardThrow(&b);
-    Check(b.roll >= 2 && b.roll <= 12 && (b.dice[0] == 1 || b.dice[0] == 3 || b.dice[0] == 4 || b.dice[0] == 6), "two knucklebones: %d and %d", b.dice[0], b.dice[1]);
 
     // The townsman's play against a player moving at random.
     for (int kind = BG_UR; kind <= BG_HOLES; kind++) {

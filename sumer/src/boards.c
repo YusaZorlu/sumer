@@ -4,26 +4,27 @@
 // the players ask it to sit, throw and move (RQ_BOARD), and everyone sees the boards in the snapshots. The
 // winner gains experience. Not in a battle royale or a party: no one has time to sit down there.
 //
-// The Royal Game of Ur (found at Ur, about 2600-2400 BC), as Irving Finkel read its rules from a later
-// tablet: seven pieces each, four pyramid dice (each tip marked or not: a throw is 0 to 4). A piece goes
-// 4 squares on its own side, 8 down the middle row (where it can take an opponent's piece by landing on it,
-// sending it back), then 2 on its own side, and off with an exact throw. A rosette (the 4th, 8th and 14th
-// square of the way) gives another throw, and the one in the middle row keeps a piece safe there.
+// Both games are thrown with the same dice, cubes numbered 1 to 6, so no one has to learn old dice first.
+//
+// The Royal Game of Ur (found at Ur, about 2600-2400 BC), after Irving Finkel's reading of its rules from a
+// later tablet: seven pieces each and one die. A piece goes 4 squares on its own side, 8 down the middle row
+// (where it can take an opponent's piece by landing on it, sending it back), then 2 on its own side, and
+// off with a throw that reaches past the end. A rosette (the 4th, 8th and 14th square of the way) gives
+// another throw, and the one in the middle row keeps a piece safe there.
 //
 // Fifty-eight holes (Egypt and Mesopotamia, from about 2000 BC): its rules are lost; this is a modern
-// reading. Five pins each, 29 holes on each side's way and a shared hole at the top that ends it. Two
-// knucklebones are thrown, each landing on a side worth 1, 3, 4 or 6 (the broad sides most often); the
-// pins go up by their sum. Lines on the board join hole 6 with 20 and 8 with 10: a pin that lands on one
-// end goes to the other, up or down. No two pins of a side share a hole; the first to bring all five home
-// wins.
+// reading. Five pins each, 29 holes on each side's way and a shared hole at the top that ends it. Two dice
+// are thrown and added; the pins go up by the sum. Lines on the board join hole 6 with 20 and 8 with 10: a
+// pin that lands on one end goes to the other, up or down. No two pins of a side share a hole; a throw past
+// the last hole brings a pin home; the first to bring all five home wins.
 #include "game.h"
+#include "rlgl.h"
+#include "raymath.h"
 #include <math.h>
 #include <string.h>
 
-#define UR_HOME     15
-#define HOLES_HOME  30
-#define NPC_THINK   1.1f    // the townsman's pause before he throws or moves
-#define PASS_SHOWN  1.6f    // a throw that cannot be used stays on the board this long
+#define NPC_THINK   1.6f    // the townsman's pause before he throws or moves (time to watch a piece go)
+#define PASS_SHOWN  2.2f    // a throw that cannot be used stays on the board this long
 #define IDLE_TURN   45.0f   // a player who does nothing this long has the turn played for them
 #define WON_SHOWN   8.0f    // the finished board stays this long, then the pieces go back
 #define XP_TOWNSMAN 10
@@ -102,8 +103,7 @@ int BoardTarget(const Board *b, int side, int i)
     if (b->roll <= 0 || i < 0 || i >= n || from >= home) return -1;
     int to = from + b->roll;
     if (b->kind == BG_UR) {
-        if (to > home) return -1;   // off only with an exact throw
-        if (to == home) return to;
+        if (to >= home) return home;   // off with any throw that reaches past the end
         for (int k = 0; k < n; k++)
             if (k != i && b->pos[side][k] == to) return -1;
         if (to == 8)
@@ -140,22 +140,14 @@ static int Done(const Board *b, int side)
     return n;
 }
 
-// The throw: four pyramid dice for Ur (marked tips up), two knucklebones for the holes.
+// The throw: one die for Ur, two added for the holes, each numbered 1 to 6.
 void BoardThrow(Board *b)
 {
-    int sum = 0;
-    if (b->kind == BG_UR) {
-        for (int k = 0; k < 4; k++) {
-            b->dice[k] = (unsigned char)GetRandomValue(0, 1);
-            sum += b->dice[k];
-        }
-    } else {
-        static const int faces[10] = { 1, 3, 3, 3, 3, 4, 4, 4, 4, 6 };
-        for (int k = 0; k < 2; k++) {
-            b->dice[k] = (unsigned char)faces[GetRandomValue(0, 9)];
-            sum += b->dice[k];
-        }
-        b->dice[2] = b->dice[3] = 0;
+    int dice = b->kind == BG_UR ? 1 : 2, sum = 0;
+    memset(b->dice, 0, sizeof(b->dice));
+    for (int k = 0; k < dice; k++) {
+        b->dice[k] = (unsigned char)GetRandomValue(1, 6);
+        sum += b->dice[k];
     }
     b->roll = (signed char)sum;
 }
@@ -203,12 +195,12 @@ int BoardBest(const Board *b)
                 for (int k = 0; k < UR_PIECES; k++) {
                     int o = b->pos[1 - side][k];
                     if (o == to && to != 8) s += 12 + (float)to;   // taking a piece that has come far
-                    if (to != 8 && o < to && o >= to - 4 && (o >= 5 || to - o <= 4)) s -= 4;   // within reach behind
+                    if (to != 8 && o < to && to - o <= 6) s -= 4;   // within a throw behind
                 }
             if (Shared(from) && from != 8)
                 for (int k = 0; k < UR_PIECES; k++) {
                     int o = b->pos[1 - side][k];
-                    if (o < from && o >= from - 4) s += 3;   // out of danger
+                    if (o < from && from - o <= 6) s += 3;   // out of danger
                 }
         } else {
             int land = from + b->roll;
@@ -513,8 +505,8 @@ void BoardReply(int b, int act, bool ok, int side)
     G.player.vy = 0;
     viewing = b;
     SetPanel(PANEL_BOARD);
-    Say(BoardAt(b)->kind == BG_UR ? "The Royal Game of Ur: seven pieces each down the board and off. Rosettes throw again; the middle one is safe."
-                                  : "Fifty-eight holes: five pins each up to the shared hole. The lines between holes carry a pin up, or down.");
+    Say(BoardAt(b)->kind == BG_UR ? "The Royal Game of Ur: throw the die and race your seven pieces round the board and off. Rules (R) tells the rest."
+                                  : "Fifty-eight holes: throw two dice and race your five pins up to the shared hole. Rules (R) tells the rest.");
 }
 
 // Seated at a board: sitting on the stool.
@@ -528,6 +520,186 @@ void BoardsLocal(void)
     sat = on;
 }
 
+// ---- What the screen shows as pieces move ----
+// The boards change at once (on the host, and in each snapshot); on the screen a piece walks there square by
+// square, a taken piece goes back to the start after the one that took it has landed, and the dice tumble a
+// moment before they show the throw. What the last move did is kept to be told in words.
+
+#define HOP_TIME    0.16f   // a step from one square (or hole) to the next
+#define BACK_TIME   0.5f    // a taken piece's way back, or a pin's ride along a line
+#define TUMBLE_TIME 0.7f
+
+typedef struct {
+    unsigned char rest;         // where it stands on the screen when not moving
+    unsigned char path[40];     // the squares it goes through
+    int n;                      // squares in the path (0: not moving)
+    float t, delay;             // steps gone; the wait before it sets off
+    bool jumpLast;              // the last step is a long one (back to the start, along a line)
+} Hop;
+
+static Hop hops[BOARDS][2][UR_PIECES];
+static BoardEvent events[BOARDS];
+static float tumble[BOARDS];
+static signed char seenRoll[BOARDS], lastRoll[BOARDS];
+static bool seeded[BOARDS];
+
+// Where a pin that ended on 'to' from 'from' first landed: a line carried it from there.
+static int HolesLanding(int from, int to)
+{
+    if (to == 20 && from < 6) return 6;
+    if (to == 6) return 20;
+    if (to == 10 && from < 8) return 8;
+    if (to == 8) return 10;
+    return to;
+}
+
+static float HopLength(const Hop *h, int step)
+{
+    return h->jumpLast && step == h->n - 2 ? BACK_TIME : HOP_TIME;
+}
+
+static void Snap(int bi)
+{
+    const Board *b = &boards[bi];
+    for (int s = 0; s < 2; s++)
+        for (int i = 0; i < UR_PIECES; i++) hops[bi][s][i] = (Hop){ .rest = b->pos[s][i] };
+    memset(&events[bi], 0, sizeof(events[bi]));
+    events[bi].side = -1;
+    tumble[bi] = 0;
+    seenRoll[bi] = b->roll;
+    seeded[bi] = true;
+}
+
+void BoardsAnimate(float dt)
+{
+    if (!BoardsOn() || Dedicated()) return;
+    for (int bi = 0; bi < BOARDS; bi++) {
+        const Board *b = &boards[bi];
+        int n = BoardPieces(b->kind), home = BoardHome(b->kind);
+        if (!seeded[bi]) Snap(bi);   // the first look: everything where it stands
+        if (b->roll >= 0 && seenRoll[bi] < 0) tumble[bi] = TUMBLE_TIME;
+        if (b->roll >= 0) lastRoll[bi] = b->roll;
+        seenRoll[bi] = b->roll;
+        if (tumble[bi] > 0) tumble[bi] -= dt;
+        events[bi].age += dt;
+        if (b->moves == 0) {   // a new game: the pieces are set out, no walking
+            for (int s = 0; s < 2; s++)
+                for (int i = 0; i < UR_PIECES; i++) hops[bi][s][i] = (Hop){ .rest = b->pos[s][i] };
+            events[bi].side = -1;
+            continue;
+        }
+
+        // More than a move's worth changed at once (a board set out anew, a snapshot after a long gap): no
+        // walking, everything where it stands.
+        int changed = 0;
+        for (int s = 0; s < 2; s++)
+            for (int i = 0; i < n; i++) {
+                const Hop *h = &hops[bi][s][i];
+                changed += b->pos[s][i] != (h->n ? h->path[h->n - 1] : h->rest);
+            }
+        if (changed > 2) {
+            for (int s = 0; s < 2; s++)
+                for (int i = 0; i < UR_PIECES; i++) hops[bi][s][i] = (Hop){ .rest = b->pos[s][i] };
+            events[bi].side = -1;
+            continue;
+        }
+        // A piece that went forward (or rode a line) sets off along its way; one that went back to 0 was taken.
+        float moving = 0;
+        for (int s = 0; s < 2; s++)
+            for (int i = 0; i < n; i++) {
+                Hop *h = &hops[bi][s][i];
+                int to = b->pos[s][i], from = h->n ? h->path[h->n - 1] : h->rest;
+                if (to == from || to == 0) continue;
+                int land = b->kind == BG_HOLES ? HolesLanding(from, to) : to;
+                Hop nh = { .rest = (unsigned char)from };
+                for (int p = from; nh.n < 39; p++) {
+                    int q = p < home ? p : home;
+                    nh.path[nh.n++] = (unsigned char)q;
+                    if (q >= land || q >= home) break;
+                }
+                if (land != to && nh.n < 40) {
+                    nh.path[nh.n++] = (unsigned char)to;
+                    nh.jumpLast = true;
+                }
+                *h = nh;
+                for (int k = 0; k < h->n - 1; k++) moving += HopLength(h, k);
+                BoardEvent *e = &events[bi];
+                *e = (BoardEvent){ .side = (signed char)s, .piece = (unsigned char)i, .from = (unsigned char)from, .to = (unsigned char)to,
+                                   .steps = (unsigned char)(to < home || lastRoll[bi] < home - from ? land - from : lastRoll[bi]),
+                                   .again = b->kind == BG_UR && b->turn == s && b->winner < 0 && to < home,
+                                   .home = to >= home, .up = land != to && to > land, .down = land != to && to < land };
+            }
+        for (int s = 0; s < 2; s++)
+            for (int i = 0; i < n; i++) {
+                Hop *h = &hops[bi][s][i];
+                int from = h->n ? h->path[h->n - 1] : h->rest;
+                if (b->pos[s][i] != 0 || from == 0) continue;
+                *h = (Hop){ .rest = (unsigned char)from, .n = 2, .path = { (unsigned char)from, 0 }, .jumpLast = true, .delay = moving };
+                if (events[bi].side == 1 - s) events[bi].took = true;
+            }
+        // On their way.
+        for (int s = 0; s < 2; s++)
+            for (int i = 0; i < n; i++) {
+                Hop *h = &hops[bi][s][i];
+                if (h->n < 2) continue;
+                if (h->delay > 0) {
+                    h->delay -= dt;
+                    continue;
+                }
+                int step = (int)h->t;
+                h->t += dt / HopLength(h, step < h->n - 1 ? step : h->n - 2);
+                if (h->t >= (float)(h->n - 1)) {
+                    h->rest = h->path[h->n - 1];
+                    h->n = 0;
+                    h->t = 0;
+                }
+            }
+    }
+}
+
+// Piece i of 'side' on the screen: between positions *a and *b, *k of the way there, lifted by *lift (0-1;
+// more for a long jump).
+void BoardAnim(int bi, int side, int i, int *a, int *b, float *k, float *lift)
+{
+    const Board *x = BoardAt(bi);
+    *k = *lift = 0;
+    if (!x || side < 0 || side > 1 || i < 0 || i >= UR_PIECES) {
+        *a = *b = 0;
+        return;
+    }
+    const Hop *h = &hops[bi][side][i];
+    if (!seeded[bi] || h->n < 2) {
+        *a = *b = h->n ? h->path[h->n - 1] : (seeded[bi] ? h->rest : x->pos[side][i]);
+        if (!seeded[bi]) *a = *b = x->pos[side][i];
+        return;
+    }
+    if (h->delay > 0) {
+        *a = *b = h->path[0];
+        return;
+    }
+    int step = (int)h->t;
+    if (step > h->n - 2) step = h->n - 2;
+    *a = h->path[step];
+    *b = h->path[step + 1];
+    *k = h->t - (float)step;
+    *lift = sinf(*k * PI) * (h->jumpLast && step == h->n - 2 ? 2.2f : 1.0f);
+}
+
+bool BoardMoving(int bi, int side, int i)
+{
+    return bi >= 0 && bi < BOARDS && side >= 0 && side < 2 && i >= 0 && i < UR_PIECES && hops[bi][side][i].n >= 2;
+}
+
+float BoardTumble(int bi)
+{
+    return bi >= 0 && bi < BOARDS && tumble[bi] > 0 ? tumble[bi] / TUMBLE_TIME : 0;
+}
+
+const BoardEvent *BoardLastEvent(int bi)
+{
+    return bi >= 0 && bi < BOARDS && seeded[bi] && events[bi].side >= 0 ? &events[bi] : NULL;
+}
+
 // The board on the table seen from above: local x across (toward side 1), z along; rot 3 as the alehouse.
 static Vector3 OnTable(int b, float x, float z, float up)
 {
@@ -536,6 +708,42 @@ static Vector3 OnTable(int b, float x, float z, float up)
 }
 
 static const Color PIECE[2] = { { 34, 34, 46, 255 }, { 232, 226, 210, 255 } };
+
+static const Color IVORY = { 236, 228, 206, 255 }, INK = { 40, 30, 24, 255 };
+
+// The numbers on the dice, 3 x 5 cells each.
+static const char *const DIGITS[6][5] = {
+    { ".#.", "##.", ".#.", ".#.", "###" }, { "###", "..#", "###", "#..", "###" }, { "###", "..#", "###", "..#", "###" },
+    { "#.#", "#.#", "###", "..#", "..#" }, { "###", "#..", "###", "..#", "###" }, { "###", "#..", "###", "#.#", "###" },
+};
+
+// A die on the table, its number on top; 'roll' (1 down to 0) while it is still tumbling.
+static void DrawDie3D(Vector3 c, float size, int value, float roll, int seed)
+{
+    rlPushMatrix();
+    rlTranslatef(c.x, c.y + size / 2 + sinf(roll * PI) * 0.07f, c.z);
+    if (roll > 0) rlRotatef(roll * 900.0f + (float)seed * 47.0f, 0.6f, 1.0f, 0.3f);
+    DrawShadedBox((Vector3){ 0, 0, 0 }, (Vector3){ size, size, size }, IVORY);
+    int v = roll > 0 ? 1 + ((int)(roll * 23.0f) + seed) % 6 : value;
+    if (v >= 1 && v <= 6) {
+        float g = size / 6.5f;
+        for (int r = 0; r < 5; r++)
+            for (int k = 0; k < 3; k++)
+                if (DIGITS[v - 1][r][k] == '#')
+                    DrawShadedBox((Vector3){ ((float)k - 1) * g, size / 2 + 0.0015f, ((float)r - 2) * g }, (Vector3){ g * 0.92f, 0.003f, g * 0.92f }, INK);
+    }
+    rlPopMatrix();
+}
+
+static Vector3 UrTablePos(int b, int s, int p, int slot)
+{
+    const float sq = 0.105f;
+    int col, row;
+    if (p <= 0) return OnTable(b, (s ? 1 : -1) * 0.22f, -0.27f + 0.085f * (float)slot, 0.0f);
+    if (p >= UR_HOME) return OnTable(b, (s ? 1 : -1) * 0.31f, -0.27f + 0.085f * (float)slot, 0.0f);
+    UrSquare(0, s, p, &col, &row);
+    return OnTable(b, (float)(row - 1) * -sq, ((float)col - 3.5f) * sq, 0.03f);
+}
 
 static void DrawUrBoard(int b, const Board *x)
 {
@@ -548,26 +756,32 @@ static void DrawUrBoard(int b, const Board *x)
             DrawShadedBox(c, (Vector3){ sq * 0.86f, 0.01f, sq * 0.86f }, UrRosetteSquare(col, row) ? (Color){ 196, 78, 60, 255 } : (Color){ 226, 214, 186, 255 });
         }
     for (int s = 0; s < 2; s++) {
-        int waiting = 0, home = 0;
+        // Waiting beside the board on the owner's side, those home further out; one walking goes between.
+        int waitAt[UR_PIECES], homeAt[UR_PIECES], waiting = 0, home = 0;
         for (int k = 0; k < UR_PIECES; k++) {
-            int p = x->pos[s][k], col, row;
-            Vector3 at;
-            // Waiting beside the board on the owner's side, those home further out.
-            if (p == 0) at = OnTable(b, (s ? 1 : -1) * 0.22f, -0.27f + 0.085f * (float)waiting++, 0.0f);
-            else if (p >= 15) at = OnTable(b, (s ? 1 : -1) * 0.31f, -0.27f + 0.085f * (float)home++, 0.0f);
-            else {
-                UrSquare(0, s, p, &col, &row);
-                at = OnTable(b, (float)(row - 1) * -sq, ((float)col - 3.5f) * sq, 0.03f);
-            }
+            waitAt[k] = x->pos[s][k] == 0 ? waiting++ : -1;
+            homeAt[k] = x->pos[s][k] >= UR_HOME ? home++ : -1;
+        }
+        for (int k = 0; k < UR_PIECES; k++) {
+            int pa, pb;
+            float t, lift;
+            BoardAnim(b, s, k, &pa, &pb, &t, &lift);
+            int slot = waitAt[k] >= 0 ? waitAt[k] : homeAt[k] >= 0 ? homeAt[k] : (pa == 0 ? waiting : home);
+            Vector3 at = Vector3Lerp(UrTablePos(b, s, pa, slot), UrTablePos(b, s, pb, slot), t);
+            at.y += lift * 0.035f;
             DrawShadedCylinder(at, 0.038f, 0.038f, 0.018f, 1.0f, 10, PIECE[s]);
         }
     }
-    // The four pyramid dice, marked tips white.
-    for (int k = 0; k < 4; k++) {
-        Vector3 d = OnTable(b, -0.13f + 0.085f * (float)k, 0.51f, 0.0f);
-        DrawShadedCylinder(d, 0.03f, 0.03f, 0.045f, 0.0f, 3, (Color){ 120, 90, 60, 255 });
-        if (x->roll >= 0 && x->dice[k]) DrawShadedBox((Vector3){ d.x, d.y + 0.046f, d.z }, (Vector3){ 0.012f, 0.012f, 0.012f }, RAYWHITE);
-    }
+    // The die at the end of the table.
+    if (x->roll > 0 || BoardTumble(b) > 0) DrawDie3D(OnTable(b, 0.0f, 0.52f, 0.0f), 0.05f, x->dice[0], BoardTumble(b), b);
+}
+
+static Vector3 HolesTablePos(int b, int s, int p, int k)
+{
+    const float w = 0.42f, h = 0.5f;
+    if (p <= 0) return OnTable(b, (s ? 1 : -1) * 0.3f, -0.2f + 0.05f * (float)k, 0.0f);
+    Vector2 uv = HolesHole(0, s, p);
+    return OnTable(b, (uv.x - 0.5f) * w + (p >= HOLES_HOME ? 0.02f * (float)(k - 2) : 0), (uv.y - 0.5f) * h, 0.03f);
 }
 
 static void DrawHolesBoard(int b, const Board *x)
@@ -581,20 +795,17 @@ static void DrawHolesBoard(int b, const Board *x)
         }
     for (int s = 0; s < 2; s++)
         for (int k = 0; k < HOLES_PIECES; k++) {
-            int p = x->pos[s][k];
-            Vector3 at;
-            if (p == 0) at = OnTable(b, (s ? 1 : -1) * 0.3f, -0.2f + 0.05f * (float)k, 0.0f);
-            else {
-                Vector2 uv = HolesHole(0, s, p);
-                at = OnTable(b, (uv.x - 0.5f) * w + (p >= 30 ? 0.02f * (float)(k - 2) : 0), (uv.y - 0.5f) * h, 0.03f);
-            }
+            int pa, pb;
+            float t, lift;
+            BoardAnim(b, s, k, &pa, &pb, &t, &lift);
+            Vector3 at = Vector3Lerp(HolesTablePos(b, s, pa, k), HolesTablePos(b, s, pb, k), t);
+            at.y += lift * 0.04f;
             DrawShadedCylinder(at, 0.008f, 0.008f, 0.07f, 1.0f, 6, PIECE[s]);
             DrawShadedBlob((Vector3){ at.x, at.y + 0.08f, at.z }, (Vector3){ 0.016f, 0.016f, 0.016f }, s ? (Color){ 200, 160, 90, 255 } : (Color){ 90, 70, 50, 255 });
         }
-    for (int k = 0; k < 2; k++) {
-        Vector3 d = OnTable(b, -0.05f + 0.1f * (float)k, 0.45f, 0.0f);
-        DrawShadedBlob((Vector3){ d.x, d.y + 0.02f, d.z }, (Vector3){ 0.035f, 0.02f, 0.025f }, (Color){ 230, 220, 196, 255 });
-    }
+    for (int k = 0; k < 2; k++)
+        if (x->roll > 0 || BoardTumble(b) > 0)
+            DrawDie3D(OnTable(b, -0.05f + 0.1f * (float)k, 0.46f, 0.0f), 0.045f, x->dice[k], BoardTumble(b), b * 3 + k);
 }
 
 // The boards on their tables, their pieces where they stand, and the townsman across from a player.

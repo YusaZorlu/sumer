@@ -656,6 +656,7 @@ void GameUpdate(void)
     PartyUpdate(dt);
     BoardsUpdate(dt);
     BoardsLocal();
+    BoardsAnimate(dt);
     UpdatePets(dt);
     UpdateWatch();
     UpdateClock(dt);
