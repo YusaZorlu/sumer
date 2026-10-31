@@ -185,6 +185,9 @@ EMSCRIPTEN_KEEPALIVE void TestCommand(int cmd, float a, float b)
     case 20: RoyaleStart(); break;
     case 21: RoyaleSkipTo(a); break;
     case 23: remove(DataPath("sumer.owner")); SyncStorage(); break;   // this browser's saves as if made before accounts
+    case 27:   // the storage jars filled with one of each item from item a on (to look at their pictures)
+        for (int i = 0; i < STORE_SLOTS; i++) G.store[i] = (Slot){ (int)a + i < IT_COUNT ? (int)a + i : IT_NONE, (int)a + i < IT_COUNT ? 1 : 0 };
+        break;
     case 25:   // at the alehouse's board a, on the stool of side b
         p->pos = BoardSeat((int)a, (int)b, NULL);
         p->vy = 0;

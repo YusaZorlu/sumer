@@ -66,6 +66,41 @@ void GameInit(void)
     G.msgT = 8.0f;
 }
 
+// The title screen's backdrop: the city at dusk, seen from a camera drifting slowly round the ziggurat.
+// The world is made afresh for it each time the title opens (a frame later, so the title shows at once),
+// and only where the shaders draw: the classic renderer keeps the painted backdrop.
+static int titleState;   // 0: painted this frame, 1: make the world now, 2: shown
+static float titleT;
+
+void TitleReset(void)
+{
+    titleState = 0;
+}
+
+bool TitleBackdrop(float dt)
+{
+    if (GfxTier() == GFX_CLASSIC) return false;
+    if (titleState < 2) {
+        if (titleState++ == 0) return false;
+        GameInit();
+        G.msgT = 0;
+        titleT = 0;
+        titleState = 2;
+    }
+    titleT += fminf(dt, 0.1f);
+    G.hour = 18.1f + 0.9f * fminf(titleT / 600.0f, 1.0f);   // the dusk deepens over ten minutes
+    G.raining = false;
+    G.player.pos = (Vector3){ 0, -80.0f, ZIG_Z };   // out of the picture
+    // Aimed to the right of the ziggurat, so that it stands at the left beside the window, not behind it.
+    float a = 2.5f + titleT * 0.016f;
+    G.cam.position = (Vector3){ sinf(a) * 140.0f, 46.0f, ZIG_Z + cosf(a) * 140.0f };
+    G.cam.target = (Vector3){ cosf(a) * 95.0f, 4.0f, ZIG_Z - sinf(a) * 95.0f };
+    G.cam.fovy = 50;
+    UpdateSky();
+    UpdateLights();
+    return GfxDrawWorld();
+}
+
 // Alone, the night passes at once. In company it passes when every player lies in bed.
 void StartSleep(void)
 {
@@ -367,7 +402,8 @@ void SaveGamePrefs(void)
 {
     FILE *f = fopen(DataPath("sumer.prefs"), "w");
     if (!f) return;
-    fprintf(f, "arrowcam %d\nfirstperson %d\nfps %d\nlefthand %d\n", G.arrowCam ? 1 : 0, G.firstPerson ? 1 : 0, fpsLimit, leftHanded ? 1 : 0);
+    fprintf(f, "arrowcam %d\nfirstperson %d\nfps %d\nlefthand %d\nshowfps %d\n", G.arrowCam ? 1 : 0, G.firstPerson ? 1 : 0, fpsLimit,
+            leftHanded ? 1 : 0, G.showFps ? 1 : 0);
     fclose(f);
     SyncStorage();
 }
@@ -383,6 +419,7 @@ void LoadGamePrefs(void)
         else if (strcmp(key, "firstperson") == 0) G.firstPerson = v != 0;
         else if (strcmp(key, "fps") == 0) fpsLimit = v == 30 || v == 60 ? v : 0;
         else if (strcmp(key, "lefthand") == 0) leftHanded = v != 0;
+        else if (strcmp(key, "showfps") == 0) G.showFps = v != 0;
     }
     fclose(f);
 }

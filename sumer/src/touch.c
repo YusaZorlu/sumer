@@ -215,7 +215,6 @@ bool TouchButtonAt(int b, Vector2 *c, float *r)
 void DrawTouch(void)
 {
     if (!TouchOn()) return;
-    float gap = 1;
     for (int b = 0; b < TB_COUNT; b++) {
         Vector2 c;
         float r;
@@ -224,12 +223,12 @@ void DrawTouch(void)
         DrawRing(c, r - 2, r, 0, 360, 48, Fade(WHITE, 0.4f));
         const char *s = L(b == TB_MENU && G.panel != PANEL_NONE ? "Close" : labels[b]);
         int size = r < 30 ? 14 : 16;
-        Vector2 w = MeasureTextEx(GameFont(), s, (float)size, gap);
-        DrawTextEx(GameFont(), s, (Vector2){ (float)(int)(c.x - w.x / 2), (float)(int)(c.y - w.y / 2) }, (float)size, gap, Fade(WHITE, 0.75f));
+        Vector2 w = (Vector2){ GameTextWidth(s, (float)size), (float)size };
+        DrawGameText(s, (float)(int)(c.x - w.x / 2), (float)(int)(c.y - w.y / 2), (float)size, Fade(WHITE, 0.75f));
         if (b == TB_NEXT) {   // the two weapon buttons share a caption below them
             s = L("Weapon");
-            w = MeasureTextEx(GameFont(), s, 14, gap);
-            DrawTextEx(GameFont(), s, (Vector2){ (float)(int)(c.x - 27 - w.x / 2), c.y + r + 4 }, 14, gap, Fade(WHITE, 0.75f));
+            w = (Vector2){ GameTextWidth(s, 14), 14 };
+            DrawGameText(s, (float)(int)(c.x - 27 - w.x / 2), c.y + r + 4, 14, Fade(WHITE, 0.75f));
         }
     }
     if (G.panel != PANEL_NONE) return;

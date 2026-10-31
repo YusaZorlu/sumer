@@ -29,6 +29,7 @@ void OpenLobby(const char *why)
     }
     open = true;
     stage = LOBBY_MENU;
+    TitleReset();
     snprintf(note, sizeof(note), "%s", why && why[0] ? L(why) : "");
     LockMouse(false);
     WantPointer(false);
@@ -92,34 +93,32 @@ static void Join(const char *id, int mode)
 
 static void Label(const char *s, float x, float y, int size, Color c)
 {
-    DrawTextEx(GameFont(), L(s), (Vector2){ (float)(int)x, (float)(int)y }, (float)size, (float)(size / 10), c);
+    DrawGameText(L(s), (float)(int)x, (float)(int)y, (float)size, c);
 }
 
 static void Centered(const char *s, float cx, float y, int size, Color c)
 {
     s = L(s);
-    Vector2 m = MeasureTextEx(GameFont(), s, (float)size, (float)(size / 10));
-    DrawTextEx(GameFont(), s, (Vector2){ (float)(int)(cx - m.x / 2), (float)(int)y }, (float)size, (float)(size / 10), c);
+    DrawGameText(s, (float)(int)(cx - GameTextWidth(s, (float)size) / 2), (float)(int)y, (float)size, c);
 }
 
 static bool Choice(Rectangle r, const char *label, bool enabled)
 {
-    int size = r.height < 30 ? 15 : 20;
-    bool hover = enabled && CheckCollisionPointRec(UiMouse(), r);
-    DrawRectangleRec(r, enabled ? (hover ? (Color){ 150, 110, 60, 255 } : (Color){ 112, 82, 48, 255 }) : (Color){ 60, 54, 48, 255 });
-    DrawRectangleLinesEx(r, 1, (Color){ 150, 120, 80, 255 });
-    Centered(label, r.x + r.width / 2, r.y + (r.height - (float)size) / 2, size, enabled ? (Color){ 240, 230, 210, 255 } : (Color){ 150, 140, 125, 255 });
-    return hover && MousePressed(MOUSE_BUTTON_LEFT);
+    return TabletButton(r, label, r.height < 30 ? 15 : 20, enabled, false);
 }
 
 // A tab: lit while it is the one open.
 static bool Tab(Rectangle r, const char *label, bool on)
 {
-    bool hover = CheckCollisionPointRec(UiMouse(), r);
-    DrawRectangleRec(r, on ? (Color){ 150, 110, 60, 255 } : hover ? (Color){ 90, 68, 42, 255 } : (Color){ 58, 48, 38, 255 });
-    DrawRectangleLinesEx(r, 1, on ? (Color){ 240, 200, 120, 255 } : (Color){ 150, 120, 80, 255 });
-    Centered(label, r.x + r.width / 2, r.y + (r.height - 18) / 2, 18, (Color){ 240, 230, 210, 255 });
-    return hover && !on && MousePressed(MOUSE_BUTTON_LEFT);
+    return TabletButton(r, label, 18, true, on);
+}
+
+// A frame for one of the page's own fields, laid over it: a strip of bitumen set into the clay.
+static void Field(Rectangle r, bool lit)
+{
+    DrawRectangleRounded((Rectangle){ r.x - 1, r.y - 1, r.width + 2, r.height + 3 }, 0.12f, 4, (Color){ 120, 90, 62, 120 });
+    DrawRectangleRounded(r, 0.12f, 4, (Color){ 52, 38, 28, 255 });
+    DrawRectangleRoundedLinesEx(r, 0.12f, 4, lit ? 2.0f : 1.0f, lit ? (Color){ 34, 70, 156, 255 } : (Color){ 120, 96, 72, 255 });
 }
 
 // Where a server stands, in a few words.
@@ -143,12 +142,12 @@ static float RoomRows(float x, float y, int kind, bool menu)
         if (kind == ROOM_SURVIVAL ? mode != ROOM_SURVIVAL && mode != ROOM_PVP : mode != kind) continue;
         bool ok = menu && state != 3 && players < max;
         if (Choice((Rectangle){ x, y, 250, 36 }, title, ok)) Join(id, mode);
-        Label(RoomLine(mode, players, max, state), x + 270, y + 10, 15, (Color){ 150, 140, 125, 255 });
+        Label(RoomLine(mode, players, max, state), x + 270, y + 10, 16, (Color){ 96, 66, 44, 255 });
         y += 44;
         shown++;
     }
     if (!shown) {
-        Label(RoomCount() ? "No servers of this kind are set up." : "Asking the game server for its servers...", x, y + 8, 15, (Color){ 150, 140, 125, 255 });
+        Label(RoomCount() ? "No servers of this kind are set up." : "Asking the game server for its servers...", x, y + 8, 16, (Color){ 96, 66, 44, 255 });
         y += 44;
     }
     return y;
@@ -183,7 +182,8 @@ static void AutoStart(void)
 
 void LobbyFrame(void)
 {
-    const Color gold = { 240, 200, 120, 255 }, text = { 240, 230, 210, 255 }, dim = { 150, 140, 125, 255 }, bad = { 230, 110, 90, 255 };
+    // Dark ink on the clay tablet: lapis for what stands out, red for what went wrong.
+    const Color gold = { 28, 62, 146, 255 }, text = { 40, 25, 16, 255 }, dim = { 96, 66, 44, 255 }, bad = { 156, 34, 20, 255 };
     float sw = UiWidth(), sh = UiHeight(), cx = sw / 2;
 
     AccountFrame();
@@ -203,25 +203,28 @@ void LobbyFrame(void)
     }
 
     BeginDrawing();
-    ClearBackground((Color){ 30, 24, 20, 255 });
+    // Behind the title: the city itself at dusk (TitleBackdrop), or a painted one.
+    bool world = TitleBackdrop(GetFrameTime());
+    if (!world) ClearBackground((Color){ 30, 24, 20, 255 });
     UiBegin();
-    DrawRectangleGradientV(0, 0, (int)sw, (int)(sh * 0.6f), (Color){ 92, 132, 170, 255 }, (Color){ 214, 178, 120, 255 });
-    DrawRectangle(0, (int)(sh * 0.6f), (int)sw, (int)(sh * 0.4f), (Color){ 168, 136, 96, 255 });
-    // The ziggurat on the horizon: three stages of mud brick.
-    float base = sh * 0.6f;
-    DrawRectangle((int)(cx - 210), (int)(base - 60), 420, 60, (Color){ 150, 112, 76, 255 });
-    DrawRectangle((int)(cx - 140), (int)(base - 105), 280, 45, (Color){ 160, 120, 82, 255 });
-    DrawRectangle((int)(cx - 80), (int)(base - 140), 160, 35, (Color){ 170, 128, 88, 255 });
-    DrawRectangle((int)(cx - 9), (int)(base - 60), 18, 60, (Color){ 128, 94, 64, 255 });
+    if (!world) {
+        DrawRectangleGradientV(0, 0, (int)sw, (int)(sh * 0.6f), (Color){ 70, 96, 140, 255 }, (Color){ 226, 156, 96, 255 });
+        DrawRectangle(0, (int)(sh * 0.6f), (int)sw, (int)(sh * 0.4f), (Color){ 150, 116, 80, 255 });
+        // The ziggurat on the horizon: three stages of mud brick against the evening.
+        float base = sh * 0.6f;
+        DrawRectangle((int)(cx - 210), (int)(base - 60), 420, 60, (Color){ 120, 84, 58, 255 });
+        DrawRectangle((int)(cx - 140), (int)(base - 105), 280, 45, (Color){ 132, 92, 62, 255 });
+        DrawRectangle((int)(cx - 80), (int)(base - 140), 160, 35, (Color){ 142, 100, 68, 255 });
+        DrawRectangle((int)(cx - 9), (int)(base - 60), 18, 60, (Color){ 100, 70, 48, 255 });
+    }
 
     Rectangle panel = { cx - 360, 0, 720, 530 };
     panel.y = sh > panel.height + 16 ? (sh - panel.height) / 2 : 8;
-    DrawRectangleRec(panel, (Color){ 30, 24, 20, 238 });
-    DrawRectangleLinesEx(panel, 2, (Color){ 150, 120, 80, 255 });
-    Centered("SUMER", cx, panel.y + 18, 50, gold);
+    DrawTablet(panel);
+    DrawLogo(cx, panel.y + 20, 50);
     bool in = LoggedIn();
     Centered(!in ? "Ur, c. 2100 BC" : page == PAGE_ROYALE ? "Sumer Royale" : page == PAGE_PARTY ? "Sumer Party" : page == PAGE_SURVIVAL ? "Sumer Survival" : "Ur, c. 2100 BC",
-             cx, panel.y + 74, 20, in && (page == PAGE_ROYALE || page == PAGE_PARTY) ? gold : text);
+             cx, panel.y + 78, 18, in && (page == PAGE_ROYALE || page == PAGE_PARTY) ? gold : dim);
 
     float x = panel.x + 40, y = panel.y + 120;
     bool menu = stage == LOBBY_MENU;
@@ -240,8 +243,7 @@ void LobbyFrame(void)
         for (int k = 0; k < rows; k++) {
             fields[k] = (Rectangle){ x + 230, y, 380, 38 };
             Label(labels[k], x + 20, y + 9, 20, text);
-            DrawRectangleRec(fields[k], (Color){ 58, 48, 38, 255 });
-            DrawRectangleLinesEx(fields[k], 1, busy ? dim : gold);
+            Field(fields[k], !busy);
             y += 48;
         }
         if (rows == 2) fields[2] = hidden;
@@ -255,7 +257,7 @@ void LobbyFrame(void)
         else if (note[0]) Centered(note, cx, y, 17, bad);
         Centered(createTab ? "No e-mail needed: only your account name and a hash of your password are kept."
                            : "Your level, K/D and things are kept with your account on the game's server.",
-                 cx, panel.y + panel.height - 40, 15, dim);
+                 cx, panel.y + panel.height - 40, 16, dim);
     } else {
         if (page != PAGE_ACCOUNT) AccountForm(FORM_NONE, hidden, hidden, hidden);
         Rectangle row = { x, y, 250, 44 };
@@ -268,8 +270,7 @@ void LobbyFrame(void)
             for (int k = 0; k < 3; k++) {
                 fields[k] = (Rectangle){ x + 230, y, 380, 38 };
                 Label(labels[k], x + 20, y + 9, 20, text);
-                DrawRectangleRec(fields[k], (Color){ 58, 48, 38, 255 });
-                DrawRectangleLinesEx(fields[k], 1, AccountWaiting() ? dim : gold);
+                Field(fields[k], !AccountWaiting());
                 y += 48;
             }
             AccountForm(FORM_PASSWORD, fields[0], fields[1], fields[2]);
@@ -287,7 +288,7 @@ void LobbyFrame(void)
             if (deleteArmed) Centered("Click \"Delete for good\" to delete your account, level, saves and things.", cx, y, 17, bad);
             else if (AccountNote()[0]) Centered(AccountNote(), cx, y, 17, AccountWaiting() ? gold : text);
             y += 28;
-            Centered("Deleting needs your current password and cannot be undone.", cx, y, 15, dim);
+            Centered("Deleting needs your current password and cannot be undone.", cx, y, 16, dim);
             y += 26;
             if (Choice((Rectangle){ x, y, 120, 26 }, "Back", menu)) {
                 page = PAGE_MODES;
@@ -301,24 +302,24 @@ void LobbyFrame(void)
                 SetParty(false);
                 page = PAGE_SURVIVAL;
             }
-            Label("Alone or with others: farm, hunt, trade", x + 270, y + 4, 15, dim);
-            Label("and get through the seasons in Ur.", x + 270, y + 24, 15, dim);
+            Label("Alone or with others: farm, hunt, trade", x + 270, y + 4, 16, dim);
+            Label("and get through the seasons in Ur.", x + 270, y + 24, 16, dim);
             y += 58;
             if (Choice((Rectangle){ x, y, 250, 44 }, "Sumer Royale", menu)) page = PAGE_ROYALE;
-            Label("Battle royale for up to twenty players:", x + 270, y + 4, 15, dim);
-            Label("the last one standing wins.", x + 270, y + 24, 15, dim);
+            Label("Battle royale for up to twenty players:", x + 270, y + 4, 16, dim);
+            Label("the last one standing wins.", x + 270, y + 24, 16, dim);
             y += 58;
             if (Choice((Rectangle){ x, y, 250, 44 }, "Sumer Party", menu)) page = PAGE_PARTY;
-            Label("Four minigames in a row for up to twelve:", x + 270, y + 4, 15, dim);
-            Label("points in each, the best three win.", x + 270, y + 24, 15, dim);
+            Label("Four minigames in a row for up to twelve:", x + 270, y + 4, 16, dim);
+            Label("points in each, the best three win.", x + 270, y + 24, 16, dim);
             y += 70;
         } else if (page == PAGE_SURVIVAL) {
             AccountRooms();
             bool ready = AccountSavesReady();
             if (Choice(row, "Singleplayer", menu && ready)) PlayAlone();
-            Label(ready ? "Three save slots, kept with your account." : "Fetching your saves...", x + 270, y + 14, 15, dim);
+            Label(ready ? "Three save slots, kept with your account." : "Fetching your saves...", x + 270, y + 14, 16, dim);
             y += 56;
-            Label("Servers: the world goes on while you are away; your things come with you.", x, y, 15, text);
+            Label("Servers: the world goes on while you are away; your things come with you.", x, y, 16, text);
             y += 24;
             y = RoomRows(x, y, ROOM_SURVIVAL, menu);
             if (Choice((Rectangle){ x, y + 4, 120, 26 }, "Back", menu)) page = PAGE_MODES;
@@ -326,8 +327,8 @@ void LobbyFrame(void)
         } else if (page == PAGE_PARTY) {
             // A party: four of five minigames, once everyone in (two or more) is ready.
             AccountRooms();
-            Label("Four minigames of four minutes, chosen from five (vote one out while you wait). Points", x, y, 15, text);
-            Label("in each game, +10, +6, +3 for its top three; the party's best three gain experience.", x, y + 20, 15, text);
+            Label("Four minigames of four minutes, chosen from five (vote one out while you wait). Points", x, y, 16, text);
+            Label("in each game, +10, +6, +3 for its top three; the party's best three gain experience.", x, y + 20, 16, text);
             y += 50;
             y = RoomRows(x, y, ROOM_PARTY, menu);
             if (Choice((Rectangle){ x, y + 4, 120, 26 }, "Back", menu)) page = PAGE_MODES;
@@ -335,8 +336,8 @@ void LobbyFrame(void)
         } else {
             // A battle royale: a round starts once everyone in (two or more) is ready.
             AccountRooms();
-            Label("A round starts ten seconds after everyone in (two or more) is ready. Everyone", x, y, 15, text);
-            Label("starts with the best gear; the winner gains 10 XP for every player in the round.", x, y + 20, 15, text);
+            Label("A round starts ten seconds after everyone in (two or more) is ready. Everyone", x, y, 16, text);
+            Label("starts with the best gear; the winner gains 10 XP for every player in the round.", x, y + 20, 16, text);
             y += 50;
             y = RoomRows(x, y, ROOM_ROYALE, menu);
             if (Choice((Rectangle){ x, y + 4, 120, 26 }, "Back", menu)) page = PAGE_MODES;
@@ -357,10 +358,10 @@ void LobbyFrame(void)
         float ratio = deaths > 0 ? (float)kills / (float)deaths : (float)kills;
         const char *who = TextFormat("%s   %s   K/D %d/%d (%.1f)", AccountName(), LevelText(xp), kills, deaths, ratio);
         float by = panel.y + panel.height - 40;
-        DrawTextEx(GameFont(), who, (Vector2){ x, by + 5 }, 18, 1, gold);
+        DrawGameText(who, x, by + 5, 18, gold);
         float frac = LevelOf(xp) >= MAX_LEVEL ? 1.0f : (float)(xp - LevelStart(LevelOf(xp))) / (float)(LevelStart(LevelOf(xp) + 1) - LevelStart(LevelOf(xp)));
-        DrawRectangle((int)x, (int)by + 26, 400, 4, (Color){ 58, 48, 38, 255 });
-        DrawRectangle((int)x, (int)by + 26, (int)(400 * frac), 4, gold);
+        DrawRectangleRounded((Rectangle){ x, by + 26, 400, 5 }, 0.5f, 4, (Color){ 120, 92, 64, 140 });
+        DrawRectangleRounded((Rectangle){ x, by + 26, 400 * frac, 5 }, 0.5f, 4, gold);
         if (Choice((Rectangle){ panel.x + panel.width - 160, by, 120, 26 }, "Log out", menu)) {
             AccountLogout();
             page = PAGE_MODES;

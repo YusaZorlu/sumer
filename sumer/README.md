@@ -236,6 +236,31 @@ Behind a proxy (Caddy, Cloudflare) `server.py` takes the player's address from `
 browser and the server program must be built from the same sources: a page from another version is told
 to reload. To change a server's world for good, stop `server.py` and delete `data/rooms/<id>`.
 
+## The interface
+
+Every word is set in two CC0 fonts by GGBotNet: OSerif, a carved-looking capital face, for window titles and
+the name on the title screen, and Jupiteroid for everything else, Turkish letters included. Each is drawn into
+a texture at a few sizes as it is first needed, so letters stay sharp from a phone to a large monitor.
+
+The windows (baskets, storeroom, barter, the coop, the board games, the pause menu, settings, your look, the
+controls) are clay tablets written in dark ink, framed with a band of lapis, shell and red stone as on the
+Standard of Ur, with a rosette from the Royal Game of Ur's board at each corner. Buttons are tiles of fired
+clay; the choice in use (the weapon in hand, the armor worn, an open tab) is lapis with white letters.
+
+**Pictures of things**: each basket, storage jar and barter offer shows what is in it, a little picture drawn
+by the game from the same parts as the world (a tray of dates, a sheaf of wheat, a jug of milk, a goose, a
+copper lump, bronze ingots), made once when the first window opens.
+
+**Over the game**: the box at the top left shows the day and hour, the season, health (a heart) and food
+(a loaf) as bars, the arrows, what is in hand, the armor and the level. News comes in a band at the top
+between that box and the map, and fades. The frame rate is hidden unless "Frame rate shown" is on in Game
+settings. A person's or a beast's name and health show over them only while you aim at them, while they are
+hurt and (people) while they are hostile; the calm and whole go bare. In hide and seek no peaceful person gets
+a name, a bar or a dot on the map, so a hider among the townsfolk looks just like them.
+
+**The title screen** shows the city itself at dusk behind its window, the camera drifting slowly round the
+ziggurat (with the Classic graphics setting, a painted evening sky instead).
+
 ## Graphics
 
 Four settings, switched with **G**, the "Graphics" button in the Esc menu or on the browser's title screen,
@@ -325,7 +350,8 @@ again); Esc in play opens the pause menu.
 
 Esc, then "Game settings" (or S): language, graphics, music, sounds, the arrow camera (the view follows each
 arrow), the view (first person or behind you), the frame limit (60 a second at first; 30 keeps a phone cooler,
-"none" runs as fast as the screen shows frames) and, on a touch screen, which hand the buttons are for. They are kept in this browser and change nothing about how
+"none" runs as fast as the screen shows frames), whether the frame rate shows under the map (off at first)
+and, on a touch screen, which hand the buttons are for. They are kept in this browser and change nothing about how
 the game plays. The keys L, G, N, Z and P do the same while playing.
 
 ## Language
@@ -410,7 +436,13 @@ Trees and fields: `palm_tree_bark` (bark on every trunk), `forest_leaves_02` (le
 script builds all of them. Everything else is drawn in code.
 
 The game boards' wood frame is `wood_table_001` from Poly Haven (**CC0**), darkened into `assets/board.png` by
-`python3 -I tools/assets/make_detail.py board`.
+`python3 -I tools/assets/make_detail.py board`. The windows' clay is `clay_plaster` from Poly Haven (**CC0**),
+in light grey in `assets/clay.png` (`make_detail.py clay`).
+
+The fonts are OSerif and Jupiteroid by GGBotNet, from the
+[GGBotNet Fonts CC0](https://opengameart.org/content/ggbotnet-fonts-cc0-all-in-1) pack on OpenGameArt (**CC0**,
+the pack's licence is in `assets/fonts/LICENSE-CC0.txt`), cut down to the letters the game uses by
+`python3 tools/assets/make_detail.py fonts` (needs fontTools).
 
 ## Where things are
 
@@ -842,7 +874,8 @@ Animals you kill stay gone until the next spring, when their herds are full agai
 | `src/shell.html` | The page around the browser game |
 | `src/music.c` | The synthesizer, the three tunes, picking the mood, the volume, feeding the audio stream |
 | `src/sfx.c` | Sound effects made at start (swishes, thuds, a clang, a thump, an arrow's crack), their volume |
-| `src/lang.c` | Language setting, text lookup, the pixel font extended with the Turkish letters |
+| `src/lang.c` | Language setting, text lookup, the two fonts (drawn at a few sizes as needed) and text drawing |
+| `src/icons.c` | The item pictures: a little model for each kind of thing, drawn once into a texture |
 | `src/turkish.c` | Turkish text for every English string in the game |
 | `tools/` | Test harness and its tests, browser test suites, the music renderer, the translation checker (see `robot.md`) |
 

@@ -10,10 +10,13 @@
 - assets/flame.png: two frames of a flame side by side, from Kenney's Particle Pack (kenney.nl).
 - assets/board.png: the wood of the alehouse's game boards (their frame on the panel), in its own colors,
   from Poly Haven's wood_table_001.
+- assets/clay.png: the grain of the windows' clay tablets, from Poly Haven's clay_plaster, in light grey.
+- assets/fonts: OSerif (titles) and Jupiteroid (the rest), two fonts by GGBotNet from their CC0 pack on
+  OpenGameArt, cut down to the letters the game loads (lang.c). Needs fontTools (pip install fonttools).
 
 The game keeps its own colors and takes only light and dark from the textures.
-Usage: python3 -I tools/assets/make_detail.py [board]   (needs Pillow and the network; downloads into
-tools/out/assets; 'board' builds assets/board.png alone)
+Usage: python3 -I tools/assets/make_detail.py [board|clay|fonts]   (needs Pillow and the network; downloads
+into tools/out/assets; 'board', 'clay' or 'fonts' builds that alone)
 """
 import json
 import os
@@ -33,6 +36,10 @@ TREES = [('ph', 'palm_tree_bark'), ('ph', 'forest_leaves_02'), ('ph', 'dry_mud_f
 KENNEY = 'https://kenney.nl/media/pages/assets/particle-pack/f8fe0f8cb8-1677578741/kenney_particle-pack.zip'
 FLAMES = ['flame_05', 'flame_06']
 SIZE = 512
+GGBOT = 'https://opengameart.org/sites/default/files/ggbotnet_fonts_cc0_2025_dec.zip'
+FONTS = ['OSerif/TrueType (.ttf)/OSerif-Regular.ttf', 'Jupiteroid/TrueType (.ttf)/Jupiteroid-Regular.ttf']
+# The letters lang.c loads: printable ASCII, Latin-1, the Turkish ones beyond it and a few marks.
+UNICODES = 'U+0020-007E,U+00A0-00FF,U+011E,U+011F,U+0130,U+0131,U+015E,U+015F,U+2013,U+2014,U+2018,U+2019,U+201C,U+201D,U+2022,U+2026'
 
 
 def get(url):
@@ -96,11 +103,48 @@ def board():
     im.save(os.path.join(ROOT, 'assets', 'board.png'), optimize=True)
 
 
+def clay():
+    # Grey, stretched to full contrast (the darkest and lightest 1% clipped), then kept light, 224 to 255:
+    # the game tints it with the clay's color, leaving only a soft grain under the writing.
+    g = Image.open(fetch('clay_plaster')).convert('L').resize((256, 256), Image.LANCZOS)
+    hist, n, acc = g.histogram(), 256 * 256, 0
+    lo = hi = None
+    for v in range(256):
+        acc += hist[v]
+        if lo is None and acc >= n * 0.01:
+            lo = v
+        if hi is None and acc >= n * 0.99:
+            hi = v
+    span = max(1, hi - lo)
+    g.point(lambda v: 224 + int(31 * min(1.0, max(0.0, (v - lo) / span)))).save(os.path.join(ROOT, 'assets', 'clay.png'), optimize=True)
+
+
+def fonts():
+    from fontTools import subset
+    path = os.path.join(CACHE, 'ggbotnet_fonts_cc0.zip')
+    if not os.path.exists(path):
+        with open(path, 'wb') as f:
+            f.write(get(GGBOT))
+    os.makedirs(os.path.join(ROOT, 'assets', 'fonts'), exist_ok=True)
+    with zipfile.ZipFile(path) as z:
+        for name in FONTS:
+            member = next(n for n in z.namelist() if n.endswith(name))
+            src = os.path.join(CACHE, os.path.basename(name))
+            with open(src, 'wb') as f:
+                f.write(z.read(member))
+            out = os.path.join(ROOT, 'assets', 'fonts', os.path.basename(name))
+            subset.main([src, '--unicodes=' + UNICODES, '--layout-features=kern', '--output-file=' + out])
+        licence = next(n for n in z.namelist() if n.endswith('/LICENSE'))
+        with open(os.path.join(ROOT, 'assets', 'fonts', 'LICENSE-CC0.txt'), 'wb') as f:
+            f.write(z.read(licence))
+
+
 def main():
     os.makedirs(CACHE, exist_ok=True)
-    if sys.argv[1:] == ['board']:
-        board()
-        print('wrote assets/board.png')
+    one = {'board': board, 'clay': clay, 'fonts': fonts}
+    if len(sys.argv) == 2 and sys.argv[1] in one:
+        one[sys.argv[1]]()
+        print('wrote', 'assets/fonts' if sys.argv[1] == 'fonts' else 'assets/%s.png' % sys.argv[1])
         return 0
     chans = [detail(fetch(a)) for a in SOURCES]
     Image.merge('RGBA', chans).save(os.path.join(ROOT, 'assets', 'detail.png'), optimize=True)
@@ -110,7 +154,8 @@ def main():
     Image.merge('RGBA', chans).save(os.path.join(ROOT, 'assets', 'detail3.png'), optimize=True)
     flames()
     board()
-    print('wrote assets/detail.png, detail2.png, detail3.png, flame.png and board.png')
+    clay()
+    print('wrote assets/detail.png, detail2.png, detail3.png, flame.png, board.png and clay.png (fonts: run with fonts)')
 
 
 if __name__ == '__main__':
