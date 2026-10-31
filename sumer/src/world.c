@@ -755,6 +755,27 @@ void DrawWater(void)
 
 // One box at the detail fitting its squared distance d2 from the eye: buildings up close get twice
 // the facets and softened edges.
+// The plain's tufts (small green cones) and the reed stems along the bank, drawn as cut-out pictures of
+// grass and reeds where the shaders draw: the world keeps the same boxes either way.
+static bool LeafBox(const Box *b, float d2)
+{
+    if (!GfxOn() || b->solid || b->built) return false;
+    Vector3 foot = { b->pos.x, b->pos.y - b->size.y / 2, b->pos.z };
+    float turn = Hash2((int)(b->pos.x * 10.0f), (int)(b->pos.z * 10.0f)) * PI;
+    if (b->shape == SHAPE_CONE && b->size.y < 1.6f && b->color.g > b->color.r) {
+        if (d2 > 140.0f * 140.0f) return true;   // too small to see that far
+        bool dry = b->color.r > 100 || Hash2((int)(b->pos.x * 3.0f), (int)(b->pos.z * 3.0f)) < 0.25f;
+        DrawLeafTuft((Vector3){ foot.x, foot.y + 0.05f, foot.z }, b->size.y * 1.15f, turn, dry ? LEAF_DRY : LEAF_GRASS, LEAF_TINT);
+        return true;
+    }
+    if (b->shape == SHAPE_BOX && b->size.x < 0.12f && b->size.z < 0.12f && b->size.y > 1.2f && b->color.r == COL_REED.r && b->color.g == COL_REED.g) {
+        if (d2 > 160.0f * 160.0f) return true;
+        DrawLeafTuft((Vector3){ foot.x, foot.y + 0.1f, foot.z }, b->size.y * 1.05f, turn, LEAF_REEDS, LEAF_TINT);
+        return true;
+    }
+    return false;
+}
+
 void DrawBoxAt(int i, float d2)
 {
     const Box *b = &G.boxes[i];
@@ -762,6 +783,7 @@ void DrawBoxAt(int i, float d2)
         DrawGlowBox(b->pos, b->size, b->color);
         return;
     }
+    if (LeafBox(b, d2)) return;
     Vector3 base = { b->pos.x, b->pos.y - b->size.y / 2, b->pos.z };
     bool close = b->built && d2 < 45.0f * 45.0f;
     int sides = close ? 16 : d2 > 60.0f * 60.0f ? 5 : 8;
@@ -811,10 +833,23 @@ static void Part(float x, float y, float z, float w, float h, float d, Color c)
     DrawShadedBox((Vector3){ x, y, z }, (Vector3){ w, h, d }, c);
 }
 
+// Where the shaders draw, the crown is fronds of cut-out leaflets: young ones rising, the old ones hanging.
+static void DrawPalmFronds(const Resource *r)
+{
+    Vector3 top = { r->pos.x, r->pos.y + 6.45f, r->pos.z };
+    for (int k = 0; k < 14; k++) {
+        float yaw = (r->spin + (float)k * 137.5f) * DEG2RAD, layer = (float)(k % 3);
+        float len = 3.0f + 0.5f * Hash2(k, (int)(r->pos.x * 7.0f));
+        float rise = layer == 0 ? 0.62f : layer == 1 ? 0.32f : 0.12f, droop = layer == 0 ? 0.55f : layer == 1 ? 0.75f : 0.95f;
+        Color tint = layer == 2 ? (Color){ 196, 186, 150, 255 } : layer == 0 ? (Color){ 180, 192, 170, 255 } : LEAF_TINT;
+        DrawFrond((Vector3){ top.x, top.y + 0.1f * layer, top.z }, yaw, len, rise, droop, k & 1 ? LEAF_FROND2 : LEAF_FROND, tint);
+    }
+}
+
 static void DrawPalm(const Resource *r)
 {
     const Color spine = { 96, 110, 52, 255 };
-    for (int k = 0; k < 9; k++) {
+    for (int k = 0; k < 9 && !GfxOn(); k++) {
         float droop = 18.0f + 12.0f * (float)(k % 3);
         rlPushMatrix();
         rlTranslatef(r->pos.x, r->pos.y + 6.45f, r->pos.z);
@@ -827,6 +862,7 @@ static void DrawPalm(const Resource *r)
         Part(0.75f, 0, 0, 1.5f, 0.06f, 0.45f, Mix(COL_PALM_LEAF, COL_WHEAT_GREEN, 0.25f));
         rlPopMatrix();
     }
+    if (GfxOn()) DrawPalmFronds(r);
     DrawShadedBlob((Vector3){ r->pos.x, r->pos.y + 6.4f, r->pos.z }, (Vector3){ 0.4f, 0.3f, 0.4f }, COL_BARK);
     if (r->regrow <= 0) {
         DrawShadedBlob((Vector3){ r->pos.x + 0.38f, r->pos.y + 5.95f, r->pos.z }, (Vector3){ 0.2f, 0.3f, 0.2f }, COL_DATES);
@@ -838,6 +874,15 @@ static void DrawPalm(const Resource *r)
 static void DrawReeds(int i, const Resource *r)
 {
     float grown = (r->regrow > 0) ? 0.25f : 1.0f;
+    if (GfxOn()) {   // a reed bed: clumps with their plumes, cut low when gathered
+        for (int k = 0; k < 3; k++) {
+            float ox = (Hash2(i, k) - 0.5f) * 1.2f, oz = (Hash2(k, i + 7) - 0.5f) * 1.2f;
+            float h = (2.0f + Hash2(i + 3, k) * 0.7f) * grown;
+            DrawLeafTuft((Vector3){ r->pos.x + ox, r->pos.y + 0.05f, r->pos.z + oz }, fmaxf(h, 0.5f), Hash2(i, k + 11) * PI,
+                         grown > 0.5f ? LEAF_REEDS : LEAF_DRY, LEAF_TINT);
+        }
+        return;
+    }
     for (int k = 0; k < 7; k++) {
         float ox = (Hash2(i, k) - 0.5f) * 1.3f, oz = (Hash2(k, i + 7) - 0.5f) * 1.3f;
         float h = (1.7f + Hash2(i + 3, k) * 1.0f) * grown;

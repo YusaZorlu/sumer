@@ -11,7 +11,7 @@ emcc -std=gnu99 -O2 -Wall -Wextra @tools/same-world.flags -DSUMER_TEST -o "$OUT/
     -DPLATFORM_WEB -sUSE_GLFW=3 -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=1048576 -sFORCE_FILESYSTEM=1 \
     -sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE='$stringToNewUTF8,$UTF8ToString' \
     -sEXPORTED_RUNTIME_METHODS=ccall,UTF8ToString,HEAPF32 -sEXPORTED_FUNCTIONS=_main,_TestInfo,_TestCommand,_TestMusic \
-    --embed-file assets/detail.png --embed-file assets/detail2.png --embed-file assets/detail3.png --embed-file assets/flame.png --embed-file assets/board.png --embed-file assets/clay.png --embed-file assets/sky_day.jpg --embed-file assets/sky_dusk.jpg --embed-file assets/sky_grey.jpg --embed-file assets/fonts/OSerif-Regular.ttf --embed-file assets/fonts/Jupiteroid-Regular.ttf --embed-file assets/music -lidbfs.js -lwebsocket.js --shell-file src/shell.html
+    --embed-file assets/detail.png --embed-file assets/detail2.png --embed-file assets/detail3.png --embed-file assets/detail4.png --embed-file assets/foliage.png --embed-file assets/flame.png --embed-file assets/board.png --embed-file assets/clay.png --embed-file assets/sky_day.jpg --embed-file assets/sky_dusk.jpg --embed-file assets/sky_grey.jpg --embed-file assets/fonts/OSerif-Regular.ttf --embed-file assets/fonts/Jupiteroid-Regular.ttf --embed-file assets/music -lidbfs.js -lwebsocket.js --shell-file src/shell.html
 cc -std=gnu99 -O2 -Wall -Wextra @tools/same-world.flags -DSUMER_TEST -o "$OUT/sumer-host" host/main.c tools/web/hosthooks.c $(ls src/*.c | grep -v '/main.c$') \
     -Isrc -Iraylib-linux/src raylib-linux/src/libraylib.a -lm -lpthread -ldl
 cp server.py "$OUT/server.py"

@@ -390,3 +390,92 @@ Color Clothe(Color cloth, Color skin)
     }
     return toward;
 }
+
+// ---- Leaves: cut-out pictures from assets/foliage.png on cards ----
+// Each picture's place in the sheet (0-255), a little inside its square so neighbours do not bleed in.
+static const unsigned char LEAF_CELLS[5][4] = {
+    { 2, 2, 126, 126 },       // a green tuft
+    { 130, 2, 253, 126 },     // a dry tuft
+    { 2, 130, 126, 253 },     // reeds with plumes
+    { 130, 130, 253, 189 },   // a palm frond, its rib along the middle, the stalk at the left
+    { 130, 194, 253, 253 },   // another
+};
+
+// A picture standing upright at base, w wide and h high, turned yaw (radians); seen from both sides.
+void DrawLeafCard(Vector3 base, float w, float h, float yaw, int cell, Color tint)
+{
+    const unsigned char *uv = LEAF_CELLS[cell];
+    float dx = cosf(yaw) * w * 0.5f, dz = sinf(yaw) * w * 0.5f;
+    Vector3 a = { base.x - dx, base.y, base.z - dz }, b = { base.x + dx, base.y, base.z + dz };
+    int mat = CurrentMaterial();
+    SetMaterial(MAT_FOLIAGE);
+    rlCheckRenderBatchLimit(8);
+    VBegin(RL_QUADS);
+    VColor(tint);
+    VNormal(0, 1, 0);
+    for (int side = 0; side < 2; side++) {
+        Vector3 p0 = side ? b : a, p1 = side ? a : b;
+        int u0 = side ? uv[2] : uv[0], u1 = side ? uv[0] : uv[2];
+        VLeaf(u0, uv[3], 0);
+        VVertex(p0.x, p0.y, p0.z);
+        VLeaf(u1, uv[3], 0);
+        VVertex(p1.x, p1.y, p1.z);
+        VLeaf(u1, uv[1], 255);
+        VVertex(p1.x, p1.y + h, p1.z);
+        VLeaf(u0, uv[1], 255);
+        VVertex(p0.x, p0.y + h, p0.z);
+    }
+    VEnd();
+    SetMaterial(mat);
+}
+
+// A tuft or a clump: two pictures crossed, h high.
+void DrawLeafTuft(Vector3 base, float h, float yaw, int cell, Color tint)
+{
+    float w = cell == LEAF_REEDS ? h * 0.8f : h * 1.05f;
+    DrawLeafCard(base, w, h, yaw, cell, tint);
+    DrawLeafCard(base, w, h, yaw + PI / 2, cell, tint);
+}
+
+// A palm frond from 'at' outward along yaw, len long: rising at first ('rise' of its length), then hanging
+// ('droop'), its leaflets folded up a little from the rib in a V. The tip sways most.
+void DrawFrond(Vector3 at, float yaw, float len, float rise, float droop, int cell, Color tint)
+{
+    const unsigned char *uv = LEAF_CELLS[cell];
+    const int segs = 5;
+    Vector3 dir = { cosf(yaw), 0, sinf(yaw) }, side = { -sinf(yaw), 0, cosf(yaw) };
+    float half = len * 0.25f, fold = 0.35f, vm = (uv[1] + uv[3]) * 0.5f;
+    Vector3 rib[6], lft[6], rgt[6];
+    for (int i = 0; i <= segs; i++) {
+        float t = (float)i / (float)segs, w = half * (0.35f + 0.65f * sinf(fminf(t * 1.25f, 1.0f) * PI * 0.5f)) * (1.0f - 0.55f * t * t);
+        rib[i] = (Vector3){ at.x + dir.x * len * t, at.y + (rise * t - droop * t * t) * len, at.z + dir.z * len * t };
+        lft[i] = (Vector3){ rib[i].x + side.x * w * cosf(fold), rib[i].y + w * sinf(fold), rib[i].z + side.z * w * cosf(fold) };
+        rgt[i] = (Vector3){ rib[i].x - side.x * w * cosf(fold), rib[i].y + w * sinf(fold), rib[i].z - side.z * w * cosf(fold) };
+    }
+    int mat = CurrentMaterial();
+    SetMaterial(MAT_FOLIAGE);
+    rlCheckRenderBatchLimit(segs * 16);
+    VBegin(RL_QUADS);
+    VColor(tint);
+    VNormal(0, 1, 0);
+    for (int i = 0; i < segs; i++) {
+        float t0 = (float)i / (float)segs, t1 = (float)(i + 1) / (float)segs;
+        int u0 = (int)((float)uv[0] + ((float)uv[2] - (float)uv[0]) * t0), u1 = (int)((float)uv[0] + ((float)uv[2] - (float)uv[0]) * t1);
+        int s0 = 70 + (int)(185.0f * t0), s1 = 70 + (int)(185.0f * t1);
+        for (int half2 = 0; half2 < 2; half2++) {   // the two halves of the V, each from both sides
+            const Vector3 *e = half2 ? rgt : lft;
+            int ve = half2 ? uv[3] : uv[1];
+            for (int face = 0; face < 2; face++) {
+                Vector3 q[4] = { rib[i], rib[i + 1], e[i + 1], e[i] };
+                int qu[4] = { u0, u1, u1, u0 }, qv[4] = { (int)vm, (int)vm, ve, ve }, qs[4] = { s0, s1, s1, s0 };
+                for (int k = 0; k < 4; k++) {
+                    int j = face ? 3 - k : k;
+                    VLeaf(qu[j], qv[j], qs[j]);
+                    VVertex(q[j].x, q[j].y, q[j].z);
+                }
+            }
+        }
+    }
+    VEnd();
+    SetMaterial(mat);
+}

@@ -276,7 +276,10 @@ and kept in `sumer.gfx` next to the saves:
   through the day; at night the day's clouds, dimmed, hide some of the stars round the moon. Haze in the
   distance, thicker near the ground and a little dusty, a warm color grade, rain that darkens the ground and
   makes it shine, a glow round fire and bright light, smoothed edges. Round things (people, trees, columns)
-  are shaded round.
+  are shaded round. The open land is dusty and patchy (dry earth, cracked mud, paler dust, sparse grass),
+  green only by the river, the canals, the irrigated fields and the villages' pastures, with sand and mud on
+  the banks; tufts of photographed grass (green near water, dry on the plain) and reed beds with their plumes
+  sway in the wind, and date palms carry fronds of real leaflets. Grass is drawn to 80 m (45 m on Low).
 - **Low**: the same look made cheaper for phones: a smaller picture scaled up, sharper-edged shadows over a
   smaller area, no glow, fewer torches at once, buildings far away left out sooner (the sky's pictures stay).
 - **Classic**: the old way, colors lit on the processor. It also runs by itself where the shaders cannot
@@ -441,6 +444,11 @@ script builds all of them. Everything else is drawn in code.
 The game boards' wood frame is `wood_table_001` from Poly Haven (**CC0**), darkened into `assets/board.png` by
 `python3 -I tools/assets/make_detail.py board`. The windows' clay is `clay_plaster` from Poly Haven (**CC0**),
 in light grey in `assets/clay.png` (`make_detail.py clay`).
+
+The grass, reeds and palm fronds are built from the blades and plumes of ambientCG's `Foliage001`, `Foliage002`
+and `Foliage004` (**CC0**) into `assets/foliage.png` (`make_detail.py foliage`); the open land's surfaces are
+Poly Haven's `cracked_red_ground`, `sparse_grass`, `coast_sand_01` and `brown_mud_dry` (**CC0**) in
+`assets/detail4.png` (`make_detail.py ground`).
 
 The sky is three Poly Haven HDRIs (**CC0**): `kloofendal_48d_partly_cloudy_puresky` (the day),
 `kloppenheim_06_puresky` (the sunset) and `overcast_soil_puresky` (rain), their upper halves with the sun
