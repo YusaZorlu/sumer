@@ -4,7 +4,7 @@
 // 9 set the hour to a; 20 start a battle royale round; 21 skip the round's clock to a s; 22 the next
 // round in a s; 30 a party's clock: a game's time to a s, a countdown or break to a s at most; 31 in hide
 // and seek, the seeker's blow finds player a; 40 board a near its end: side 0's pieces home but one, and b
-// (0 or 1) the side whose turn it is.
+// (0 or 1) the side whose turn it is; 41 board a in the middle of a game, side b to throw.
 #include "game.h"
 #include <stdio.h>
 #include <string.h>
@@ -87,6 +87,18 @@ void HostTest(const char *in, char *out, int size)
         x->turn = (unsigned char)b;
         x->roll = -1;
         x->moves = 30;
+        x->winner = -1;
+        break;
+    }
+    case 41: {   // board a in the middle of a game, side b to throw
+        static const unsigned char ur[2][UR_PIECES] = { { 0, 0, 3, 6, 10, 13, 15 }, { 0, 2, 7, 8, 11, 15, 15 } };
+        static const unsigned char holes[2][UR_PIECES] = { { 0, 4, 12, 18, 30 }, { 0, 7, 15, 22, 30 } };
+        Board *x = BoardAt((int)a);
+        if (!x) break;
+        memcpy(x->pos, x->kind == BG_UR ? ur : holes, sizeof(x->pos));
+        x->turn = (unsigned char)b;
+        x->roll = -1;
+        x->moves = 12;
         x->winner = -1;
         break;
     }

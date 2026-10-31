@@ -256,7 +256,13 @@ in `src/game.h`) holds the whole world.
   (`DrawBoardPanel` in `ui.c`); Esc closes it but keeps the seat. Experience goes through `AwardXp`. Rules,
   the townsman's choice (`BoardBest`) and seating are checked by `TestBoards` (harness); `boards.js` plays
   both against a townsman and between two players in the browser, with test hook cmd 25 (stand at a seat) and
-  host cmd 40 (a board one move from the end). `phoneboards.js` plays one by taps on a phone-sized touch screen,
+  host cmd 40 (a board one move from the end) and 41 (a board in mid-game). The screen side is in `boards.c`
+  too: `BoardsAnimate` notices what changed in a board (each frame, host or guest alike) and walks the piece square
+  by square (`BoardAnim` gives the two positions and the fraction for drawing, panel and table both), sends a taken
+  piece back after the mover lands, tumbles the dice (`BoardTumble`) and keeps the last move as a `BoardEvent`
+  for the arrow and the line of news. More than two pieces changing at once (a new game, a test hook, a long gap)
+  is not walked. Both games throw dice numbered 1-6 (Ur one, the holes two added); a throw past the end takes a
+  piece off in both. `phoneboards.js` plays one by taps on a phone-sized touch screen,
   using `boardTaps` in the test info (the panel's buttons and movable pieces, from `BoardTapAt` in `ui.c`).
 - **Leaf crowns**: a blob in leaf color (alpha 253) is lumpy (`Lump()` in `render.c`, the same waves at every level of
   detail) and gets no normal, so the shader lights it facet by facet. Trees add two hashed clumps (no `RandF`).

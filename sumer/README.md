@@ -153,24 +153,30 @@ The five minigames:
 
 In survival, PvP and single-player games (not in battle royale or a party) the alehouse has three game tables.
 Walk up to a stool and press E to sit; play another player who sits across, or press Enter (or the button) to
-play a townsman. Space throws, a click or the number keys move a piece, E or Esc steps away from the panel while you
-keep your place, and getting up (the button, or walking off) gives up the game. Look on at a full table with E.
-Rules (R, or the button) shows both games' rules in short in place of the board.
+play a townsman. Both games use the same dice, cubes numbered 1 to 6. Space throws. The pieces you can move then
+glow: point at one (on a phone, tap it) to see the squares it would go through and where it lands, marked
+"Throws again", "Takes" or "Off" where that applies; click it (on a phone, tap it again or tap where it lands) to
+move it. The keys 1-7 pick the glowing pieces from left to right. Your way round is numbered square by square
+with arrows between, pieces walk to their square, the last move stays marked by an arrow for a few seconds, and a
+line beside the dice says what it did ("The townsman moved 3 squares onto a rosette and throws again"). E or Esc
+steps away from the panel while you keep your place, and getting up (the button, or walking off) gives up the
+game. Look on at a full table with E. Rules (R, or the button) shows the game's rules in short in place of the board.
 The only stake is experience for the winner: +20 for beating a player, +10 for beating a townsman. Getting up
 from a game against a player loses it only once twenty moves have been made, so a quick sit-and-stand earns
 nobody anything; if you sit and do nothing for 45 seconds, the game plays your turn for you.
 
 - **The Royal Game of Ur** (one table downstairs, one upstairs). Boards like it were found in the Royal Cemetery at Ur (about 2600 to
-  2400 BC); the rules are Irving Finkel's reading of a Babylonian tablet of 177 BC. Each side has seven pieces
-  and throws four two-sided dice (0 to 4). A piece enters on your own row, runs four squares, then eight down the
-  shared middle row, then two back on your own row and off by an exact throw. Landing on an opponent in the middle
-  row sends it back; you cannot land on your own piece. The five rosettes give another throw, and a piece on the
-  middle rosette is safe. First to bring all seven off wins.
+  2400 BC); the rules follow Irving Finkel's reading of a Babylonian tablet of 177 BC, thrown with one die here.
+  Each side has seven pieces. A piece enters at square 1 on your own row, runs four squares, then eight down the
+  shared middle row (5 to 12), then 13 and 14 back on your own row, and goes off with any throw that reaches past
+  14. Landing on an opponent in the middle row sends it back to the start; you cannot land on your own piece. The
+  rosettes (squares 4, 8 and 14) give another throw, and a piece on the middle rosette (8) is safe. First to bring
+  all seven off wins.
 - **Fifty-eight holes** ("hounds and jackals", the other table downstairs). Boards of this game are known from Egypt to
   Mesopotamia from about 2000 BC; the rules are lost, so these are a modern reconstruction. Each side has five pins
-  and throws two knucklebones (each lands 1, 3, 4 or 6). Pins go up your own side of 29 holes to the shared goal;
-  lines join hole 6 with 20 and 8 with 10, and a pin that lands on one end goes to the other, up or down. No two of your pins share a hole. First to bring all five
-  home wins.
+  and throws two dice, adding them. Pins go up your own side's 29 holes to the shared goal; any throw past 29 brings
+  a pin home. Lines join hole 6 with 20 and 8 with 10: land on 6 or 8 and the pin goes up the line (the green end),
+  land on 20 or 10 and it goes down (the red end). No two of your pins share a hole. First to bring all five home wins.
 
 ### Playing together
 
