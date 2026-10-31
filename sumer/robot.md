@@ -398,7 +398,35 @@ in `src/game.h`) holds the whole world.
 - **The UI's units** (`UiScale` in `ui.c`): the UI is laid out for at least 960 x 540 and drawn through one scale
   (`UiBegin`/`UiEnd` around `DrawUI` and the lobby). Inside, use `UiWidth()`/`UiHeight()`, `UiMouse()` and
   `OnScreen()` (world to UI point), never `GetScreenWidth()`, `GetMousePosition()` or `GetWorldToScreen()` directly;
-  a scissor rectangle has to be multiplied by `UiScale()`. Panels must fit 960 x 540.
+  a scissor rectangle has to be multiplied by `UiScale()`. Panels must fit 960 x 540 (`PanelRect` clamps a window
+  to the screen less 16; lay its content out from `r.width`, not from the width asked for).
+- **Text** (`lang.c`): draw and measure only with `DrawGameText` / `GameTextWidth` (or `Text`, `CenterText`,
+  `Measure`, `Paragraph` in ui.c), never `DrawTextEx` with a font of your own. Size 26 and up is set in OSerif
+  (titles; its small letters are small capitals), smaller in Jupiteroid. Each face is rasterised lazily at three
+  sizes (`FACE_PX`) and the one at least as big as the size times `SetTextScale` (set by `UiBegin`) is used, with
+  mipmaps; `FACE_GROW`/`FACE_LIFT` keep the capitals where the old pixel font's were, so old layouts still fit. A
+  new letter outside Latin-1 and Turkish needs adding to `Codepoints` and to `UNICODES` in
+  `tools/assets/make_detail.py`, which cuts the font files down (`fonts` mode).
+- **Windows' colours** (`Palette` in ui.c): the `C_` names follow `pal`, `HUD` (light on dark) normally and `CLAY`
+  (dark ink on the tablet) while `DrawUI` draws a window. A window's drawing uses the `C_` names (`C_TITLE` for its
+  title, `pal->row`/`rowAlt`/`rowHi` for striped rows) and no fixed colours, except on a game board's wood, which
+  keeps `B_GOLD` and the notes' own colours (`NOTE_BAD`, `NOTE_GOOD`) on their dark labels. `Tablet()` draws the
+  clay, the inlay band (`InlayBand`) and the rosettes; `Button`, `ButtonOn` (the choice in use) and `SlotBox` draw
+  differently by palette. The title screen uses them through `DrawTablet`, `TabletButton` and `DrawLogo`.
+- **Item pictures** (`icons.c`): `ItemModel` builds each item from the shaded primitives at the origin (about a
+  metre across, y up from 0); `Build` draws them all once into a render texture (128 px each, 8 to a row) with the
+  classic lighting (`GfxHold`, a fixed `G.light`), from `IconsPrepare` at the top of `DrawUI` (never inside
+  `UiBegin`: `BeginTextureMode` resets the matrices). A new item needs a case there, or it shows as a ball of its
+  colour. `DrawItemIcon` returns false when there is no picture (the caller draws the old colour square).
+- **What shows over the game**: name plates and bars (`DrawPeopleBars`, `DrawAnimalBars`) only for what is
+  aimed at (`Aimed`, near the crosshair), hurt, hostile or (beasts) hunting. **Hide and seek**: a hider is a player
+  drawn as one of the townsfolk with no tag, so nothing may single out townsfolk either: no plates or map dots for
+  peaceful people while `PartyGame() == PG_HIDE` (players' tags are off too, `DrawPeerTags`). Check any new marker
+  against that. News is `DrawMessage`, a band at the top between the status box (`STATUS_W`) and the map.
+- **The title's backdrop** (`TitleBackdrop` in game.c): `OpenLobby` calls `TitleReset`; the frame after, the lobby
+  calls `GameInit` and from then on draws the world with `GfxDrawWorld` from an orbiting camera at dusk, the
+  player moved underground. Only where `GfxTier()` is not Classic, so the browser tests (Classic unless `?gfx=`) keep
+  the painted one and stay fast. Starting a game calls `GameInit` again, so nothing of it carries over.
 - **Limits that have been hit:** `MAX_VILLAGERS` (64; it ran out at 48), `MAX_FIGHTERS` 128, `MAX_BOXES` 20000.
   `MAX_PLAYERS` is 21 with slot 0 the server's (`MAX_PLAYERS` per kind in `server.py`: 6, 6, 20; houses in
   `HOUSE_SPOTS`, colors and their names by seat in `village.c`). A new house goes where nothing built *before* the city's own houses overlaps it (those are laid out
@@ -422,7 +450,8 @@ in `src/game.h`) holds the whole world.
 - `EM_ASM` code is a macro argument: commas inside `{ ... }` or `[ ... ]` split it too. Wrap object and array literals in
   parentheses (`var o = ({ a: 1, b: 2 });`) and declare one `var` per line.
 - Test hooks for the browser (`tools/web/testhooks.c`): `TestInfo()` returns the state as JSON, `TestCommand(n, a, b)`
-  drives the game (1 teleport, 2 E, 3 F, 4 look, 5 shoot, 6 swing, 7 add item, 9 set hour, 13 hurt, 14 equip ...). Add
+  drives the game (1 teleport, 2 E, 3 F, 4 look, 5 shoot, 6 swing, 7 add item, 9 set hour, 13 hurt, 14 equip, 15 open a
+  panel, 25 sit at a board, 27 fill the storage jars with one of each item from item a on, to look at the pictures ...). Add
   fields there when a test needs to see something new. The server program's own (`tools/web/hosthooks.c`) answer
   `hostInfo(room)` and `hostCmd(room, n, a, b)` in `tools/web/lib.js` (9 hour, 20 start a royale round, 21 the round's
   clock, 22 the countdown, 30 the party's clock, 31 the hide-and-seek seeker finds a player), and `stopRoom(room)` stops a room as if it stood empty. `lib.js`'s `open(browser, name, url)`

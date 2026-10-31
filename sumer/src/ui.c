@@ -5,15 +5,39 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define C_PANEL    CLITERAL(Color){ 30, 24, 20, 238 }
-#define C_EDGE     CLITERAL(Color){ 150, 120, 80, 255 }
-#define C_SLOT     CLITERAL(Color){ 58, 48, 38, 255 }
-#define C_SLOT_HI  CLITERAL(Color){ 86, 70, 52, 255 }
-#define C_TEXT     CLITERAL(Color){ 240, 230, 210, 255 }
-#define C_DIM      CLITERAL(Color){ 150, 140, 125, 255 }
-#define C_GOLD     CLITERAL(Color){ 240, 200, 120, 255 }
-#define C_BAD      CLITERAL(Color){ 230, 110, 90, 255 }
-#define C_GOOD     CLITERAL(Color){ 150, 210, 120, 255 }
+// Two sets of colours. Over the game (the HUD) light letters sit on dark see-through boxes; the windows
+// are clay tablets written in dark ink, framed with the inlay of the Standard of Ur. The C_ names follow
+// whichever set is in use: DrawUI switches to the tablet's while it draws a window.
+typedef struct {
+    Color panel, edge, slot, slotHi, locked, text, dim, gold, bad, good, title, row, rowAlt, rowHi;
+    Color button, buttonHi, buttonOff, label, labelOff;
+} Palette;
+static const Palette HUD = {
+    { 30, 24, 20, 238 }, { 150, 120, 80, 255 }, { 58, 48, 38, 255 }, { 86, 70, 52, 255 }, { 40, 34, 30, 255 },
+    { 240, 230, 210, 255 }, { 150, 140, 125, 255 }, { 240, 200, 120, 255 }, { 230, 110, 90, 255 }, { 150, 210, 120, 255 },
+    { 240, 200, 120, 255 }, { 48, 40, 33, 255 }, { 40, 33, 28, 255 }, { 64, 52, 38, 255 },
+    { 112, 82, 48, 255 }, { 150, 110, 60, 255 }, { 60, 54, 48, 255 }, { 240, 230, 210, 255 }, { 150, 140, 125, 255 },
+};
+static const Palette CLAY = {
+    { 214, 186, 144, 255 }, { 96, 62, 40, 255 }, { 196, 138, 94, 255 }, { 212, 158, 110, 255 }, { 170, 142, 108, 255 },
+    { 40, 25, 16, 255 }, { 88, 60, 40, 255 }, { 28, 62, 146, 255 }, { 156, 34, 20, 255 }, { 30, 100, 38, 255 },
+    { 62, 34, 20, 255 }, { 188, 156, 114, 255 }, { 178, 146, 106, 255 }, { 214, 184, 138, 255 },
+    { 190, 128, 84, 255 }, { 212, 152, 104, 255 }, { 176, 152, 120, 255 }, { 44, 28, 18, 255 }, { 120, 96, 72, 255 },
+};
+static const Palette *pal = &HUD;
+#define C_PANEL    (pal->panel)
+#define C_EDGE     (pal->edge)
+#define C_SLOT     (pal->slot)
+#define C_SLOT_HI  (pal->slotHi)
+#define C_TEXT     (pal->text)
+#define C_DIM      (pal->dim)
+#define C_GOLD     (pal->gold)
+#define C_BAD      (pal->bad)
+#define C_GOOD     (pal->good)
+#define C_TITLE    (pal->title)
+#define B_GOLD     CLITERAL(Color){ 240, 200, 120, 255 }   // what glows on a game board, whatever the window
+// The inlay's stones.
+static const Color BITUMEN = { 34, 24, 18, 255 }, LAPIS = { 34, 70, 156, 255 }, SHELL = { 240, 230, 208, 255 }, CARNELIAN = { 182, 62, 34, 255 };
 
 enum { CLICK_NONE, CLICK_LEFT, CLICK_RIGHT };
 
@@ -73,16 +97,10 @@ static Vector2 OnScreen(Vector3 p)
     return Vector2Scale(GetWorldToScreen(p, G.cam), 1.0f / UiScale());
 }
 
-// Shrunk, the pixel letters are smoothed so that their thin strokes do not drop out.
 void UiBegin(void)
 {
-    static int filter = -1;
     float s = UiScale();
-    int want = s < 1.0f ? TEXTURE_FILTER_BILINEAR : TEXTURE_FILTER_POINT;
-    if (want != filter) {
-        SetTextureFilter(GameFont().texture, want);
-        filter = want;
-    }
+    SetTextScale(s);   // text picks its letters' size for the pixels it will cover
     rlDrawRenderBatchActive();
     rlPushMatrix();
     rlScalef(s, s, 1.0f);
@@ -92,6 +110,7 @@ void UiEnd(void)
 {
     rlDrawRenderBatchActive();
     rlPopMatrix();
+    SetTextScale(1.0f);
 }
 
 static float FontSize(int size)
@@ -101,13 +120,13 @@ static float FontSize(int size)
 
 static int Measure(const char *s, int size)
 {
-    return (int)MeasureTextEx(GameFont(), s, FontSize(size), (float)((int)FontSize(size) / 10)).x;
+    return (int)ceilf(GameTextWidth(s, FontSize(size)));
 }
 
 // Labels are translated here, so every literal passed in follows the language setting.
 static void Text(const char *s, float x, float y, int size, Color c)
 {
-    DrawTextEx(GameFont(), L(s), (Vector2){ (float)(int)x, (float)(int)y }, FontSize(size), (float)((int)FontSize(size) / 10), c);
+    DrawGameText(L(s), (float)(int)x, (float)(int)y, FontSize(size), c);
 }
 
 static void CenterText(const char *s, float cx, float y, int size, Color c)
@@ -156,14 +175,177 @@ static float Paragraph(const char *s, float x, float y, float width, int size, f
     return used;
 }
 
-// Key fallback: a click pressed and released within one frame is lost.
-static bool Button(Rectangle r, const char *label, bool enabled, int key)
+// A triangle whichever way round its corners are given.
+static void Tri(Vector2 a, Vector2 b, Vector2 c, Color col)
+{
+    DrawTriangle(a, b, c, col);
+    DrawTriangle(a, c, b, col);
+}
+
+// ---- The windows' clay and inlay ----
+
+static Texture2D ClayTexture(void)
+{
+    static Texture2D t;
+    static bool tried;
+    if (!tried && IsWindowReady()) {
+        tried = true;
+        t = LoadTexture("assets/clay.png");   // Poly Haven's clay_plaster (CC0), in grey: tinted when drawn
+        if (t.id) {
+            GenTextureMipmaps(&t);
+            SetTextureFilter(t, TEXTURE_FILTER_TRILINEAR);
+            SetTextureWrap(t, TEXTURE_WRAP_REPEAT);
+        }
+    }
+    return t;
+}
+
+// Clay of colour c over r, its grain fixed to the screen so that windows side by side match.
+static void Clay(Rectangle r, Color c)
+{
+    Texture2D t = ClayTexture();
+    if (!t.id) {
+        DrawRectangleRec(r, c);
+        return;
+    }
+    DrawTexturePro(t, (Rectangle){ r.x * 1.5f, r.y * 1.5f, r.width * 1.5f, r.height * 1.5f }, r, (Vector2){ 0, 0 }, 0, c);
+}
+
+// A rosette of the Royal Game of Ur's board: eight petals of lapis and red stone round a shell eye.
+static void Rosette(Vector2 c, float rad)
+{
+    DrawCircleV((Vector2){ c.x + 1.5f, c.y + 2.0f }, rad, Fade(BLACK, 0.35f));
+    DrawCircleV(c, rad, BITUMEN);
+    DrawCircleV(c, rad - 1.6f, SHELL);
+    for (int k = 0; k < 8; k++) {
+        float t = (float)k * PI / 4.0f, co = cosf(t), si = sinf(t), w = rad * 0.22f;
+        Vector2 tip = { c.x + co * rad * 0.8f, c.y + si * rad * 0.8f }, mid = { c.x + co * rad * 0.42f, c.y + si * rad * 0.42f };
+        Vector2 l = { mid.x - si * w, mid.y + co * w }, r = { mid.x + si * w, mid.y - co * w };
+        Color petal = k & 1 ? CARNELIAN : LAPIS;
+        Tri(c, l, tip, petal);
+        Tri(c, tip, r, petal);
+    }
+    DrawCircleV(c, rad * 0.26f, SHELL);
+    DrawCircleV(c, rad * 0.17f, CARNELIAN);
+}
+
+// A band of little squares, lapis, shell, red stone, shell, from a to b, set in bitumen 'w' wide.
+static void InlayBand(Vector2 a, Vector2 b, float w)
+{
+    Vector2 d = Vector2Subtract(b, a);
+    float len = Vector2Length(d);
+    if (len < 1.0f) return;
+    static const Color *const STONES[4] = { &LAPIS, &SHELL, &CARNELIAN, &SHELL };
+    bool across = fabsf(d.x) > fabsf(d.y);
+    float tile = w - 4.0f, step = tile + 2.0f;
+    int n = (int)(len / step);
+    float start = (len - (float)n * step) / 2.0f + 1.0f;
+    for (int i = 0; i < n; i++) {
+        float t = start + (float)i * step;
+        Rectangle q = across ? (Rectangle){ fminf(a.x, b.x) + t, a.y - tile / 2, tile, tile }
+                             : (Rectangle){ a.x - tile / 2, fminf(a.y, b.y) + t, tile, tile };
+        DrawRectangleRec(q, *STONES[i % 4]);
+    }
+}
+
+// A window: a clay tablet in an inlaid frame with rosettes at its corners (and halfway along a long edge).
+static void Tablet(Rectangle r)
+{
+    const float band = 10.0f;
+    DrawRectangleRec((Rectangle){ r.x + 5, r.y + 7, r.width, r.height }, Fade(BLACK, 0.35f));
+    Clay(r, CLAY.panel);
+    // A little darker towards the rim, as a tablet pressed flat in the middle.
+    DrawRectangleGradientV((int)r.x, (int)r.y + (int)band, (int)r.width, 18, Fade((Color){ 90, 60, 36, 255 }, 0.22f), Fade((Color){ 90, 60, 36, 255 }, 0.0f));
+    DrawRectangleGradientV((int)r.x, (int)(r.y + r.height - band - 18), (int)r.width, 18, Fade((Color){ 90, 60, 36, 255 }, 0.0f), Fade((Color){ 90, 60, 36, 255 }, 0.22f));
+    DrawRectangleLinesEx(r, band, BITUMEN);
+    float h = band / 2;
+    InlayBand((Vector2){ r.x + band, r.y + h }, (Vector2){ r.x + r.width - band, r.y + h }, band);
+    InlayBand((Vector2){ r.x + band, r.y + r.height - h }, (Vector2){ r.x + r.width - band, r.y + r.height - h }, band);
+    InlayBand((Vector2){ r.x + h, r.y + band }, (Vector2){ r.x + h, r.y + r.height - band }, band);
+    InlayBand((Vector2){ r.x + r.width - h, r.y + band }, (Vector2){ r.x + r.width - h, r.y + r.height - band }, band);
+    DrawRectangleLinesEx((Rectangle){ r.x + band, r.y + band, r.width - 2 * band, r.height - 2 * band }, 1, Fade(BITUMEN, 0.5f));
+    float rad = 13.0f;
+    Rosette((Vector2){ r.x + h, r.y + h }, rad);
+    Rosette((Vector2){ r.x + r.width - h, r.y + h }, rad);
+    Rosette((Vector2){ r.x + h, r.y + r.height - h }, rad);
+    Rosette((Vector2){ r.x + r.width - h, r.y + r.height - h }, rad);
+    if (r.width > 500) {
+        Rosette((Vector2){ r.x + r.width / 2, r.y + h }, rad);
+        Rosette((Vector2){ r.x + r.width / 2, r.y + r.height - h }, rad);
+    }
+}
+
+// A button: on a tablet a raised tile of fired clay, over the game a dark box. Key fallback: a click
+// pressed and released within one frame is lost.
+static bool ButtonSized(Rectangle r, const char *label, bool enabled, int key, int size)
 {
     bool hover = enabled && CheckCollisionPointRec(UiMouse(), r);
-    DrawRectangleRec(r, enabled ? (hover ? (Color){ 150, 110, 60, 255 } : (Color){ 112, 82, 48, 255 }) : (Color){ 60, 54, 48, 255 });
-    DrawRectangleLinesEx(r, 1, C_EDGE);
-    CenterText(label, r.x + r.width / 2, r.y + (r.height - 18) / 2, 18, enabled ? C_TEXT : C_DIM);
+    Color fill = !enabled ? pal->buttonOff : hover ? pal->buttonHi : pal->button;
+    if (pal == &CLAY) {
+        DrawRectangleRounded((Rectangle){ r.x, r.y + 2, r.width, r.height }, 0.18f, 4, Fade(BITUMEN, enabled ? 0.55f : 0.25f));
+        DrawRectangleRounded(r, 0.18f, 4, fill);
+        if (enabled) DrawRectangleRounded((Rectangle){ r.x + 3, r.y + 2, r.width - 6, r.height * 0.4f }, 0.3f, 4, Fade(WHITE, hover ? 0.16f : 0.1f));
+        DrawRectangleRoundedLinesEx(r, 0.18f, 4, 1.5f, Fade(BITUMEN, enabled ? 0.9f : 0.4f));
+    } else {
+        DrawRectangleRec(r, fill);
+        DrawRectangleLinesEx(r, 1, C_EDGE);
+    }
+    CenterText(label, r.x + r.width / 2, r.y + (r.height - (float)size) / 2, size, enabled ? pal->label : pal->labelOff);
     return (hover && MousePressed(MOUSE_BUTTON_LEFT)) || (enabled && key && KeyPressed(key));
+}
+
+static bool Button(Rectangle r, const char *label, bool enabled, int key)
+{
+    return ButtonSized(r, label, enabled, key, 18);
+}
+
+// The choice in use, among buttons for the others: lapis with shell letters on a tablet.
+static void ButtonOnSized(Rectangle r, const char *label, int size)
+{
+    if (pal == &CLAY) {
+        DrawRectangleRounded((Rectangle){ r.x, r.y + 2, r.width, r.height }, 0.18f, 4, Fade(BITUMEN, 0.55f));
+        DrawRectangleRounded(r, 0.18f, 4, LAPIS);
+        DrawRectangleRounded((Rectangle){ r.x + 3, r.y + 2, r.width - 6, r.height * 0.4f }, 0.3f, 4, Fade(WHITE, 0.12f));
+        DrawRectangleRoundedLinesEx(r, 0.18f, 4, 1.5f, BITUMEN);
+        CenterText(label, r.x + r.width / 2, r.y + (r.height - (float)size) / 2, size, SHELL);
+    } else {
+        DrawRectangleRec(r, pal->buttonHi);
+        DrawRectangleLinesEx(r, 2, C_GOLD);
+        CenterText(label, r.x + r.width / 2, r.y + (r.height - (float)size) / 2, size, C_TEXT);
+    }
+}
+
+static void ButtonOn(Rectangle r, const char *label)
+{
+    ButtonOnSized(r, label, 18);
+}
+
+// The title screen (lobby.c) draws its window and buttons like the game's.
+void DrawTablet(Rectangle r)
+{
+    Tablet(r);
+}
+
+bool TabletButton(Rectangle r, const char *label, int size, bool enabled, bool on)
+{
+    const Palette *was = pal;
+    pal = &CLAY;
+    bool hit = false;
+    if (on) ButtonOnSized(r, label, size);
+    else hit = ButtonSized(r, label, enabled, 0, size);
+    pal = was;
+    return hit;
+}
+
+// The game's name as the title screen shows it: in lapis, between two rosettes.
+void DrawLogo(float cx, float y, float size)
+{
+    const char *name = "SUMER";
+    float w = GameTextWidth(name, size), rad = size * 0.26f;
+    DrawGameText(name, cx - w / 2 + 1.5f, y + 2.5f, size, Fade(BITUMEN, 0.55f));
+    DrawGameText(name, cx - w / 2, y, size, LAPIS);
+    Rosette((Vector2){ cx - w / 2 - rad - 12, y + size * 0.5f }, rad);
+    Rosette((Vector2){ cx + w / 2 + rad + 12, y + size * 0.5f }, rad);
 }
 
 static int SlotKey(int i)
@@ -175,10 +357,11 @@ static int SlotKey(int i)
 
 static Rectangle PanelRect(float w, float h)
 {
+    w = fminf(w, UiWidth() - 16.0f);   // a narrow screen (a phone's) keeps the whole frame in sight
+    h = fminf(h, UiHeight() - 16.0f);
     Rectangle r = { (UiWidth() - w) / 2, (UiHeight() - h) / 2, w, h };
     DrawRectangle(0, 0, (int)UiWidth() + 1, (int)UiHeight() + 1, Fade(BLACK, 0.35f));
-    DrawRectangleRec(r, C_PANEL);
-    DrawRectangleLinesEx(r, 2, C_EDGE);
+    Tablet(r);
     return r;
 }
 
@@ -218,25 +401,47 @@ static int SlotTouch(Rectangle r, Slot s, int index)
     return CLICK_NONE;
 }
 
+// A basket's place: on a tablet a tile of terracotta set into the clay (sunk and pale when locked).
+static void SlotBox(Rectangle r, bool locked, bool hover)
+{
+    if (pal != &CLAY) {
+        DrawRectangleRec(r, locked ? pal->locked : (hover ? C_SLOT_HI : C_SLOT));
+        DrawRectangleLinesEx(r, 1, hover ? C_GOLD : (Color){ 90, 74, 56, 255 });
+        return;
+    }
+    if (locked) {
+        DrawRectangleRounded(r, 0.1f, 4, Fade(BITUMEN, 0.12f));
+        DrawRectangleRoundedLinesEx(r, 0.1f, 4, 1, Fade(BITUMEN, 0.25f));
+        return;
+    }
+    DrawRectangleRounded((Rectangle){ r.x - 1, r.y - 1, r.width + 2, r.height + 3 }, 0.1f, 4, Fade(BITUMEN, 0.35f));
+    DrawRectangleRounded(r, 0.1f, 4, hover ? C_SLOT_HI : C_SLOT);
+    DrawRectangleGradientV((int)r.x + 2, (int)r.y + 2, (int)r.width - 4, (int)(r.height * 0.45f), Fade(WHITE, 0.12f), Fade(WHITE, 0.0f));
+    DrawRectangleRoundedLinesEx(r, 0.1f, 4, hover ? 2.0f : 1.0f, hover ? C_GOLD : Fade(BITUMEN, 0.8f));
+}
+
 static int SlotWidget(Rectangle r, Slot s, bool locked, int index)
 {
     static const char *labels[BAG_MAX] = { "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "=" };
     bool hover = !locked && CheckCollisionPointRec(UiMouse(), r);
 
-    DrawRectangleRec(r, locked ? (Color){ 40, 34, 30, 255 } : (hover ? C_SLOT_HI : C_SLOT));
-    DrawRectangleLinesEx(r, 1, hover ? C_GOLD : (Color){ 90, 74, 56, 255 });
+    SlotBox(r, locked, hover);
     if (locked) {
-        CenterText("locked", r.x + r.width / 2, r.y + r.height / 2 - 7, 14, (Color){ 90, 80, 70, 255 });
+        CenterText("locked", r.x + r.width / 2, r.y + r.height / 2 - 7, 14, Fade(C_DIM, 0.8f));
         return CLICK_NONE;
     }
     if (index >= 0) Text(labels[index], r.x + r.width - 16, r.y + 6, 14, C_DIM);
     if (s.item != IT_NONE) {
         const ItemDef *d = &ITEMS[s.item];
-        DrawRectangle((int)r.x + 8, (int)r.y + 8, 18, 18, d->color);
-        DrawRectangleLines((int)r.x + 8, (int)r.y + 8, 18, 18, Fade(BLACK, 0.5f));
-        Text(d->name, r.x + 8, r.y + 32, 14, C_TEXT);
+        // Its picture at the left, how many at the right, its name along the foot.
+        float pic = fminf(r.height - 22, r.width - 46);   // room for the count beside it in a narrow slot
+        if (!DrawItemIcon(s.item, (Rectangle){ r.x + 4, r.y + 2, pic, pic }, WHITE)) {
+            DrawRectangle((int)r.x + 8, (int)r.y + 8, 18, 18, d->color);
+            DrawRectangleLines((int)r.x + 8, (int)r.y + 8, 18, 18, Fade(BLACK, 0.5f));
+        }
+        Text(d->name, r.x + 7, r.y + r.height - 19, 14, C_TEXT);
         const char *n = TextFormat(L("%d/%d"), s.count, d->stack);
-        Text(n, r.x + r.width - 8 - (float)Measure(n, 16), r.y + r.height - 22, 16, s.count == d->stack ? C_GOLD : C_DIM);
+        Text(n, r.x + r.width - 7 - (float)Measure(n, 16), r.y + r.height / 2 - 12, 16, s.count == d->stack ? C_GOLD : C_DIM);
         if (hover && !TouchOn()) {
             if (d->food > 0)
                 Fmt(hoverText, sizeof(hoverText), s.item == IT_MILK ? "%s: click to drink (+%d food), right-click or X to drop"
@@ -249,7 +454,7 @@ static int SlotWidget(Rectangle r, Slot s, bool locked, int index)
                 Fmt(hoverText, sizeof(hoverText), "%s: right-click or X to drop", ItemName(s.item));
         }
     } else {
-        CenterText("empty", r.x + r.width / 2, r.y + r.height / 2 - 7, 14, (Color){ 100, 88, 74, 255 });
+        CenterText("empty", r.x + r.width / 2, r.y + r.height / 2 - 7, 14, Fade(C_DIM, 0.8f));
     }
     if (index >= 0 && KeyPressed(SlotKey(index))) return CLICK_LEFT;
     if (TouchOn()) return SlotTouch(r, s, index);
@@ -272,8 +477,8 @@ static void DrawBagPanel(void)
     float x0 = r.x + 24, y0 = r.y + 78, sw = 115, shh = 80, gap = 8;
 
     hoverText[0] = '\0';
-    Text(TextFormat(L("Baskets  %d/%d"), G.bagSlots, BAG_MAX), r.x + 24, r.y + 18, 26, C_GOLD);
-    Text("Each basket holds one kind of thing: 20 dates, 10 arrows, 4 jugs of milk, or a single carcass.", r.x + 24, r.y + 50, 15, C_DIM);
+    Text(TextFormat(L("Baskets  %d/%d"), G.bagSlots, BAG_MAX), r.x + 24, r.y + 18, 26, C_TITLE);
+    Text("Each basket holds one kind of thing: 20 dates, 10 arrows, 4 jugs of milk, or a single carcass.", r.x + 24, r.y + 50, 17, C_DIM);
 
     for (int i = 0; i < BAG_MAX; i++) {
         Rectangle s = { x0 + (float)(i % 6) * (sw + gap), y0 + (float)(i / 6) * (shh + gap), sw, shh };
@@ -303,8 +508,8 @@ static void DrawBagPanel(void)
         Rectangle b = { x0 + 90 + 176.0f * (float)k, y, 168, 32 };
         bool owned = eqs[k] != EQ_MACE || UseMace();
         const char *label = owned ? EquipName(eqs[k]) : TextFormat(L("(%s)"), MaceName());
-        if (G.equip == eqs[k]) DrawRectangleLinesEx((Rectangle){ b.x - 3, b.y - 3, b.width + 6, b.height + 6 }, 2, C_GOLD);
-        if (Button(b, label, owned && G.equip != eqs[k], 0)) SetEquip(eqs[k]);
+        if (G.equip == eqs[k]) ButtonOn(b, label);
+        else if (Button(b, label, owned, 0)) SetEquip(eqs[k]);
     }
     y += 40;
     static const int armors[4] = { ARMOR_BRONZE, ARMOR_LEATHER, ARMOR_WOLF, ARMOR_NONE };
@@ -314,8 +519,8 @@ static void DrawBagPanel(void)
     for (int k = 0; k < 4; k++) {
         Rectangle b = { x0 + 90 + 146.0f * (float)k, y, 138, 32 };
         bool owned = armors[k] == ARMOR_NONE || (G.armorOwned & (1 << armors[k])) || G.combat;
-        if (UseArmor() == armors[k]) DrawRectangleLinesEx((Rectangle){ b.x - 3, b.y - 3, b.width + 6, b.height + 6 }, 2, C_GOLD);
-        if (Button(b, owned ? shortName[k] : TextFormat(L("(%s)"), L(shortName[k])), owned && UseArmor() != armors[k] && !G.combat, 0)) {
+        if (UseArmor() == armors[k]) ButtonOn(b, shortName[k]);
+        else if (Button(b, owned ? shortName[k] : TextFormat(L("(%s)"), L(shortName[k])), owned && !G.combat, 0)) {
             G.armor = armors[k];
             Say(G.armor == ARMOR_NONE ? "You take off your armor." : "You put on the %s.", ArmorName(G.armor));
         }
@@ -325,7 +530,7 @@ static void DrawBagPanel(void)
     Text(TextFormat(L("Coop: %d hens, feed %d, %d eggs waiting, water %.1f days    Farm water %.1f days"), G.henCount, (int)G.coopFeed,
                     G.coopEggs, G.coopWater, G.farmWater), x0, y, 18, C_TEXT);
     Text(hoverText[0] ? hoverText : TouchOn() ? "Tap: eat / drink / chew herbs / refill quiver    Hold 2 seconds: drop" : "Click or 1-6: eat / drink / chew herbs / refill quiver    Right-click or X: drop    Tab: close",
-         x0, r.y + r.height - 34, 16, hoverText[0] ? C_GOLD : C_DIM);
+         x0, r.y + r.height - 36, 17, hoverText[0] ? C_GOLD : C_DIM);
     if (Button((Rectangle){ r.x + r.width - 344, r.y + 14, 170, 30 }, G.torchOn ? "Torch: on (B)" : "Torch: off (B)", true, 0)) {
         G.torchOn = !G.torchOn;
         Say(G.torchOn ? "You take up your torch (B). It burns from the evening on." : "You put your torch away (B).");
@@ -335,12 +540,12 @@ static void DrawBagPanel(void)
 static void DrawStoragePanel(void)
 {
     Rectangle r = PanelRect(1000, 480);
-    float sw = 96, shh = 70, gap = 7;
+    float gap = 7, sw = fminf(96.0f, (r.width - 48 - 30 - 9 * gap) / 9), shh = 70;
     float bx = r.x + 24, sx = r.x + 24 + 3 * (sw + gap) + 30, y0 = r.y + 98;
 
     hoverText[0] = '\0';
-    Text("Storeroom", r.x + 24, r.y + 18, 26, C_GOLD);
-    Text("Click a basket to move it between what you carry and the storage jars. Number keys store a carried basket.", r.x + 24, r.y + 50, 15, C_DIM);
+    Text("Storeroom", r.x + 24, r.y + 18, 26, C_TITLE);
+    Text("Click a basket to move it between what you carry and the storage jars. Number keys store a carried basket.", r.x + 24, r.y + 50, 17, C_DIM);
     Text("Carried", bx, y0 - 22, 16, C_TEXT);
     Text("Storage jars", sx, y0 - 22, 16, C_TEXT);
 
@@ -363,17 +568,31 @@ static void DrawStoragePanel(void)
     if (Button((Rectangle){ r.x + 24, y, 230, 34 }, TextFormat(L("[R] Refill quiver %d/%d"), G.quiver, G.quiverMax), G.quiver < G.quiverMax, KEY_R))
         RefillQuiverFromStore();
     Text(TextFormat(L("Arrows in storage: %d"), SlotsCount(G.store, STORE_SLOTS, IT_ARROWS)), r.x + 272, y + 8, 18, C_TEXT);
-    if (hoverText[0]) Text(hoverText, r.x + 500, y + 8, 15, C_GOLD);
+    if (hoverText[0]) Text(hoverText, r.x + 500, y + 8, 16, C_GOLD);
 }
 
-static void OfferInputs(const Offer *o, char *buf, int size)
+// What an offer asks for, each thing with its picture: 2 [dates] Dates + 1 [reeds] Reeds. The letters
+// shrink when it is too long for 'width'.
+static void OfferRow(const Offer *o, float x, float y, float width)
 {
-    if (o->in3)
-        Fmt(buf, size, "%d %s + %d %s + %d %s", o->n1, ItemName(o->in1), o->n2, ItemName(o->in2), o->n3, ItemName(o->in3));
-    else if (o->in2)
-        Fmt(buf, size, "%d %s + %d %s", o->n1, ItemName(o->in1), o->n2, ItemName(o->in2));
-    else
-        Fmt(buf, size, "%d %s", o->n1, ItemName(o->in1));
+    const int in[3] = { o->in1, o->in2, o->in3 }, n[3] = { o->n1, o->n2, o->n3 };
+    int count = o->in3 ? 3 : o->in2 ? 2 : 1, size = 17;
+    float pic = 34;
+    for (; size > 13; size--, pic -= 2) {
+        float w = 0;
+        for (int k = 0; k < count; k++) w += (k ? (float)Measure("+", size) + 12 : 0) + pic + 2 + (float)Measure(TextFormat("%d %s", n[k], ItemName(in[k])), size) + 4;
+        if (w <= width) break;
+    }
+    for (int k = 0; k < count; k++) {
+        if (k) {
+            Text("+", x + 4, y + 10, size, C_DIM);
+            x += (float)Measure("+", size) + 12;
+        }
+        if (DrawItemIcon(in[k], (Rectangle){ x, y + 19 - pic / 2, pic, pic }, WHITE)) x += pic + 2;
+        const char *t = TextFormat("%d %s", n[k], ItemName(in[k]));
+        Text(t, x, y + 10 + (float)(17 - size) / 2, size, C_TEXT);
+        x += (float)Measure(t, size) + 4;
+    }
 }
 
 static void DrawTradePanel(void)
@@ -382,10 +601,9 @@ static void DrawTradePanel(void)
     const float row = 44.0f;
     float h = 140.0f + row * (float)t->offerCount;
     Rectangle r = PanelRect(1000, h);
-    char inputs[160];
 
-    Text(t->name, r.x + 24, r.y + 18, 26, C_GOLD);
-    Text(TextFormat(L("\"%s\""), L(t->greeting)), r.x + 24, r.y + 52, 16, C_DIM);
+    Text(t->name, r.x + 24, r.y + 18, 26, C_TITLE);
+    Text(TextFormat(L("\"%s\""), L(t->greeting)), r.x + 24, r.y + 52, 17, C_DIM);
 
     for (int i = 0; i < t->offerCount; i++) {
         const Offer *o = &t->offers[i];
@@ -393,13 +611,16 @@ static void DrawTradePanel(void)
         bool ok = OfferCheck(o, &why);
         float y = r.y + 84 + row * (float)i;
 
-        DrawRectangle((int)r.x + 16, (int)y, (int)r.width - 32, (int)row - 6, (i & 1) ? (Color){ 40, 33, 28, 255 } : (Color){ 48, 40, 33, 255 });
-        OfferInputs(o, inputs, sizeof(inputs));
-        Text(inputs, r.x + 28, y + 10, 17, C_TEXT);
+        DrawRectangle((int)r.x + 16, (int)y, (int)r.width - 32, (int)row - 6, (i & 1) ? pal->rowAlt : pal->row);
+        OfferRow(o, r.x + 24, y, 350.0f);
         Text("->", r.x + 385, y + 10, 17, C_DIM);
-        Text(OfferOutput(o), r.x + 412, y + 10, 17, C_GOLD);
+        int got = o->kind == OUT_ITEM ? o->out : o->kind == OUT_HEN ? IT_HEN : o->kind == OUT_BASKET ? IT_REEDS : IT_NONE;
+        float ox = r.x + 410;
+        if (got != IT_NONE && DrawItemIcon(got, (Rectangle){ ox, y + 1, 36, 36 }, WHITE)) ox += 38;
+        Text(OfferOutput(o), ox, y + 10, 17, C_GOLD);
         const char *have = o->in2 ? TextFormat(L("have %d / %d"), BagCount(o->in1), BagCount(o->in2)) : TextFormat(L("have %d"), BagCount(o->in1));
-        Text(ok ? have : why, r.x + 680, y + 12, 14, ok ? C_GOOD : C_BAD);
+        const char *note = ok ? have : why;   // kept clear of the button on a narrow screen
+        Text(note, fminf(r.x + 680, r.x + r.width - 146 - (float)Measure(L(note), 14)), y + 12, 14, ok ? C_GOOD : C_BAD);
 
         static const int extraKeys[3] = { KEY_ZERO, KEY_MINUS, KEY_EQUAL };
         static const char *const extraLabels[3] = { "[0] Barter", "[-] Barter", "[=] Barter" };
@@ -407,7 +628,7 @@ static void DrawTradePanel(void)
         const char *label = i < 9 ? TextFormat(L("[%d] Barter"), i + 1) : i < 12 ? extraLabels[i - 9] : "Barter";
         if (Button((Rectangle){ r.x + r.width - 136, y + 4, 112, 30 }, label, ok, key)) Barter(G.trader, i);
     }
-    Text("Click Barter or press the offer's number    E or Esc: close", r.x + 24, r.y + r.height - 34, 16, C_DIM);
+    Text("Click Barter or press the offer's number    E or Esc: close", r.x + 24, r.y + r.height - 36, 17, C_DIM);
 }
 
 // Playing with others the world goes on while the menu is open, and there are no save slots: the server
@@ -417,9 +638,9 @@ static void DrawNetPausePanel(void)
     Rectangle r = PanelRect(620, 530);
     float bx = r.x + 50, bw = 240, gap = r.width - 100 - 2 * bw, y = r.y + 128;
 
-    CenterText("Paused", r.x + r.width / 2, r.y + 20, 30, C_GOLD);
-    CenterText("The world goes on while this menu is open. H: controls.", r.x + r.width / 2, r.y + 64, 16, C_TEXT);
-    CenterText(TextFormat(L("Server \"%s\". Your things are kept with your account."), NetRoom()), r.x + r.width / 2, r.y + 92, 15, C_DIM);
+    CenterText("Paused", r.x + r.width / 2, r.y + 20, 30, C_TITLE);
+    CenterText("The world goes on while this menu is open. H: controls.", r.x + r.width / 2, r.y + 64, 17, C_TEXT);
+    CenterText(TextFormat(L("Server \"%s\". Your things are kept with your account."), NetRoom()), r.x + r.width / 2, r.y + 92, 16, C_DIM);
     // A battle royale's crowd goes in two narrow columns, with each player's kills and whether they are out.
     if (PlayerCount() > 6) {
         int row = 0;
@@ -428,7 +649,7 @@ static void DrawNetPausePanel(void)
             if (!p->active) continue;
             float cx = bx + (float)(row / 10) * 265.0f, cy = y + (float)(row % 10) * 14.0f;
             DrawRectangle((int)cx, (int)cy + 2, 10, 10, PlayerColor(s));
-            DrawTextEx(GameFont(), p->name, (Vector2){ cx + 16, cy }, 13, 1, s == G.self ? C_GOLD : (p->flags & PF_OUT) ? C_DIM : C_TEXT);
+            DrawGameText(p->name, cx + 16, cy, 13, s == G.self ? C_GOLD : (p->flags & PF_OUT) ? C_DIM : C_TEXT);
             Text(TextFormat(L("%d kills%s"), p->kills, (p->flags & PF_OUT) ? L(", out") : ""), cx + 150, cy, 12, C_DIM);
             row++;
         }
@@ -438,7 +659,7 @@ static void DrawNetPausePanel(void)
         if (!p->active) continue;
         DrawRectangle((int)bx, (int)y + 2, 16, 16, PlayerColor(s));
         DrawRectangleLines((int)bx, (int)y + 2, 16, 16, Fade(BLACK, 0.6f));
-        DrawTextEx(GameFont(), p->name, (Vector2){ bx + 26, y }, 18, 1, s == G.self ? C_GOLD : C_TEXT);
+        DrawGameText(p->name, bx + 26, y, 18, s == G.self ? C_GOLD : C_TEXT);
         if (s == G.self) Text(TextFormat("(%s)", L("you")), bx + 160, y + 2, 15, C_DIM);
         Text(PlayerColorName(s), bx + 250, y + 2, 15, C_DIM);
         if (G.pvp) Text(KillDeath(s), bx + 320, y + 2, 15, C_TEXT);
@@ -456,7 +677,7 @@ static void DrawNetPausePanel(void)
     }
     if (Button((Rectangle){ bx, r.y + 316, r.width - 100, 34 }, "Game settings (S)", true, KEY_S)) SetPanel(PANEL_SETTINGS);
     if (Button((Rectangle){ bx, r.y + 358, r.width - 100, 34 }, "Your look", true, 0)) SetPanel(PANEL_LOOK);
-    CenterText(RulesText(), r.x + r.width / 2, r.y + 398, 15, C_GOLD);
+    CenterText(RulesText(), r.x + r.width / 2, r.y + 397, 16, C_GOLD);
     y = r.y + r.height - 96;
     if (Button((Rectangle){ bx, y, bw, 40 }, "Resume (Esc)", true, 0)) SetPanel(PANEL_NONE);
     if (Button((Rectangle){ bx + bw + gap, y, bw, 40 }, "Hand in my things (F5)", true, 0)) SaveNow();
@@ -467,6 +688,7 @@ static void DrawNetPausePanel(void)
 // ---- A board game at the alehouse (boards.c) ----
 
 static const Color PIECE_UI[2] = { { 40, 40, 54, 255 }, { 236, 230, 214, 255 } };
+static const Color NOTE_BAD = { 245, 140, 115, 255 }, NOTE_GOOD = { 160, 225, 135, 255 };   // on a note's dark label
 
 // A piece on the panel's board: its disc, a ring if it can move (with its number), a faint one if it moved last.
 // True if it was clicked.
@@ -494,13 +716,6 @@ bool BoardTapAt(int k, Vector2 *c)
 
 static int boardSel = -1;   // on a touch screen: the piece tapped first (its way shown); a second tap moves it
 
-// A triangle whichever way round its corners are given.
-static void Tri(Vector2 a, Vector2 b, Vector2 c, Color col)
-{
-    DrawTriangle(a, b, c, col);
-    DrawTriangle(a, c, b, col);
-}
-
 // A small arrowhead at 'at' pointing along 'dir'.
 static void Chevron(Vector2 at, Vector2 dir, float size, Color col)
 {
@@ -517,7 +732,7 @@ static void BoardPiece(Vector2 c, float rad, int side, float glow, float alpha)
 {
     if (glow > 0) {
         float pulse = 0.5f + 0.5f * sinf((float)GetTime() * 6.0f);
-        DrawRing(c, rad + 2, rad + 4 + 3 * glow * pulse, 0, 360, 36, Fade(C_GOLD, 0.45f + 0.5f * glow));
+        DrawRing(c, rad + 2, rad + 4 + 3 * glow * pulse, 0, 360, 36, Fade(B_GOLD, 0.45f + 0.5f * glow));
     }
     DrawCircleV((Vector2){ c.x + 2, c.y + 3 }, rad, Fade(BLACK, 0.35f * alpha));
     DrawCircleV(c, rad, Fade(PIECE_UI[side], alpha));
@@ -537,7 +752,7 @@ static void MoveArrow(Vector2 a, Vector2 b, int side, float alpha)
     if (len < 6) return;
     d = Vector2Scale(d, 1.0f / len);
     Vector2 n = { -d.y, d.x }, base = Vector2Subtract(b, Vector2Scale(d, 14));
-    Color edge = Fade(C_GOLD, alpha), fill = Fade(PIECE_UI[side], alpha);
+    Color edge = Fade(B_GOLD, alpha), fill = Fade(PIECE_UI[side], alpha);
     DrawLineEx(a, base, 7, edge);
     DrawLineEx(a, base, 3, fill);
     Tri(b, Vector2Add(base, Vector2Scale(n, 10)), Vector2Subtract(base, Vector2Scale(n, 10)), edge);
@@ -586,13 +801,21 @@ typedef struct {
 
 static void DrawWay(const Way *w, int side, float rad, const char *note, Color noteCol)
 {
-    for (int k = 0; k + 1 < w->n; k++) DrawCircleV(w->at[k], 4, Fade(C_GOLD, 0.85f));
-    if (w->line && w->n > 0) DrawLineEx(w->at[w->n - 1], w->land, 4, Fade(C_GOLD, 0.8f));
+    for (int k = 0; k + 1 < w->n; k++) {
+        DrawCircleV(w->at[k], 5, Fade(BITUMEN, 0.5f));
+        DrawCircleV(w->at[k], 4, Fade(B_GOLD, 0.95f));
+    }
+    if (w->line && w->n > 0) DrawLineEx(w->at[w->n - 1], w->land, 4, Fade(B_GOLD, 0.8f));
     float pulse = 0.5f + 0.5f * sinf((float)GetTime() * 6.0f);
     BoardPiece(w->land, rad, side, 0, 0.32f);   // a ghost of the piece, faint beside the real ones
     for (int k = 0; k < 12; k += 2)   // ringed by a dashed circle
-        DrawRing(w->land, rad + 3, rad + 5 + 2 * pulse, (float)k * 30.0f, (float)k * 30.0f + 22.0f, 6, Fade(C_GOLD, 0.95f));
-    if (note) CenterText(note, w->land.x, w->land.y - rad - 22, 15, noteCol);
+        DrawRing(w->land, rad + 3, rad + 5 + 2 * pulse, (float)k * 30.0f, (float)k * 30.0f + 22.0f, 6, Fade(B_GOLD, 0.95f));
+    if (note) {   // on a dark label, to be read over the board's light squares and the clay alike
+        note = L(note);
+        float nw = (float)Measure(note, 15) + 14, ny = w->land.y - rad - 25;
+        DrawRectangleRounded((Rectangle){ w->land.x - nw / 2, ny, nw, 22 }, 0.5f, 6, Fade(BITUMEN, 0.85f));
+        CenterText(note, w->land.x, ny + 3, 15, noteCol);
+    }
 }
 
 typedef struct { float ox, oy, S, rad; int view; } UrGeo;
@@ -666,7 +889,7 @@ static int DrawPiecesAndWays(const Board *b, const Pieces *pc, int me, float rad
     *confirm = false;
     if (me >= 0)
         for (int i = 0; i < n; i++)
-            if (pc->can[i] && i != pc->focus) DrawRing(ways[i].land, rad * 0.35f, rad * 0.5f, 0, 360, 24, Fade(C_GOLD, 0.55f));
+            if (pc->can[i] && i != pc->focus) DrawRing(ways[i].land, rad * 0.35f, rad * 0.5f, 0, 360, 24, Fade(B_GOLD, 0.7f));
     if (me >= 0 && pc->focus >= 0) DrawWay(&ways[pc->focus], me, rad, notes[pc->focus], noteCols[pc->focus]);
     for (int pass = 0; pass < 2; pass++)
         for (int s = 0; s < 2; s++)
@@ -751,7 +974,7 @@ static int DrawUrPanel(Rectangle a, int bi, const Board *b, int view, int me, co
     for (int i = 0; i < UR_PIECES; i++) {
         ways[i].n = 0;
         notes[i] = NULL;
-        noteCols[i] = C_GOLD;
+        noteCols[i] = B_GOLD;
         if (me < 0 || !pc->can[i]) continue;
         int from = b->pos[me][i], to = BoardTarget(b, me, i);
         for (int p = from + 1; p <= to && ways[i].n < 39; p++) ways[i].at[ways[i].n++] = UrSpot(&g, me, p, pc->home[me]);
@@ -763,7 +986,7 @@ static int DrawUrPanel(Rectangle a, int bi, const Board *b, int view, int me, co
             for (int k = 0; k < UR_PIECES; k++)
                 if (b->pos[1 - me][k] == to) {
                     notes[i] = "Takes";
-                    noteCols[i] = C_BAD;
+                    noteCols[i] = NOTE_BAD;
                 }
     }
     // The piece in focus: the one pointed at, or on a touch screen the one tapped.
@@ -772,8 +995,8 @@ static int DrawUrPanel(Rectangle a, int bi, const Board *b, int view, int me, co
             if (pc->can[i] && CheckCollisionPointCircle(UiMouse(), pc->c[me][i], g.rad + 5)) pc->hover = i;
     pc->focus = TouchOn() ? (boardSel >= 0 && boardSel < UR_PIECES && pc->can[boardSel] ? boardSel : -1) : pc->hover;
     int clicked = DrawPiecesAndWays(b, pc, me, g.rad, g.rad * 0.8f, ways, notes, noteCols, confirm);
-    Text("waiting", ox, oy + 3 * S + 46, 14, C_DIM);
-    Text("home", ox + 8 * S - (float)Measure(L("home"), 14), oy + 3 * S + 46, 14, C_DIM);
+    Text("waiting", ox, oy + 3 * S + 45, 16, C_DIM);
+    Text("home", ox + 8 * S - (float)Measure(L("home"), 16), oy + 3 * S + 45, 16, C_DIM);
     return clicked;
 }
 
@@ -836,7 +1059,7 @@ static int DrawHolesPanel(Rectangle a, int bi, const Board *b, int view, int me,
     for (int i = 0; i < UR_PIECES; i++) {
         ways[i].n = 0;
         notes[i] = NULL;
-        noteCols[i] = C_GOLD;
+        noteCols[i] = B_GOLD;
         if (me < 0 || i >= HOLES_PIECES || !pc->can[i]) continue;
         int from = b->pos[me][i], to = BoardTarget(b, me, i), land = from + b->roll;
         if (land > HOLES_HOME) land = HOLES_HOME;
@@ -846,10 +1069,10 @@ static int DrawHolesPanel(Rectangle a, int bi, const Board *b, int view, int me,
         if (to >= HOLES_HOME) notes[i] = "Home";
         else if (to > land) {
             notes[i] = "Up the line";
-            noteCols[i] = C_GOOD;
+            noteCols[i] = NOTE_GOOD;
         } else if (to < land) {
             notes[i] = "Down the line";
-            noteCols[i] = C_BAD;
+            noteCols[i] = NOTE_BAD;
         }
     }
     if (me >= 0 && !TouchOn())
@@ -880,8 +1103,8 @@ static void DrawBoardRules(Rectangle a, bool ur)
     };
     const char *const *lines = ur ? UR : HOLES;
     int n = ur ? (int)(sizeof(UR) / sizeof(UR[0])) : (int)(sizeof(HOLES) / sizeof(HOLES[0]));
-    DrawRectangleRec(a, (Color){ 40, 34, 28, 255 });
-    DrawRectangleLinesEx(a, 1, C_EDGE);
+    DrawRectangleRounded(a, 0.03f, 4, pal->rowAlt);
+    DrawRectangleRoundedLinesEx(a, 0.03f, 4, 1, Fade(C_EDGE, 0.6f));
     Text("How to play", a.x + 16, a.y + 12, 20, C_GOLD);
     float y = a.y + 42, w = a.width - 44;
     for (int i = 0; i < n; i++) {
@@ -928,9 +1151,9 @@ static void DrawBoardPanel(void)
     bool rolling = BoardTumble(bi) > 0;
     int moves[8], nm = mine && b->roll > 0 && !rolling ? BoardMoves(b, me, moves) : 0;
     if (nm == 0) boardSel = -1;
-    Text(ur ? "The Royal Game of Ur" : "Fifty-eight holes", r.x + 24, r.y + 16, 26, C_GOLD);
+    Text(ur ? "The Royal Game of Ur" : "Fifty-eight holes", r.x + 24, r.y + 16, 26, C_TITLE);
 
-    Rectangle area = { r.x + 16, r.y + 50, r.width - 290, r.height - 66 };
+    Rectangle area = { r.x + 16, r.y + 50, r.width - 290, r.height - 92 };   // the foot keeps a line for the keys
     int clicked = -1;
     bool confirm = false;
     Pieces pc;
@@ -971,7 +1194,7 @@ static void DrawBoardPanel(void)
         const char *news = MoveNews(b, e, me, names[e->side]);
         Color col = Fade(C_GOLD, e->age < 7.0f ? 0.95f : 0.95f * (8.0f - e->age));
         paragraphColor = &col;
-        y += Paragraph(news, x, y, 240, 15, 19) + 8;
+        y += Paragraph(news, x, y, 240, 16, 20) + 8;
         paragraphColor = NULL;
     }
 
@@ -996,9 +1219,9 @@ static void DrawBoardPanel(void)
         }
     }
     if (touch) {   // the Close button in the Menu button's place
-        if (me >= 0) Text("Close: away from the board (you keep your place)", r.x + 24, r.y + r.height - 26, 14, C_DIM);
+        if (me >= 0) Text("Close: away from the board (you keep your place)", r.x + 24, r.y + r.height - 34, 16, C_DIM);
     } else {
-        Text(me >= 0 ? "E or Esc: away from the board (you keep your place)" : "E or Esc: close", r.x + 24, r.y + r.height - 26, 14, C_DIM);
+        Text(me >= 0 ? "E or Esc: away from the board (you keep your place)" : "E or Esc: close", r.x + 24, r.y + r.height - 34, 16, C_DIM);
     }
     // A move: clicked (or the keys 1-7, the glowing pieces left to right); on a touch screen the first tap only
     // shows the piece's way, the second (on it or where it lands) moves it.
@@ -1023,12 +1246,12 @@ static void DrawPartyPanel(void)
     Rectangle r = PanelRect(760, 470);
     float x = r.x + 30, y = r.y + 70;
     bool voting = LobbyWaiting();
-    CenterText("Sumer Party", r.x + r.width / 2, r.y + 18, 28, C_GOLD);
+    CenterText("Sumer Party", r.x + r.width / 2, r.y + 18, 28, C_TITLE);
     CenterText(voting ? "Vote one game out: the most voted is left out, the other four come in a random order."
                       : "The games of this party, and the one voted out.", r.x + r.width / 2, r.y + 50, 15, C_DIM);
     for (int g = 0; g < PG_COUNT; g++) {
         Text(PartyGameName(g), x, y, 20, PartyVote() == g ? C_BAD : C_GOLD);
-        Paragraph(PartyGameRule(g), x, y + 24, 470, 14, 16.0f);
+        Paragraph(PartyGameRule(g), x, y + 24, 480, 15, 17.5f);
         if (voting) {
             Text(TextFormat(L("%d votes out"), PartyVotes(g)), x + 500, y + 4, 15, C_DIM);
             if (Button((Rectangle){ x + 590, y, 110, 30 }, PartyVote() == g ? "Take back" : "Vote out", true, 0)) SetPartyVote(g);
@@ -1050,9 +1273,9 @@ static void DrawPausePanel(void)
     float bx = r.x + 50, bw = 240, gap = r.width - 100 - 2 * bw;
     int active = SaveSlot();
 
-    CenterText("Paused", r.x + r.width / 2, r.y + 20, 30, C_GOLD);
+    CenterText("Paused", r.x + r.width / 2, r.y + 20, 30, C_TITLE);
     CenterText("Press H for the controls and tips.", r.x + r.width / 2, r.y + 64, 18, C_TEXT);
-    CenterText("Progress is saved to the slot in play when you sleep and when you quit.", r.x + r.width / 2, r.y + 94, 15, C_DIM);
+    CenterText("Progress is saved to the slot in play when you sleep and when you quit.", r.x + r.width / 2, r.y + 94, 16, C_DIM);
 
     for (int k = 0; k < SAVE_SLOTS; k++) {
         float y = r.y + 126 + 46.0f * (float)k;
@@ -1060,7 +1283,7 @@ static void DrawPausePanel(void)
         float hour;
         bool has = SaveSummary(k, &day, &hour);
         const char *info = has ? TextFormat(L("Day %d  %02d:%02d"), day, (int)hour, (int)((hour - floorf(hour)) * 60.0f)) : "empty";
-        DrawRectangle((int)bx, (int)y, (int)(r.width - 100), 40, k == active ? (Color){ 64, 52, 38, 255 } : (Color){ 44, 36, 30, 255 });
+        DrawRectangle((int)bx, (int)y, (int)(r.width - 100), 40, k == active ? pal->rowHi : pal->rowAlt);
         Text(TextFormat(L("Slot %d"), k + 1), bx + 12, y + 10, 20, k == active ? C_GOLD : C_TEXT);
         Text(k == active ? "playing" : info, bx + 100, y + 12, 17, k == active ? C_GOOD : has ? C_TEXT : C_DIM);
         if (k == active) continue;
@@ -1088,11 +1311,11 @@ static void DrawPausePanel(void)
 // The settings that only change how the game looks and sounds to this player, not how it plays.
 static void DrawSettingsPanel(void)
 {
-    Rectangle r = PanelRect(560, 482);
+    Rectangle r = PanelRect(560, 524);
     float bx = r.x + 50, bw = r.width - 100, y = r.y + 96;
 
-    CenterText("Game settings", r.x + r.width / 2, r.y + 20, 30, C_GOLD);
-    CenterText("Kept in this browser. The keys work while you play, too.", r.x + r.width / 2, r.y + 60, 15, C_DIM);
+    CenterText("Game settings", r.x + r.width / 2, r.y + 20, 30, C_TITLE);
+    CenterText("Kept in this browser. The keys work while you play, too.", r.x + r.width / 2, r.y + 60, 17, C_DIM);
     const char *lang = Language() == LANG_TR ? "Dil / Language: Türkçe (L)" : "Language / Dil: English (L)";
     if (Button((Rectangle){ bx, y, bw, 34 }, lang, true, KEY_L)) {
         SetLanguage(Language() == LANG_TR ? LANG_EN : LANG_TR);
@@ -1122,6 +1345,11 @@ static void DrawSettingsPanel(void)
     if (Button((Rectangle){ bx, y, fw, 34 }, fps, true, 0)) NextFpsLimit();
     if (TouchOn() && Button((Rectangle){ bx + fw + 8, y, fw, 34 }, LeftHanded() ? "Buttons: left hand" : "Buttons: right hand", true, 0))
         SetLeftHanded(!LeftHanded());
+    y += 42;
+    if (Button((Rectangle){ bx, y, bw, 34 }, G.showFps ? "Frame rate shown: on" : "Frame rate shown: off", true, 0)) {
+        G.showFps = !G.showFps;
+        SaveGamePrefs();
+    }
     if (Button((Rectangle){ bx, r.y + r.height - 58, bw, 40 }, "Back", true, KEY_BACKSPACE)) SetPanel(PANEL_PAUSE);
 }
 
@@ -1135,10 +1363,9 @@ static void DrawLookPanel(void)
     int v[5] = { (style & STYLE_WOMAN) != 0, style & 3, style >> 2 & 3, style >> 4 & 3, style >> 6 & 3 };
     float h = 450, w = 400;
     Rectangle r = { 20, (UiHeight() - h) / 2, w, h };
-    DrawRectangleRec(r, C_PANEL);
-    DrawRectangleLinesEx(r, 2, C_EDGE);
-    CenterText("Your look", r.x + w / 2, r.y + 16, 28, C_GOLD);
-    CenterText("Everyone sees you like this, in your own color.", r.x + w / 2, r.y + 52, 14, C_DIM);
+    Tablet(r);
+    CenterText("Your look", r.x + w / 2, r.y + 16, 28, C_TITLE);
+    CenterText("Everyone sees you like this, in your own color.", r.x + w / 2, r.y + 52, 16, C_DIM);
 
     bool changed = false;
     for (int k = 0; k < 5; k++) {
@@ -1165,7 +1392,7 @@ static void DrawLookPanel(void)
     }
     unsigned short chosen = PackStyle(v[1], v[2], v[3], v[4]) | (v[0] ? STYLE_WOMAN : 0);
     if (changed) ChooseStyle(chosen);
-    CenterText("1-5: next choice    Left/Right arrows: turn the view", r.x + w / 2, r.y + h - 76, 14, C_DIM);
+    CenterText("1-5: next choice    Left/Right arrows: turn the view", r.x + w / 2, r.y + h - 78, 16, C_DIM);
     if (Button((Rectangle){ r.x + 20, r.y + h - 52, w - 40, 38 }, "Done (Enter)", true, KEY_ENTER)) {
         ChooseStyle(chosen);
         SetPanel(PANEL_NONE);
@@ -1181,14 +1408,14 @@ static void DrawCoopPanel(void)
     bool canWheat = BagCount(IT_WHEAT) > 0 && G.coopFeed <= FEED_MAX - 2.0f;
     bool canWater = BagCount(IT_WATER) > 0 && G.coopWater < WATER_DAYS - 0.05f;
 
-    Text(TextFormat(L("Hen coop  %d/%d hens"), G.henCount, MAX_HENS), x0, y, 26, C_GOLD);
+    Text(TextFormat(L("Hen coop  %d/%d hens"), G.henCount, MAX_HENS), x0, y, 26, C_TITLE);
     y += 38;
     Text(TextFormat(L("Water %.1f of %d days"), G.coopWater, (int)WATER_DAYS), x0, y, 18, G.coopWater <= 2.0f ? C_BAD : C_TEXT);
     Text(TextFormat(L("Feed %d/%d"), (int)G.coopFeed, (int)FEED_MAX), x0 + 250, y, 18, G.coopFeed < (float)G.henCount ? C_BAD : C_TEXT);
     Text(TextFormat(L("Eggs waiting %d"), G.coopEggs), x0 + 420, y, 18, C_TEXT);
     if (G.coopDry > 0) Text(TextFormat(L("dry for %.1f days"), G.coopDry), x0 + 600, y, 18, C_BAD);
     y += 26;
-    Text("Each hen eats 1 feed every 3 days and lays an egg a day while fed and watered. Seeds give 1 feed, wheat 2.", x0, y, 14, C_DIM);
+    Text("Each hen eats 1 feed every 3 days and lays an egg a day while fed and watered. Seeds give 1 feed, wheat 2.", x0, y, 16, C_DIM);
     y += 28;
 
     float bw = 182;
@@ -1207,7 +1434,7 @@ static void DrawCoopPanel(void)
     for (int i = 0; i < G.henCount; i++) {
         float age = now - G.henBorn[i], left = HEN_LIFE_DAYS - age, meal = G.henMeal[i] - now;
         bool ready = age >= SEASON_DAYS, asking = G.slaughterHen == i && G.slaughterStep > 0;
-        DrawRectangle((int)x0, (int)y, (int)r.width - 48, 40, (i & 1) ? (Color){ 40, 33, 28, 255 } : (Color){ 48, 40, 33, 255 });
+        DrawRectangle((int)x0, (int)y, (int)r.width - 48, 40, (i & 1) ? pal->rowAlt : pal->row);
         Text(TextFormat(L("Hen %d"), i + 1), x0 + 12, y + 11, 18, C_GOLD);
         Text(TextFormat(L("age %.1f days"), age), x0 + 104, y + 12, 16, C_TEXT);
         Text(TextFormat(L("life left %d days (%.1f seasons)"), (int)ceilf(left), left / SEASON_DAYS), x0 + 220, y + 12, 16, left < SEASON_DAYS ? C_GOLD : C_TEXT);
@@ -1228,7 +1455,7 @@ static void DrawCoopPanel(void)
         y += 44;
     }
     const char *foot = G.slaughterStep > 0 ? "Click the hen's button again to confirm, Esc to cancel" : "Click or 1-4    E or Esc: close";
-    Text(foot, x0, r.y + r.height - 34, 16, G.slaughterStep > 0 ? C_GOLD : C_DIM);
+    Text(foot, x0, r.y + r.height - 36, 17, G.slaughterStep > 0 ? C_GOLD : C_DIM);
 }
 
 static void DrawHelpPanel(void)
@@ -1289,23 +1516,25 @@ static void DrawHelpPanel(void)
         "cat a fish or a dog roast meat (E) and it follows you about for a while.",
         "In a browser the mouse stays with the game while a window is open over it (bag, barter, storeroom, coop, board): "
         "E or Tab closes it and play goes straight on. Esc gives the mouse back; a click takes it again.",
+        "A name and health bar show over a person or a beast while you aim at them, while they are hurt, and while they "
+        "are after you. Game settings can show the frame rate under the map.",
     };
     const int nk = (int)(sizeof(keys) / sizeof(keys[0])), nt = (int)(sizeof(tips) / sizeof(tips[0]));
     Rectangle r = PanelRect(fminf(1200.0f, UiWidth() - 20.0f), fminf(690.0f, UiHeight() - 16.0f));
     float x0 = r.x + 24, x1 = r.x + 500, y0 = r.y + 60;
 
-    Text("Controls", x0, r.y + 20, 26, C_GOLD);
-    Text("Tips", x1, r.y + 20, 26, C_GOLD);
+    Text("Controls", x0, r.y + 20, 26, C_TITLE);
+    Text("Tips", x1, r.y + 20, 26, C_TITLE);
     // The keys close up on a short screen (a phone's).
     float row = fminf(23.0f, (r.y + r.height - 40.0f - y0) / (float)nk);
-    int keySize = row >= 20.0f ? 16 : 14;
+    int keySize = row >= 21.0f ? 17 : row >= 18.0f ? 16 : 14;
     for (int i = 0; i < nk; i++) {
         Text(keys[i][0], x0, y0 + row * (float)i, keySize, C_GOLD);
         Text(keys[i][1], x0 + 126, y0 + row * (float)i, keySize, C_TEXT);
     }
     // The tips take the biggest letters that fit the window (Turkish runs longer than English).
-    static const struct { int size; float line; } fits[] = { { 15, 18.0f }, { 14, 16.5f }, { 13, 15.0f }, { 12, 14.0f } };
-    float room = r.y + r.height - 18.0f - y0, width = r.x + r.width - 30 - x1;
+    static const struct { int size; float line; } fits[] = { { 17, 20.5f }, { 16, 19.0f }, { 15, 17.5f }, { 14, 16.5f } };
+    float room = r.y + r.height - 44.0f - y0, width = r.x + r.width - 30 - x1;   // the foot keeps a line for "read on"
     int fit = 0;
     for (; fit < 3; fit++) {
         float used = 0;
@@ -1342,11 +1571,21 @@ static void DrawHelpPanel(void)
     if (most > 0) {
         float bar = room * room / total;
         DrawRectangle((int)(x1 + width + 8), (int)(y0 + (room - bar) * scroll / most), 4, (int)bar, Fade(C_GOLD, 0.6f));
-        Text(TouchOn() ? "Drag the tips to read on" : "Wheel or arrow keys: read on", x1, r.y + r.height - 14, 12, C_DIM);
+        Text(TouchOn() ? "Drag the tips to read on" : "Wheel or arrow keys: read on", x1, r.y + r.height - 36, 16, C_DIM);
     }
-    Text("H or Esc: close", r.x + r.width - 170, r.y + 26, 16, C_DIM);
+    Text("H or Esc: close", r.x + r.width - 30 - (float)Measure(L("H or Esc: close"), 17), r.y + 26, 17, C_DIM);
 }
 
+// Whether a point is in sight and near the middle of the screen, where the crosshair is: what you aim at.
+static bool Aimed(Vector3 p, float reach)
+{
+    Vector3 fwd = Vector3Normalize(Vector3Subtract(G.cam.target, G.cam.position));
+    if (Vector3DotProduct(Vector3Subtract(p, G.cam.position), fwd) < 0 || Vector3Distance(p, G.cam.position) > reach) return false;
+    Vector2 sp = OnScreen(p);
+    return fabsf(sp.x - UiWidth() / 2) < 46.0f && fabsf(sp.y - UiHeight() / 2) < 70.0f;
+}
+
+// A beast's health over it while it is hurt, hunting you or aimed at; the calm and whole ones go bare.
 static void DrawAnimalBars(void)
 {
     Vector3 fwd = Vector3Normalize(Vector3Subtract(G.cam.target, G.cam.position));
@@ -1356,9 +1595,10 @@ static void DrawAnimalBars(void)
         if (!a->active || a->state == ST_DEAD || AnimalHidden(a)) continue;
         float dist = XZDist(a->pos, G.player.pos);
         int max = AnimalMaxHp(a->type);
-        bool hurt = a->hp < max, aware = a->state != ST_CALM;
-        if (dist > (hurt || aware ? 60.0f : 30.0f)) continue;
         Vector3 head = { a->pos.x, AnimalTop(a) - 0.2f, a->pos.z };
+        bool hurt = a->hp < max, hunting = a->state == ST_HUNT, aimed = G.panel == PANEL_NONE && Aimed(head, 45.0f);
+        if (!hurt && !hunting && !aimed) continue;
+        if (dist > 60.0f) continue;
         if (Vector3DotProduct(Vector3Subtract(head, G.cam.position), fwd) < 0) continue;
 
         Vector2 sp = OnScreen(head);
@@ -1367,7 +1607,7 @@ static void DrawAnimalBars(void)
         Color fill = k > 0.6f ? C_GOOD : k > 0.3f ? C_GOLD : C_BAD;
         DrawRectangle((int)(sp.x - w / 2) - 1, (int)sp.y - 1, (int)w + 2, 7, Fade(BLACK, 0.7f));
         DrawRectangle((int)(sp.x - w / 2), (int)sp.y, (int)(w * k), 5, fill);
-        if (dist < 20.0f) CenterText(AnimalName(a->type), sp.x, sp.y - 15, 12, Fade(RAYWHITE, 0.9f));
+        if (aimed || (dist < 20.0f && hunting)) CenterText(AnimalName(a->type), sp.x, sp.y - 18, 15, Fade(RAYWHITE, 0.9f));
     }
 }
 
@@ -1392,10 +1632,14 @@ static void DrawPeopleBars(void)
         const char *name;
         bool hostile, dead;
         if (!FighterInfo(i, &pos, &hp, &maxHp, &name, &hostile, &dead) || dead) continue;
+        // Hide and seek: a hider is drawn as one of the townsfolk with no name over them, so no one
+        // peaceful gets a name or a bar, aimed at, hurt or not.
+        if (PartyGame() == PG_HIDE && !hostile) continue;
         float dist = Vector3Distance(pos, G.player.pos);
-        bool hurt = hp < maxHp;
-        if (dist > ((hurt || hostile) ? 50.0f : 14.0f) || (!hostile && fabsf(pos.y - G.player.pos.y) > 3.5f)) continue;
         Vector3 head = { pos.x, pos.y + 2.25f, pos.z };
+        bool hurt = hp < maxHp, aimed = G.panel == PANEL_NONE && Aimed((Vector3){ pos.x, pos.y + 1.4f, pos.z }, 40.0f);
+        if (!hurt && !hostile && !aimed) continue;
+        if (dist > 50.0f || (!hostile && fabsf(pos.y - G.player.pos.y) > 3.5f)) continue;
         if (Vector3DotProduct(Vector3Subtract(head, G.cam.position), fwd) < 0) continue;
         if (FogAt(head) > 0.6f) continue;
 
@@ -1405,7 +1649,7 @@ static void DrawPeopleBars(void)
         Color fill = hostile ? C_BAD : k > 0.6f ? C_GOOD : C_GOLD;
         DrawRectangle((int)(sp.x - w / 2) - 1, (int)sp.y - 1, (int)w + 2, 7, Fade(BLACK, 0.7f));
         DrawRectangle((int)(sp.x - w / 2), (int)sp.y, (int)(w * k), 5, fill);
-        if (dist < 16.0f || hostile) CenterText(name, sp.x, sp.y - 15, 12, hostile ? C_BAD : Fade(RAYWHITE, 0.85f));
+        if (aimed || hostile || dist < 16.0f) CenterText(name, sp.x, sp.y - 18, 15, hostile ? C_BAD : Fade(RAYWHITE, 0.9f));
 
         int mark = FighterMark(i);
         if (mark != MARK_NONE) DrawMarkDiamond(mark, (Vector2){ sp.x, sp.y - 32 });
@@ -1421,49 +1665,75 @@ static const char *PhaseName(void)
     return "Night";
 }
 
+// A heart, for health.
+static void Heart(Vector2 c, float r, Color col)
+{
+    DrawCircleV((Vector2){ c.x - r * 0.48f, c.y - r * 0.2f }, r * 0.55f, col);
+    DrawCircleV((Vector2){ c.x + r * 0.48f, c.y - r * 0.2f }, r * 0.55f, col);
+    Tri((Vector2){ c.x - r * 1.02f, c.y - r * 0.05f }, (Vector2){ c.x + r * 1.02f, c.y - r * 0.05f }, (Vector2){ c.x, c.y + r }, col);
+}
+
+// A bar of 'k' (0-1) with a dark groove and a little shine on its top.
+static void Bar(float x, float y, float w, float h, float k, Color fill)
+{
+    k = Clamp(k, 0.0f, 1.0f);
+    DrawRectangleRounded((Rectangle){ x, y, w, h }, 0.5f, 6, Fade(BLACK, 0.55f));
+    if (k > 0.0f) {
+        DrawRectangleRounded((Rectangle){ x + 1, y + 1, fmaxf(h - 2, (w - 2) * k), h - 2 }, 0.5f, 6, fill);
+        DrawRectangleRounded((Rectangle){ x + 3, y + 2, fmaxf(0.0f, (w - 2) * k - 4), (h - 4) * 0.4f }, 0.5f, 4, Fade(WHITE, 0.25f));
+    }
+}
+
+#define STATUS_W 300.0f   // the status box's width (the news banner keeps clear of it)
+
 static void DrawStatus(void)
 {
     int hh = (int)G.hour, mm = (int)((G.hour - (float)hh) * 60.0f);
 
     const Peer *me = &G.peers[G.self];
     bool wolves = AnyWolfHunting(), beast = AnyBeastAttacking();
-    bool alert = me->alone || wolves || beast || me->wanted > 0;
+    bool alert = me->alone || wolves || beast || me->wanted > 0, kd = Online() && G.pvp;
+    float h = 186.0f + (alert ? 20.0f : 0.0f) + (kd ? 20.0f : 0.0f), right = 12.0f + STATUS_W - 12.0f;
 
-    DrawRectangle(12, 12, 360, alert ? 230 : 208, Fade(BLACK, 0.4f));
-    Text(TextFormat(L("Day %d  %02d:%02d  %s"), G.day, hh, mm, L(PhaseName())), 24, 20, 22, RAYWHITE);
-    Text(TextFormat(L("%s, day %d of %d"), SeasonName(Season()), SeasonDay(), SEASON_DAYS), 24, 46, 18, C_GOLD);
+    DrawRectangleRounded((Rectangle){ 12, 12, STATUS_W, h }, 0.06f, 6, Fade(BLACK, 0.42f));
+    DrawRectangleRoundedLinesEx((Rectangle){ 12, 12, STATUS_W, h }, 0.06f, 6, 1, Fade(C_GOLD, 0.25f));
+    Text(TextFormat(L("Day %d  %02d:%02d  %s"), G.day, hh, mm, L(PhaseName())), 24, 18, 20, RAYWHITE);
+    Text(TextFormat(L("%s, day %d of %d"), SeasonName(Season()), SeasonDay(), SEASON_DAYS), 24, 42, 16, C_GOLD);
     const char *status = G.herbT > 0 ? TextFormat(L("Herbs %ds"), (int)ceilf(G.herbT))
                        : G.blessT > 0 ? TextFormat(L("Blessed %dh"), (int)ceilf(G.blessT)) : G.raining ? L("Raining") : "";
-    Text(status, 360.0f - (float)Measure(status, 18), 46, 18, G.herbT > 0 || G.blessT > 0 ? C_GOOD : (Color){ 170, 200, 230, 255 });
+    Text(status, right - (float)Measure(status, 16), 42, 16, G.herbT > 0 || G.blessT > 0 ? C_GOOD : (Color){ 170, 200, 230, 255 });
     if (G.raining)
         for (int k = 0; k < 3; k++)
-            DrawLineEx((Vector2){ 334.0f + 8.0f * (float)k, 22 }, (Vector2){ 330.0f + 8.0f * (float)k, 36 }, 2, (Color){ 170, 200, 230, 255 });
-    int bx = 24 + (int)fmaxf(60.0f, (float)(fmaxf((float)Measure(L("Food"), 18), (float)Measure(L("Health"), 18)) + 12.0f));
-    Text("Food", 24, 76, 18, C_TEXT);
-    FoodBar((float)bx, 79, 200);
-    Text("Health", 24, 98, 18, C_TEXT);
-    DrawRectangle(bx, 101, 200, 14, Fade(BLACK, 0.5f));
-    DrawRectangle(bx, 101, (int)(200 * Clamp(G.health, 0, HEALTH_MAX) / HEALTH_MAX), 14, G.health < 35 ? C_BAD : C_GOOD);
-    DrawRectangleLines(bx, 101, 200, 14, Fade(BLACK, 0.6f));
-    if (UnlimitedArrows()) Text(Royale() ? "Arrows: unlimited (battle royale)" : Party() ? "Arrows: unlimited (party)" : "Arrows: unlimited (PvP)", 24, 124, 18, C_TEXT);
-    else Text(TextFormat(L("Arrows %d/%d   +%d carried"), G.quiver, G.quiverMax, BagCount(IT_ARROWS)), 24, 124, 18, C_TEXT);
-    Text(TextFormat(L("In hand: %s%s"), EquipName(G.equip), G.player.crouching ? L("  |  crouching") : ""), 24, 146, 18,
+            DrawLineEx((Vector2){ right - 26.0f + 8.0f * (float)k, 20 }, (Vector2){ right - 30.0f + 8.0f * (float)k, 34 }, 2, (Color){ 170, 200, 230, 255 });
+    // Health and food as bars by their signs, then the arrows.
+    float bx = 50, bw = right - bx;
+    Heart((Vector2){ 34, 76 }, 9, G.health < 35 ? (Color){ 240, 70, 60, 255 } : (Color){ 214, 60, 52, 255 });
+    Bar(bx, 70, bw, 13, G.health / HEALTH_MAX, G.health < 35 ? C_BAD : C_GOOD);
+    if (!DrawItemIcon(IT_BREAD, (Rectangle){ 21, 86, 26, 26 }, WHITE)) Text("Food", 24, 90, 14, C_TEXT);
+    Bar(bx, 93, bw, 13, G.food / FOOD_MAX, G.food < 20 ? C_BAD : (Color){ 214, 162, 68, 255 });
+    DrawItemIcon(IT_ARROWS, (Rectangle){ 20, 110, 28, 28 }, WHITE);
+    if (UnlimitedArrows()) Text(Royale() ? "Arrows: unlimited (battle royale)" : Party() ? "Arrows: unlimited (party)" : "Arrows: unlimited (PvP)", bx, 116, 16, C_TEXT);
+    else Text(TextFormat(L("Arrows %d/%d   +%d carried"), G.quiver, G.quiverMax, BagCount(IT_ARROWS)), bx, 116, 16, G.quiver == 0 ? C_BAD : C_TEXT);
+    Text(TextFormat(L("In hand: %s%s"), EquipName(G.equip), G.player.crouching ? L("  |  crouching") : ""), 24, 140, 16,
          G.player.crouching ? C_GOOD : C_TEXT);
-    Text(TextFormat(L("Armor: %s"), ArmorName(UseArmor())), 24, 168, 18, C_TEXT);
+    Text(TextFormat(L("Armor: %s"), ArmorName(UseArmor())), 24, 160, 16, C_TEXT);
     // The level, and how far into it: experience is only shown, never spent.
     long xp = AccountXp();
     int level = LevelOf(xp);
-    Text(LevelText(xp), 24, 190, 18, C_GOLD);
+    Text(LevelText(xp), 24, 180, 16, C_GOLD);
     if (level < MAX_LEVEL) {
         float into = (float)(xp - LevelStart(level)) / (float)(LevelStart(level + 1) - LevelStart(level));
-        DrawRectangle(250, 196, 110, 8, Fade(BLACK, 0.5f));
-        DrawRectangle(250, 196, (int)(110 * Clamp(into, 0.0f, 1.0f)), 8, C_GOLD);
+        Bar(right - 100, 185, 100, 8, into, C_GOLD);
     }
-    if (me->wanted > 0) Text(TextFormat(L("Wanted by the guards  %d:%02d"), (int)me->wanted / 60, (int)me->wanted % 60), 24, 212, 18, C_BAD);
-    else if (wolves) Text("Wolves are hunting you!", 24, 212, 18, C_BAD);
-    else if (beast) Text("A wild beast is attacking you!", 24, 212, 18, C_BAD);
-    else if (me->alone) Text("Alone outside the walls", 24, 212, 18, C_GOLD);
-    if (Online() && G.pvp) Text(TextFormat(L("PvP: %s"), KillDeath(G.self)), 24, 234, 18, C_TEXT);
+    float y = 200;
+    if (alert) {
+        if (me->wanted > 0) Text(TextFormat(L("Wanted by the guards  %d:%02d"), (int)me->wanted / 60, (int)me->wanted % 60), 24, y, 16, C_BAD);
+        else if (wolves) Text("Wolves are hunting you!", 24, y, 16, C_BAD);
+        else if (beast) Text("A wild beast is attacking you!", 24, y, 16, C_BAD);
+        else Text("Alone outside the walls", 24, y, 16, C_GOLD);
+        y += 20;
+    }
+    if (kd) Text(TextFormat(L("PvP: %s"), KillDeath(G.self)), 24, y, 16, C_TEXT);
 }
 
 static void DrawMinimap(int ox, int oy, int size)
@@ -1514,6 +1784,7 @@ static void DrawMinimap(int ox, int oy, int size)
             const char *name;
             bool hostile, dead;
             if (!FighterInfo(i, &pos, &hp, &maxHp, &name, &hostile, &dead) || dead) continue;
+            if (PartyGame() == PG_HIDE && !hostile) continue;   // the hiders have no dots, so neither do the townsfolk
             DrawCircleV((Vector2){ mx + pos.x * s, mz + pos.z * s }, 2, hostile ? RED : (Color){ 240, 236, 220, 255 });
         }
         for (int i = 0; i < G.ladderCount; i++)
@@ -1541,8 +1812,14 @@ static void DrawMinimap(int ox, int oy, int size)
     DrawLineEx(pp, (Vector2){ pp.x + sinf(G.player.facing) * 8, pp.y + cosf(G.player.facing) * 8 }, 2, BLACK);
     DrawCircleV(pp, 3, RAYWHITE);
     EndScissorMode();
-    DrawRectangleLines(ox, oy, size, size, Fade(BLACK, 0.6f));
-    Text(TextFormat(L("M  x%.1f"), zoom), (float)ox + 4, (float)(oy + size) - 16, 12, Fade(BLACK, 0.7f));
+    // Framed in bitumen and shell, with a rosette at each corner.
+    DrawRectangleLinesEx((Rectangle){ (float)ox - 4, (float)oy - 4, (float)size + 8, (float)size + 8 }, 4, BITUMEN);
+    DrawRectangleLinesEx((Rectangle){ (float)ox - 1, (float)oy - 1, (float)size + 2, (float)size + 2 }, 1, Fade(SHELL, 0.7f));
+    Rosette((Vector2){ (float)ox - 2, (float)oy - 2 }, 7);
+    Rosette((Vector2){ (float)(ox + size) + 2, (float)oy - 2 }, 7);
+    Rosette((Vector2){ (float)ox - 2, (float)(oy + size) + 2 }, 7);
+    Rosette((Vector2){ (float)(ox + size) + 2, (float)(oy + size) + 2 }, 7);
+    Text(TextFormat(L("M  x%.1f"), zoom), (float)ox + 8, (float)(oy + size) - 18, 12, Fade(BLACK, 0.7f));
 }
 
 // Waiting for a battle royale round or a party to begin, while the mouse is free (as one joins, before the
@@ -1584,7 +1861,7 @@ static void DrawPeerTags(void)
         int w = Measure(p->name, 16);
         DrawRectangle((int)sp.x - w / 2 - 8, (int)sp.y - 3, w + 16, 22, Fade(BLACK, 0.5f));
         DrawRectangle((int)sp.x - w / 2 - 8, (int)sp.y - 3, 4, 22, PlayerColor(s));
-        DrawTextEx(GameFont(), p->name, (Vector2){ (float)((int)sp.x - w / 2), sp.y }, 16, 1, RAYWHITE);
+        DrawGameText(p->name, (float)((int)sp.x - w / 2), sp.y, 16, RAYWHITE);
         if (p->health < HEALTH_MAX - 1.0f) {
             float k = Clamp(p->health / HEALTH_MAX, 0.0f, 1.0f);
             DrawRectangle((int)sp.x - 24, (int)sp.y + 21, 48, 5, Fade(BLACK, 0.6f));
@@ -1596,7 +1873,7 @@ static void DrawPeerTags(void)
                                              : KillDeath(s);
             int lw = Measure(line, 14);
             DrawRectangle((int)sp.x - lw / 2 - 6, (int)sp.y - 22, lw + 12, 18, Fade(BLACK, 0.45f));
-            DrawTextEx(GameFont(), line, (Vector2){ (float)((int)sp.x - lw / 2), sp.y - 20 }, 14, 1, p->wanted > 0 ? C_BAD : RAYWHITE);
+            DrawGameText(line, (float)((int)sp.x - lw / 2), sp.y - 20, 14, p->wanted > 0 ? C_BAD : RAYWHITE);
         }
         // Swinging at someone: yellow while the blow is coming, then green (turned aside) or red (it landed).
         if (G.pvp && p->mark != MARK_NONE && dist < 60.0f) DrawMarkDiamond(p->mark, (Vector2){ sp.x, sp.y - 46.0f });
@@ -1651,35 +1928,54 @@ static void DrawHitLights(int sw, int sh)
     if (G.hitLight[3] > 0.02f) DrawRectangleGradientH(sw - bandX, sh / 6, bandX, sh * 2 / 3, Fade(red, 0.0f), Fade(red, G.hitLight[3] * 0.9f));
 }
 
+// The news: a band across the top between the status box and the map, fading out. Under the party's or
+// the battle royale's lines when they are there; lower down, as wide as the screen, when too long for
+// three lines between the two.
+static int NewsLines(const char *msg, int size, float width, char lines[3][sizeof(G.msg)], int *wide)
+{
+    int len = (int)strlen(msg), w = Measure(msg, size), want = (int)ceilf((float)w / fmaxf(width, 1.0f)), count = 0, from = 0;
+    if (want < 1) want = 1;
+    if (want > 3) return 0;
+    *wide = 0;
+    for (int k = 1; k <= want && from <= len; k++) {
+        int cut = len;
+        if (k < want) {   // at the space nearest an equal share
+            int goal = len * k / want, best = -1;
+            for (int i = from + 1; i < len; i++)
+                if (msg[i] == ' ' && (best < 0 || abs(i - goal) < abs(best - goal))) best = i;
+            if (best > from) cut = best;
+        }
+        snprintf(lines[count], sizeof(lines[count]), "%.*s", cut - from, msg + from);
+        int lw = Measure(lines[count], size);
+        if (lw > *wide) *wide = lw;
+        count++;
+        from = cut + 1;
+        if (cut >= len) break;
+    }
+    return *wide <= (int)width + 8 ? count : 0;
+}
+
 static void DrawMessage(int sw)
 {
-    float a = fminf(G.msgT, 1.0f);
+    const int size = 18;
+    float a = fminf(G.msgT, 1.0f), half = fminf((float)sw / 2 - (12 + STATUS_W + 14), (float)sw / 2 - 220);   // clear of the map too
     char lines[3][sizeof(G.msg)];
-    int count = 1, w = Measure(G.msg, 22), len = (int)strlen(G.msg);
-
-    snprintf(lines[0], sizeof(lines[0]), "%s", G.msg);
-    // A message too wide for the window goes on two or three lines, cut at the spaces nearest equal shares.
-    if (w > sw - 80) {
-        int want = w > 2 * (sw - 80) ? 3 : 2, from = 0;
-        count = 0;
-        w = 0;
-        for (int k = 1; k <= want; k++) {
-            int cut = len;
-            if (k < want) {
-                int goal = len * k / want, best = -1;
-                for (int i = from + 1; i < len; i++)
-                    if (G.msg[i] == ' ' && (best < 0 || abs(i - goal) < abs(best - goal))) best = i;
-                if (best > from) cut = best;
-            }
-            snprintf(lines[count], sizeof(lines[count]), "%.*s", cut - from, G.msg + from);
-            if (Measure(lines[count], 22) > w) w = Measure(lines[count], 22);
-            count++;
-            from = cut + 1;
-            if (cut >= len) break;
-        }
+    int w = 0, count = NewsLines(G.msg, size, 2 * half - 36, lines, &w);
+    float y = Party() || Royale() ? 84.0f : 16.0f;
+    if (!count) {
+        count = NewsLines(G.msg, size, (float)sw - 80, lines, &w);
+        y = 250.0f;
     }
-    DrawRectangle((sw - w) / 2 - 12, 236, w + 24, 6 + 28 * count, Fade(BLACK, 0.5f * a));
-    for (int i = 0; i < count; i++) CenterText(lines[i], (float)sw / 2, 241.0f + 28.0f * (float)i, 22, Fade(RAYWHITE, a));
+    if (!count) {
+        snprintf(lines[0], sizeof(lines[0]), "%s", G.msg);
+        w = Measure(G.msg, size);
+        count = 1;
+    }
+    float bw = (float)w + 44, bh = 12.0f + 22.0f * (float)count, x = ((float)sw - bw) / 2;
+    DrawRectangleRounded((Rectangle){ x, y, bw, bh }, 0.25f, 6, Fade(BLACK, 0.58f * a));
+    DrawLineEx((Vector2){ x + 12, y + 2 }, (Vector2){ x + bw - 12, y + 2 }, 1.5f, Fade(B_GOLD, 0.7f * a));
+    DrawLineEx((Vector2){ x + 12, y + bh - 2 }, (Vector2){ x + bw - 12, y + bh - 2 }, 1.5f, Fade(B_GOLD, 0.7f * a));
+    for (int i = 0; i < count; i++) CenterText(lines[i], (float)sw / 2, y + 7.0f + 22.0f * (float)i, size, Fade(RAYWHITE, a));
 }
 
 // Chat in a shared game: the last lines said, at the bottom left for a while after they come, and all of
@@ -1716,13 +2012,10 @@ const char *ChatLast(void)
 // How much of s goes on a row w wide: up to the last space that fits, or the last letter if none does.
 static int ChatFits(const char *s, float w)
 {
-    Font f = GameFont();
-    float x = 0, scale = FontSize(16) / (float)f.baseSize, gap = (float)((int)FontSize(16) / 10);
     int at = 0, space = 0;
     while (s[at]) {
-        int len, cp = GetCodepointNext(s + at, &len), g = GetGlyphIndex(f, cp);
-        x += (f.glyphs[g].advanceX ? (float)f.glyphs[g].advanceX : f.recs[g].width) * scale + gap;
-        if (x > w && at > 0) return space > 0 ? space : at;
+        int len, cp = GetCodepointNext(s + at, &len);
+        if (GameTextWidth(TextFormat("%.*s", at + len, s), 16) > w && at > 0) return space > 0 ? space : at;
         if (cp == ' ') space = at;
         at += len;
     }
@@ -1732,7 +2025,7 @@ static int ChatFits(const char *s, float w)
 static void DrawChat(int sh)
 {
     bool typing = G.panel == PANEL_CHAT;
-    float size = FontSize(16), gap = (float)((int)size / 10), w = fminf(460.0f, UiWidth() * 0.45f), y = (float)sh - 54;
+    float size = FontSize(16), w = fminf(460.0f, UiWidth() * 0.45f), y = (float)sh - 54;
     if (typing) {
         int c, n = (int)strlen(chatLine), len;
         while ((c = GetCharPressed()) > 0) {
@@ -1754,15 +2047,14 @@ static void DrawChat(int sh)
         // The end of a line too long for the box.
         float lw = (float)Measure(L("Say:"), 16) + 8;
         const char *tail = chatLine;
-        while (*tail && MeasureTextEx(GameFont(), tail, size, gap).x > w - lw - 24) {
+        while (*tail && GameTextWidth(tail, size) > w - lw - 24) {
             GetCodepointNext(tail, &len);
             tail += len;
         }
         DrawRectangleRec((Rectangle){ 8, y, w + 8, 26 }, Fade(BLACK, 0.6f));
         DrawRectangleLinesEx((Rectangle){ 8, y, w + 8, 26 }, 1, C_EDGE);
         Text("Say:", 14, y + 5, 16, C_GOLD);
-        DrawTextEx(GameFont(), TextFormat("%s%s", tail, fmodf((float)GetTime(), 1.0f) < 0.5f ? "_" : ""), (Vector2){ 14 + lw, y + 5 }, size, gap,
-                   RAYWHITE);
+        DrawGameText(TextFormat("%s%s", tail, fmodf((float)GetTime(), 1.0f) < 0.5f ? "_" : ""), 14 + lw, y + 5, size, RAYWHITE);
         y -= 4;
     }
     // Newest at the bottom, each on as many rows as it needs, the name in the player's colour.
@@ -1773,7 +2065,7 @@ static void DrawChat(int sh)
         char head[NAME_LEN + 2];
         const char *row[4];
         snprintf(head, sizeof(head), "%s:", chat[i].name);
-        float hw = 8 + MeasureTextEx(GameFont(), head, size, gap).x;
+        float hw = 8 + GameTextWidth(head, size);
         int len[4], rows = 0;
         for (const char *s = chat[i].text; *s && rows < 4; rows++) {
             len[rows] = ChatFits(s, rows ? w : w - hw);
@@ -1783,9 +2075,9 @@ static void DrawChat(int sh)
         }
         y -= 20.0f * (float)rows + 2;
         DrawRectangle(8, (int)y - 2, (int)w + 8, 20 * rows + 2, Fade(BLACK, 0.4f * a));
-        DrawTextEx(GameFont(), head, (Vector2){ 14, y }, size, gap, Fade(ColorBrightness(chat[i].color, 0.4f), a));
+        DrawGameText(head, 14, y, size, Fade(ColorBrightness(chat[i].color, 0.4f), a));
         for (int k = 0; k < rows; k++)
-            DrawTextEx(GameFont(), TextFormat("%.*s", len[k], row[k]), (Vector2){ k ? 14 : 14 + hw, y + 20.0f * (float)k }, size, gap, Fade(RAYWHITE, a));
+            DrawGameText(TextFormat("%.*s", len[k], row[k]), k ? 14 : 14 + hw, y + 20.0f * (float)k, size, Fade(RAYWHITE, a));
     }
 }
 
@@ -1797,10 +2089,23 @@ static void DrawPrompts(void)
 
     for (int i = 0; i < 2; i++) {
         if (!lines[i][0]) continue;
-        int w = Measure(lines[i], 22);
-        DrawRectangle((int)cx - w / 2 - 10, (int)y - 4, w + 20, 30, Fade(BLACK, 0.5f));
-        CenterText(lines[i], cx, y, 22, ok[i] ? RAYWHITE : C_DIM);
-        y += 34;
+        // "[E] Sit down": the key drawn as a key, the rest beside it.
+        const char *text = lines[i];
+        char key[2] = { 0 };
+        if (text[0] == '[' && text[1] && text[2] == ']') {
+            key[0] = text[1];
+            text += text[3] == ' ' ? 4 : 3;
+        }
+        float kw = key[0] ? 30.0f : 0.0f, w = (float)Measure(text, 20) + kw, x = cx - w / 2;
+        DrawRectangleRounded((Rectangle){ x - 12, y - 5, w + 24, 32 }, 0.3f, 6, Fade(BLACK, 0.55f));
+        if (key[0]) {
+            Rectangle k = { x - 4, y - 1, 24, 24 };
+            DrawRectangleRounded((Rectangle){ k.x, k.y + 2, k.width, k.height }, 0.25f, 4, Fade(BLACK, 0.6f));
+            DrawRectangleRounded(k, 0.25f, 4, ok[i] ? SHELL : Fade(SHELL, 0.5f));
+            DrawGameText(key, k.x + 12 - GameTextWidth(key, 16) / 2, k.y + 4, 16, BITUMEN);
+        }
+        Text(text, x + kw, y, 20, ok[i] ? RAYWHITE : C_DIM);
+        y += 36;
     }
 }
 
@@ -1817,12 +2122,13 @@ static void DrawGameCursor(void)
 
 void DrawUI(void)
 {
+    IconsPrepare();
     UiBegin();
     int sw = (int)ceilf(UiWidth()), sh = (int)ceilf(UiHeight());
 
     DrawStatus();
     DrawMinimap(sw - 202, 12, 190);
-    DrawFPS(sw - 202, 208);
+    if (G.showFps) Text(TextFormat("%d FPS", GetFPS()), (float)sw - 200, 208, 14, Fade(RAYWHITE, 0.8f));
     DrawAnimalBars();
     DrawPeopleBars();
     DrawPeerTags();
@@ -1859,8 +2165,12 @@ void DrawUI(void)
         float k = G.xpGainT / 2.0f;
         CenterText(TextFormat("+%d XP", G.xpGain), (float)sw / 2, (float)sh / 2 - 60 - 30 * (1.0f - k), 22, Fade(C_GOLD, fminf(1.0f, k * 2.0f)));
     }
-    if (OnWeb() && G.panel == PANEL_NONE && !PointerCaptured() && !TouchOn())
-        CenterText("Click the game to look around with the mouse", (float)sw / 2, (float)sh / 2 + 70, 20, C_GOLD);
+    if (OnWeb() && G.panel == PANEL_NONE && !PointerCaptured() && !TouchOn()) {
+        const char *click = L("Click the game to look around with the mouse");
+        float cw = (float)Measure(click, 20);
+        DrawRectangleRounded((Rectangle){ (float)sw / 2 - cw / 2 - 14, (float)sh / 2 + 64, cw + 28, 32 }, 0.3f, 6, Fade(BLACK, 0.5f));
+        CenterText(click, (float)sw / 2, (float)sh / 2 + 70, 20, C_GOLD);
+    }
 
     DrawRoyaleHUD((float)sw, (float)sh);
     DrawPartyHUD((float)sw, (float)sh);
@@ -1868,8 +2178,9 @@ void DrawUI(void)
     if (G.msgT > 0) DrawMessage(sw);
 
     DrawChat(sh);
-    if (!TouchOn()) Text(Online() ? "H  controls    T  chat" : "H  controls", 12, (float)sh - 22, 14, Fade(RAYWHITE, 0.6f));
+    if (!TouchOn()) Text(Online() ? "H  controls    T  chat" : "H  controls", 12, (float)sh - 26, 16, Fade(RAYWHITE, 0.75f));
 
+    pal = &CLAY;
     switch (G.panel) {
     case PANEL_BAG:     DrawBagPanel(); break;
     case PANEL_STORAGE: DrawStoragePanel(); break;
@@ -1883,6 +2194,7 @@ void DrawUI(void)
     case PANEL_SETTINGS: DrawSettingsPanel(); break;
     default: break;
     }
+    pal = &HUD;
 
     DrawTouch();
     if (G.panel != PANEL_NONE && OnWeb() && PointerCaptured()) DrawGameCursor();

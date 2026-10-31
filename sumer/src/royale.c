@@ -554,22 +554,22 @@ void DrawRoyaleHUD(float sw, float sh)
         line = wait > 0 ? TextFormat(L("%d of %d standing. The storm moves in %d:%02d."), alive, rnd.started, (int)wait / 60, (int)wait % 60)
                         : TextFormat(L("%d of %d standing. The storm is closing in."), alive, rnd.started);
     }
-    Vector2 m = MeasureTextEx(GameFont(), line, 18, 1);
+    Vector2 m = (Vector2){ GameTextWidth(line, 18), 18 };
     DrawRectangle((int)(sw / 2 - m.x / 2 - 10), 8, (int)m.x + 20, 28, Fade(BLACK, 0.55f));
-    DrawTextEx(GameFont(), line, (Vector2){ sw / 2 - m.x / 2, 13 }, 18, 1, rnd.phase == RP_RUN ? text : gold);
+    DrawGameText(line, sw / 2 - m.x / 2, 13, 18, rnd.phase == RP_RUN ? text : gold);
 
     if (out) {
         const char *who = watched >= 0 ? TextFormat(L("You are out. Watching %s (click or Space: the next player)."), G.peers[watched].name)
                                        : L("You are out. No one is left to watch.");
-        Vector2 w = MeasureTextEx(GameFont(), who, 18, 1);
+        Vector2 w = (Vector2){ GameTextWidth(who, 18), 18 };
         DrawRectangle((int)(sw / 2 - w.x / 2 - 10), (int)sh - 120, (int)w.x + 20, 28, Fade(BLACK, 0.55f));
-        DrawTextEx(GameFont(), who, (Vector2){ sw / 2 - w.x / 2, sh - 115 }, 18, 1, gold);
+        DrawGameText(who, sw / 2 - w.x / 2, sh - 115, 18, gold);
     } else if (InStorm(G.player.pos)) {
         DrawRectangle(0, 0, (int)sw + 1, (int)sh + 1, Fade((Color){ 170, 110, 50, 255 }, 0.38f));
         const char *warn = L("You are in the sandstorm! Get inside the circle on the map.");
-        Vector2 w = MeasureTextEx(GameFont(), warn, 22, 2);
+        Vector2 w = (Vector2){ GameTextWidth(warn, 22), 22 };
         DrawRectangle((int)(sw / 2 - w.x / 2 - 10), (int)(sh / 2 + 56), (int)w.x + 20, 32, Fade(BLACK, 0.5f));
-        DrawTextEx(GameFont(), warn, (Vector2){ sw / 2 - w.x / 2, sh / 2 + 60 }, 22, 2, (Color){ 255, 220, 160, 255 });
+        DrawGameText(warn, sw / 2 - w.x / 2, sh / 2 + 60, 22, (Color){ 255, 220, 160, 255 });
     }
 }
 

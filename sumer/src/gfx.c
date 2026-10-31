@@ -95,6 +95,21 @@ static Matrix vm;
 static bool vmOn;
 
 bool GfxOn(void) { return on; }
+
+// The shaders' path off for a moment (true) and back as it was (false): the item pictures (icons.c) are
+// drawn the classic way into a texture of their own.
+void GfxHold(bool hold)
+{
+    static bool was, held;
+    if (hold && !held) {
+        was = on;
+        on = false;
+        held = true;
+    } else if (!hold && held) {
+        on = was;
+        held = false;
+    }
+}
 bool DrawingAll(void) { return drawAll; }
 void SetMaterial(int m) { material = m; }
 int CurrentMaterial(void) { return material; }

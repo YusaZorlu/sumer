@@ -446,7 +446,7 @@ typedef struct {
     int followArrow;
     float followT, camBlend;
     Vector3 followPos, followDir;
-    bool arrowCam;
+    bool arrowCam, showFps;   // showFps: the frame rate under the map (Game settings)
     // The player's torch: wanted (B), in hand and burning, and how far through the second it takes to take
     // it up or put it away (it waits for that after a shot or a change of weapon too).
     bool torchOn, torchHeld;
@@ -963,8 +963,19 @@ void SaveLanguage(void);
 void LoadLanguage(void);
 const char *ItemName(int item);
 Font GameFont(void);
+void SetTextScale(float s);
+void DrawGameText(const char *s, float x, float y, float size, Color c);
+float GameTextWidth(const char *s, float size);
+// The item pictures (icons.c).
+void IconsPrepare(void);
+bool DrawItemIcon(int item, Rectangle r, Color tint);
 
 void SetPanel(Panel p);
+void DrawTablet(Rectangle r);
+bool TabletButton(Rectangle r, const char *label, int size, bool enabled, bool on);
+void DrawLogo(float cx, float y, float size);
+void TitleReset(void);
+bool TitleBackdrop(float dt);
 void DrawUI(void);
 void ChatAdd(int slot, const char *text);
 void ChatClear(void);
@@ -1184,6 +1195,7 @@ void GfxSetChoice(int choice);
 const char *GfxChoiceName(int choice);
 const char *GfxLabel(void);
 bool GfxOn(void);
+void GfxHold(bool hold);
 void GfxFlame(Vector3 p, float size);
 bool TorchBurning(void);
 bool DrawingAll(void);             // drawing the whole map once for the shaders' meshes: no culling

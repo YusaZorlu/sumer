@@ -791,14 +791,14 @@ void DrawPartyHUD(float sw, float sh)
         break;
     }
     // Both boards are kept small, so the game shows round them.
-    Vector2 m = MeasureTextEx(GameFont(), line, 14, 1);
-    DrawRectangle((int)(sw / 2 - m.x / 2 - 8), 8, (int)m.x + 16, 22, Fade(BLACK, 0.55f));
-    DrawTextEx(GameFont(), line, (Vector2){ sw / 2 - m.x / 2, 12 }, 14, 1, pty.phase == PP_GAME ? text : gold);
+    Vector2 m = (Vector2){ GameTextWidth(line, 16), 16 };
+    DrawRectangle((int)(sw / 2 - m.x / 2 - 8), 8, (int)m.x + 16, 24, Fade(BLACK, 0.55f));
+    DrawGameText(line, sw / 2 - m.x / 2, 12, 16, pty.phase == PP_GAME ? text : gold);
     if (pty.phase == PP_GAME) {
         const char *rule = PartyGameRule(pty.order[pty.game]);
-        Vector2 rm = MeasureTextEx(GameFont(), rule, 12, 1);
-        DrawRectangle((int)(sw / 2 - rm.x / 2 - 6), 32, (int)rm.x + 12, 18, Fade(BLACK, 0.45f));
-        DrawTextEx(GameFont(), rule, (Vector2){ sw / 2 - rm.x / 2, 35 }, 12, 1, dim);
+        Vector2 rm = (Vector2){ GameTextWidth(rule, 14), 14 };
+        DrawRectangle((int)(sw / 2 - rm.x / 2 - 6), 34, (int)rm.x + 12, 20, Fade(BLACK, 0.45f));
+        DrawGameText(rule, sw / 2 - rm.x / 2, 37, 14, dim);
         // Hide and seek: this player's part in it.
         const char *part = NULL;
         if (PartyGame() == PG_HIDE && Joined(G.self) && !waiting) {
@@ -808,9 +808,9 @@ void DrawPartyHUD(float sw, float sh)
                                    pty.seeker >= 0 ? G.peers[pty.seeker].name : "?");
         }
         if (part) {
-            Vector2 pm = MeasureTextEx(GameFont(), part, 13, 1);
-            DrawRectangle((int)(sw / 2 - pm.x / 2 - 6), 52, (int)pm.x + 12, 19, Fade(BLACK, 0.5f));
-            DrawTextEx(GameFont(), part, (Vector2){ sw / 2 - pm.x / 2, 55 }, 13, 1, gold);
+            Vector2 pm = (Vector2){ GameTextWidth(part, 15), 15 };
+            DrawRectangle((int)(sw / 2 - pm.x / 2 - 6), 56, (int)pm.x + 12, 21, Fade(BLACK, 0.5f));
+            DrawGameText(part, sw / 2 - pm.x / 2, 59, 15, gold);
         }
     }
 
@@ -824,39 +824,38 @@ void DrawPartyHUD(float sw, float sh)
         if (order[k] == G.self) rows[nr++] = k;
     float x = sw - 212, y = 232, w = 200;   // under the map and its frame counter
     DrawRectangle((int)x, (int)y, (int)w, 21 + 14 * nr, Fade(BLACK, 0.5f));
-    DrawTextEx(GameFont(), L("Party"), (Vector2){ x + 6, y + 4 }, 12, 1, gold);
-    DrawTextEx(GameFont(), L("game"), (Vector2){ x + 120, y + 4 }, 10, 1, dim);
-    DrawTextEx(GameFont(), L("total"), (Vector2){ x + 160, y + 4 }, 10, 1, dim);
+    DrawGameText(L("Party"), x + 6, y + 4, 12, gold);
+    DrawGameText(L("game"), x + 120, y + 4, 10, dim);
+    DrawGameText(L("total"), x + 160, y + 4, 10, dim);
     for (int r = 0; r < nr; r++) {
         int k = rows[r], s = order[k];
         float ry = y + 19 + 14 * (float)r;
         Color c = s == G.self ? gold : text;
-        DrawTextEx(GameFont(), TextFormat("%d. %s%s", k + 1, G.peers[s].name, (G.peers[s].flags & PF_READY) && LobbyWaiting() ? " *" : ""),
-                   (Vector2){ x + 6, ry }, 11, 1, c);
-        DrawTextEx(GameFont(), TextFormat("%d", pty.round[s]), (Vector2){ x + 120, ry }, 11, 1, c);
-        DrawTextEx(GameFont(), TextFormat("%d", pty.total[s]), (Vector2){ x + 160, ry }, 11, 1, c);
+        DrawGameText(TextFormat("%d. %s%s", k + 1, G.peers[s].name, (G.peers[s].flags & PF_READY) && LobbyWaiting() ? " *" : ""), x + 6, ry, 11, c);
+        DrawGameText(TextFormat("%d", pty.round[s]), x + 120, ry, 11, c);
+        DrawGameText(TextFormat("%d", pty.total[s]), x + 160, ry, 11, c);
     }
     if (PartyWaiting()) {
         const char *w2 = L("You joined during a game: you play from the next one.");
-        Vector2 wm = MeasureTextEx(GameFont(), w2, 18, 1);
+        Vector2 wm = (Vector2){ GameTextWidth(w2, 18), 18 };
         DrawRectangle((int)(sw / 2 - wm.x / 2 - 10), (int)sh - 120, (int)wm.x + 20, 28, Fade(BLACK, 0.55f));
-        DrawTextEx(GameFont(), w2, (Vector2){ sw / 2 - wm.x / 2, sh - 115 }, 18, 1, gold);
+        DrawGameText(w2, sw / 2 - wm.x / 2, sh - 115, 18, gold);
     } else if (downT <= 0 && PartyHider(G.self) && !InsideWalls(G.player.pos.x, G.player.pos.z, 0.0f)) {
         DrawRectangle(0, 0, (int)sw + 1, (int)sh + 1, Fade((Color){ 120, 90, 60, 255 }, 0.3f));
         const char *w2 = L("Back into the city! Out here a hider wastes away.");
-        Vector2 wm = MeasureTextEx(GameFont(), w2, 22, 2);
+        Vector2 wm = (Vector2){ GameTextWidth(w2, 22), 22 };
         DrawRectangle((int)(sw / 2 - wm.x / 2 - 10), (int)(sh / 2 + 56), (int)wm.x + 20, 32, Fade(BLACK, 0.5f));
-        DrawTextEx(GameFont(), w2, (Vector2){ sw / 2 - wm.x / 2, sh / 2 + 60 }, 22, 2, (Color){ 255, 200, 160, 255 });
+        DrawGameText(w2, sw / 2 - wm.x / 2, sh / 2 + 60, 22, (Color){ 255, 200, 160, 255 });
     } else if (downT <= 0 && InLava(G.player.pos)) {
         DrawRectangle(0, 0, (int)sw + 1, (int)sh + 1, Fade((Color){ 200, 40, 10, 255 }, 0.3f));
         const char *w2 = L("The floor is lava! Get up onto something.");
-        Vector2 wm = MeasureTextEx(GameFont(), w2, 22, 2);
+        Vector2 wm = (Vector2){ GameTextWidth(w2, 22), 22 };
         DrawRectangle((int)(sw / 2 - wm.x / 2 - 10), (int)(sh / 2 + 56), (int)wm.x + 20, 32, Fade(BLACK, 0.5f));
-        DrawTextEx(GameFont(), w2, (Vector2){ sw / 2 - wm.x / 2, sh / 2 + 60 }, 22, 2, (Color){ 255, 200, 160, 255 });
+        DrawGameText(w2, sw / 2 - wm.x / 2, sh / 2 + 60, 22, (Color){ 255, 200, 160, 255 });
     } else if (downT > 0) {
         const char *w2 = TextFormat(L("Back in the game in %d s."), (int)ceilf(downT));
-        Vector2 wm = MeasureTextEx(GameFont(), w2, 22, 2);
+        Vector2 wm = (Vector2){ GameTextWidth(w2, 22), 22 };
         DrawRectangle((int)(sw / 2 - wm.x / 2 - 10), (int)(sh / 2 + 56), (int)wm.x + 20, 32, Fade(BLACK, 0.5f));
-        DrawTextEx(GameFont(), w2, (Vector2){ sw / 2 - wm.x / 2, sh / 2 + 60 }, 22, 2, gold);
+        DrawGameText(w2, sw / 2 - wm.x / 2, sh / 2 + 60, 22, gold);
     }
 }
