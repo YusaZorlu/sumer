@@ -7,13 +7,18 @@
 // says what it is (255 skin and the rest, 254 woven cloth, 253 fleece or fur, 252 leather, 251 metal). On
 // the ground, alpha 254 marks a road.
 
+// Leaves (material 7) carry their place in assets/foliage.png in the other coordinates (0-255) and how
+// far up the plant the point is (0 at its foot): the wind sways them, more the higher.
 const char *SH_WORLD_VS =
     "in vec3 vertexPosition; in vec4 vertexTexCoord; in vec3 vertexNormal; in vec4 vertexColor;\n"
-    "uniform mat4 mvp;\n"
+    "uniform mat4 mvp; uniform float time;\n"
     "out vec3 wpos; out vec4 vcol; out vec3 vnrm; out vec3 vbody; flat out int vmat;\n"
-    "void main(){ wpos=vertexPosition; vcol=vertexColor; vnrm=vertexNormal; vmat=int(vertexTexCoord.x+0.5);\n"
+    "void main(){ vec3 p=vertexPosition; vcol=vertexColor; vnrm=vertexNormal; vmat=int(vertexTexCoord.x+0.5);\n"
     "  vbody=vertexTexCoord.yzw/64.0;\n"
-    "  gl_Position=mvp*vec4(vertexPosition,1.0); }\n";
+    "  if(vmat==7){ vbody=vertexTexCoord.yzw/255.0; float up=vbody.z*vbody.z, ph=dot(p.xz,vec2(0.11,0.07));\n"
+    "    float gust=0.6+0.4*sin(time*0.37+p.x*0.013);\n"
+    "    p.xz+=vec2(0.85,0.53)*up*gust*(0.16*sin(time*1.6+ph)+0.06*sin(time*3.3+ph*2.7)); }\n"
+    "  wpos=p; gl_Position=mvp*vec4(p,1.0); }\n";
 
 // The sky's color in a direction, the tone curve and the noise: shared by the sky and the world.
 // The sky: a plain gradient from the horizon up with the sun's glow, and over it the photographed skies
@@ -76,7 +81,7 @@ const char *SH_WORLD_FS =
     "uniform int torchSlots; uniform int gridN; uniform float gridCell; uniform float torchRadius;\n"
     "uniform int dynCount; uniform vec4 dynLights[8];\n"
     "uniform mat4 lightVP; uniform sampler2D shadowMap; uniform sampler2D heightMap; uniform sampler2D torchGrid; uniform sampler2D torchData;\n"
-    "uniform sampler2D detailMap; uniform sampler2D detailMap2; uniform sampler2D detailMap3;\n"
+    "uniform sampler2D detailMap; uniform sampler2D detailMap2; uniform sampler2D detailMap3; uniform sampler2D detailMap4; uniform sampler2D foliageMap;\n"
     // A photo's light and dark, about -1..1: on the faces turned most toward each axis, blended (no UVs needed)
     "float det(vec3 p,vec3 n,float s,int c){ vec3 w=pow(abs(n),vec3(4.0)); w/=w.x+w.y+w.z;\n"
     "  return (texture(detailMap,p.zy*s)[c]*w.x+texture(detailMap,p.xz*s)[c]*w.y+texture(detailMap,p.xy*s)[c]*w.z)*3.2-1.6; }\n"
@@ -110,7 +115,11 @@ const char *SH_WORLD_FS =
     "  return sum*torchCol*night; }\n"
     "void main(){\n"
     "  if(vmat==6){ finalColor=vcol; return; }\n"
+    "  vec4 leaf=vec4(1.0);\n"
+    "  if(vmat==7){ leaf=texture(foliageMap,vbody.xy);\n"   // cut out, a little more held at a distance where the mipmaps thin it
+    "    if(leaf.a<mix(0.5,0.22,smoothstep(8.0,60.0,length(camPos-wpos)))) discard; }\n"
     "  vec3 base=pow(vcol.rgb,vec3(2.2));\n"
+    "  if(vmat==7) base=pow(leaf.rgb,vec3(2.2))*base*2.0;\n"
     "  if(vmat==3){ finalColor=vec4(toScreen(base*2.6),vcol.a); return; }\n"
     "  vec3 toCam=camPos-wpos; float dist=length(toCam); vec3 V=toCam/max(dist,0.001);\n"
     "  vec3 fn=normalize(cross(dFdx(wpos),dFdy(wpos))); if(dot(fn,toCam)<0.0) fn=-fn;\n"
@@ -120,8 +129,13 @@ const char *SH_WORLD_FS =
     "  float lum=dot(vcol.rgb,vec3(0.3,0.59,0.11)), sat=max(vcol.r,max(vcol.g,vcol.b))-min(vcol.r,min(vcol.g,vcol.b));\n"
     "  float rough=0.85, spec=0.04; bool water=false;\n"
     "  if(vmat==1){\n"   // ground: soil and sand with grain, a gentle bump, darker and glossy in the rain
+    // which surface by the ground's color: green is sparse grass, bright is sand or dust, darker cracked mud,
+    // the rest dry mud (detailMap4: R cracked mud, G grass, B sand, A dry mud)
     "    float big=fbm(wpos*vec3(0.08,0.0,0.08)); vec2 uv=wpos.xz*0.31, e=vec2(0.004,0.0);\n"
-    "    float d=texture(detailMap,uv).r, dx=texture(detailMap,uv+e).r-d, dz=texture(detailMap,uv+e.yx).r-d;\n"
+    "    vec3 vc=vcol.rgb; float vl=dot(vc,vec3(0.3,0.59,0.11)); float gW=smoothstep(-0.03,0.06,vc.g-vc.r);\n"
+    "    float sW=(1.0-gW)*smoothstep(0.64,0.72,vl), mW=(1.0-gW-sW)*smoothstep(0.62,0.52,vl);\n"
+    "    vec4 w4=vec4(mW,gW,sW,max(1.0-gW-sW-mW,0.0)); vec2 uv4=wpos.xz*0.24;\n"
+    "    float d=dot(texture(detailMap4,uv4),w4), dx=dot(texture(detailMap4,uv4+e),w4)-d, dz=dot(texture(detailMap4,uv4+e.yx),w4)-d;\n"
     "    float far=texture(detailMap,wpos.xz*0.043+0.37).r-0.5;\n"   // a second, larger scale breaks the repeat
     "    base*=0.80+0.30*big+(d-0.5)*0.85*mix(0.45,1.0,near)+far*0.25;\n"
     "    n=normalize(n-vec3(dx,0.0,dz)*6.0*near); rough=mix(0.97,0.35,wet); base*=mix(1.0,0.72,wet);\n"
@@ -132,7 +146,7 @@ const char *SH_WORLD_FS =
     "    n=normalize(vec3(-(hx-h0)/e*0.35,1.0,-(hz-h0)/e*0.35)); n=normalize(mix(n,vec3(0.0,1.0,0.0),1.0-near*0.8));\n"
     "    rough=0.05; spec=0.02; float deep=max(wpos.y-groundAt(wpos.xz),0.0);\n"
     "    base=mix(vec3(0.05,0.10,0.08),vec3(0.015,0.05,0.055),smoothstep(0.2,2.0,deep));\n"
-    "  } else if(vmat!=4 && vcol.a>0.982 && vcol.a<0.998){\n" // trees and fields: bark, leaves, tilled earth, straw
+    "  } else if(vmat!=4 && vmat!=7 && vcol.a>0.982 && vcol.a<0.998){\n" // trees and fields: bark, leaves, tilled earth, straw
     "    int tag=int(255.0-vcol.a*255.0+0.5); float s=tag==1?0.9:tag==2?0.9:tag==3?0.3:1.3;\n"
     "    base*=max(1.0+det3(wpos,n,s,tag-1)*(tag==2?0.7:tag==1?0.6:0.5)*mix(0.4,1.0,near),0.2);\n"
     "    if(tag==2){ base*=0.78+0.42*fbm(wpos*2.2); rough=0.95; } else rough=tag==4?0.7:0.92;\n"
@@ -147,10 +161,12 @@ const char *SH_WORLD_FS =
     "      base=mix(brick,plast,plaster*0.65);\n"
     "      n=normalize(n+vec3(0.0,-by*6.0,0.0)*(1.0-plaster)*near);\n"
     "    } else { base*=0.86+0.2*fbm(wpos*0.9)+0.25*det(wpos,fn,0.31,0)*0.25*near; }\n"
-    "  } else if(vmat!=4 && vcol.g>vcol.r*1.05 && vcol.g>vcol.b){\n" // leaves: blotches and a sheen
+    "  } else if(vmat!=4 && vmat!=7 && vcol.g>vcol.r*1.05 && vcol.g>vcol.b){\n" // leaves: blotches and a sheen
     "    base*=0.75+0.45*fbm(wpos*2.2); rough=0.6;\n"
-    "  } else if(vmat!=4 && vcol.r>vcol.g && vcol.g>vcol.b && lum<0.45 && sat>0.12){\n" // wood: grain along the length
+    "  } else if(vmat!=4 && vmat!=7 && vcol.r>vcol.g && vcol.g>vcol.b && lum<0.45 && sat>0.12){\n" // wood: grain along the length
     "    base*=0.9+0.1*fbm(wpos*1.5)+det(wpos,n,0.45,2)*0.22*mix(0.4,1.0,near); rough=0.75;\n"
+    "  } else if(vmat==7){\n"   // leaves: lit from above whichever way the card faces, darker toward the foot
+    "    n=normalize(vec3(n.x*0.3,1.0,n.z*0.3)); rough=0.8; base*=0.55+0.45*vbody.z;\n"
     "  } else if(vmat==4){\n"   // people and animals: the photo grain of what they wear, a soft sheen on skin
     "    int tag=int(255.0-vcol.a*255.0+0.5);\n"
     "    if(tag>=1&&tag<=3){ vec3 ln=cross(dFdx(vbody),dFdy(vbody)); ln=dot(ln,ln)>1e-12?normalize(ln):vec3(0.0,0.0,1.0);\n"
@@ -164,7 +180,7 @@ const char *SH_WORLD_FS =
     "  float ndl=max(dot(n,lightDir),0.0);\n"
     "  float sh=ndl>0.0?shadowAt(wpos,n,ndl):0.0;\n"
     "  float above=wpos.y-groundAt(wpos.xz);\n"
-    "  float ao=(vmat==1||water)?1.0:mix(0.5,1.0,smoothstep(0.0,1.6,above))*(0.78+0.22*max(n.y,0.0));\n"
+    "  float ao=(vmat==1||vmat==7||water)?1.0:mix(0.5,1.0,smoothstep(0.0,1.6,above))*(0.78+0.22*max(n.y,0.0));\n"
     "  vec3 amb=mix(ambGround,ambSky,n.y*0.5+0.5)*ao;\n"
     "  vec3 torch=night>0.0?torchLight(wpos,n):vec3(0.0);\n"
     "  vec3 H=normalize(lightDir+V); float sp=pow(max(dot(n,H),0.0),mix(512.0,8.0,rough))*mix(40.0,0.05,rough)*ndl;\n"
@@ -189,7 +205,7 @@ const char *SH_DEPTH_VS =
 
 const char *SH_DEPTH_FS =
     "flat in int vmat; out vec4 finalColor;\n"
-    "void main(){ if(vmat==2||vmat==3||vmat==6) discard;\n"
+    "void main(){ if(vmat==2||vmat==3||vmat==6||vmat==7) discard;\n"
     "  vec3 e=fract(gl_FragCoord.z*vec3(1.0,255.0,65025.0)); e-=e.yzz*vec3(1.0/255.0,1.0/255.0,0.0); finalColor=vec4(e,1.0); }\n";
 
 // After the scene: the bright parts for the glow, a blur, then FXAA, the glow and a vignette.
@@ -219,5 +235,5 @@ const char *SH_POST_FS =
     "  float l=dot(c,vec3(0.299,0.587,0.114)); c=mix(vec3(l),c,1.12); c=clamp((c-0.5)*1.06+0.5,0.0,1.0);\n"
     // warm and a little dusty, like a photograph of the dry land: reds up and blues down in the middle tones,
     // the shadows lifted toward brown
-    "  c=pow(c,vec3(0.96,1.0,1.07)); c+=vec3(0.018,0.010,0.0)*(1.0-c);\n"
+    "  c=pow(c,vec3(0.975,1.0,1.04)); c+=vec3(0.012,0.007,0.0)*(1.0-c);\n"
     "  vec2 q=uv-0.5; c*=1.0-0.35*dot(q,q)*1.6; finalColor=vec4(c,1.0); }\n";

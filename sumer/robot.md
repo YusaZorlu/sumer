@@ -431,6 +431,16 @@ in `src/game.h`) holds the whole world.
   plain sky they replace. `skyColor` (sky dome, water reflections) uses them, `skyFlat` (the haze) does not; the
   haze's horizon color is pulled toward the pictures' (`PIC_HOR`, printed by the script: rebuild them together).
   No mipmaps on the pictures (the seam of `atan` would show). A missing file turns the pictures off.
+- **Leaves** (`MAT_FOLIAGE`, render.c `DrawLeafCard`/`DrawLeafTuft`/`DrawFrond`): cut-out pictures from
+  assets/foliage.png (cells `LEAF_*`, places in `LEAF_CELLS`); `VLeaf(u, v, up)` puts each point's place in the sheet
+  and its height up the plant (the vertex shader sways it by that) in the vertex's spare bytes. Leaves cast no
+  shadow and are only drawn while `GfxOn()`: the classic drawing keeps the old shapes (cones, sticks, wedges).
+  World boxes stay the same: `LeafBox` (world.c) draws the plain's small green cones and the bank's reed stems
+  as leaves. The grass layer is `BuildGrass` (gfx.c), a chunk at a time within 80 m (45 on Low), placed by
+  `Greenness` (terrain.c: water nearby, fields, pastures) and kept off walls, roads, water and anything standing.
+- **The land's colors** (`BuildTerrain`): `Patches` noise for dust, cracked mud and pale ground, green by
+  `Greenness`, sand within 7 m of water (`WaterDistance`); the ground shader picks detailMap4's surface (cracked
+  mud, grass, sand, dry mud) from that color, so keep the hues apart when changing them.
 - **The title's backdrop** (`TitleBackdrop` in game.c): `OpenLobby` calls `TitleReset`; the frame after, the lobby
   calls `GameInit` and from then on draws the world with `GfxDrawWorld` from an orbiting camera at dusk, the
   player moved underground. Only where `GfxTier()` is not Classic, so the browser tests (Classic unless `?gfx=`) keep

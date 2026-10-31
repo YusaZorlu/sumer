@@ -38,6 +38,8 @@ extern const char *SH_BRIGHT_FS, *SH_BLUR_FS, *SH_POST_FS;
 #define TEX_DETAIL2     15
 #define TEX_DETAIL3     9                   // WebGL 2 promises only 16 units
 #define TEX_SKY         6                   // 6, 7 and 8: the sky's three pictures
+#define TEX_DETAIL4     5
+#define TEX_FOLIAGE     4
 #define SKY_MEAN        0.3f                // their mean brightness (make_detail.py's SKY_MEAN)
 
 // 24 bytes: position, normal (0 when the shader is to work it out), color, material.
@@ -46,11 +48,12 @@ typedef struct { GVert *v; int n, cap; } VList;
 typedef struct { unsigned int vao, vbo; int verts; } Block;
 typedef struct { Block *blocks; int count; bool built; } GMesh;
 typedef struct {
-    GMesh ground, things[LODS];
+    GMesh ground, things[LODS], grass;
     Vector3 lo, hi;
     int *boxes, boxCount, boxCap, *res, resCount, resCap;
     unsigned int sig;
     int lod;                    // the detail its things are drawn at this frame; -1 none
+    bool grassShown;            // near enough this frame for its grass to be drawn
 } Chunk;
 
 typedef struct {
@@ -58,7 +61,7 @@ typedef struct {
     int torchCol, fogDensity, time, worldHalf, night, wet, shadowTexel, shadowRange, groundTile, groundN;
     int heightScale, heightBase, torchSlots, gridN, gridCell, torchRadius, dynCount, dynLights, lightVP;
     int shadowMap, heightMap, torchGrid, torchData, moonDir, cloudy, texel, bloom, bloomAmt, dir, detailMap, detailMap2, detailMap3;
-    int skyDay, skyDusk, skyGrey, skyMix, skyTurn, skyLevel;
+    int skyDay, skyDusk, skyGrey, skyMix, skyTurn, skyLevel, detailMap4, foliageMap;
 } Locs;
 
 typedef struct {
@@ -85,7 +88,7 @@ static unsigned int quadIndex;
 static Block dynBlocks[MAX_DYN_BLOCKS], skyBlock;
 static int dynUsed;
 static VList dyn, scratch;
-static Texture2D heightTex, gridTex, torchTex, detailTex, detail2Tex, detail3Tex, flameTex, skyTex[3];
+static Texture2D heightTex, gridTex, torchTex, detailTex, detail2Tex, detail3Tex, detail4Tex, foliageTex, flameTex, skyTex[3];
 static float heightScale = 1.0f, heightBase;
 static RenderTexture2D scene, brightRT, blurRT, shadowRT;
 static int sceneW, sceneH, shadowSize, targetTier = -1;
@@ -153,6 +156,15 @@ void VBegin(int mode)
 void VEnd(void)
 {
     if (!sink) rlEnd();
+}
+
+// A leaf's place in assets/foliage.png (0-255 across and down) and how far up the plant it is (0 at the foot,
+// 255 at the top: the wind sways it that much), for the points that follow (MAT_FOLIAGE).
+void VLeaf(int u, int v, int up)
+{
+    cur.m[1] = (unsigned char)u;
+    cur.m[2] = (unsigned char)v;
+    cur.m[3] = (unsigned char)up;
 }
 
 void VColor(Color c)
@@ -335,7 +347,7 @@ static Locs Find(Shader s)
     L_(shadowTexel); L_(shadowRange); L_(groundTile); L_(groundN); L_(heightScale); L_(heightBase); L_(torchSlots);
     L_(gridN); L_(gridCell); L_(torchRadius); L_(dynCount); L_(dynLights); L_(lightVP); L_(shadowMap); L_(heightMap);
     L_(torchGrid); L_(torchData); L_(moonDir); L_(cloudy); L_(texel); L_(bloom); L_(bloomAmt); L_(dir); L_(detailMap); L_(detailMap2); L_(detailMap3);
-    L_(skyDay); L_(skyDusk); L_(skyGrey); L_(skyMix); L_(skyTurn); L_(skyLevel);
+    L_(skyDay); L_(skyDusk); L_(skyGrey); L_(skyMix); L_(skyTurn); L_(skyLevel); L_(detailMap4); L_(foliageMap);
 #undef L_
     return l;
 }
@@ -414,6 +426,8 @@ static void LoadDetail(void)
     detailTex = LoadAsset("detail.png", true);
     detail2Tex = LoadAsset("detail2.png", true);
     detail3Tex = LoadAsset("detail3.png", true);
+    detail4Tex = LoadAsset("detail4.png", true);
+    foliageTex = LoadAsset("foliage.png", false);
     flameTex = LoadAsset("flame.png", false);
     static const char *const SKIES[3] = { "sky_day.jpg", "sky_dusk.jpg", "sky_grey.jpg" };
     for (int i = 0; i < 3; i++) skyTex[i] = LoadSkyPicture(SKIES[i]);
@@ -694,6 +708,7 @@ static void FreeChunks(void)
     for (int c = 0; c < CHUNKS * CHUNKS; c++) {
         Chunk *k = &chunks[c];
         FreeMesh(&k->ground);
+        FreeMesh(&k->grass);
         DropThings(k);
         free(k->boxes);
         free(k->res);
@@ -743,6 +758,42 @@ static void BuildStill(void)
 }
 
 static const float LOD_D2[LODS] = { 0.0f, 50.0f * 50.0f, 100.0f * 100.0f };
+
+// The grass of the open land, a chunk at a time, near the camera only: a tuft every few metres, thick on
+// green land by the water and the fields, now and then on the dry plain; never in the city, on a road, in
+// water or where something already stands. Fixed by place, so it is the same every time.
+#define GRASS_CELL  2.2f
+static void BuildGrass(Chunk *c, int ci)
+{
+    float x0 = -WORLD_HALF + (float)(ci % CHUNKS) * CHUNK, z0 = -WORLD_HALF + (float)(ci / CHUNKS) * CHUNK;
+    int n = (int)(CHUNK / GRASS_CELL);
+    Catch(&scratch);
+    for (int gx = 0; gx < n; gx++)
+        for (int gz = 0; gz < n; gz++) {
+            int hx = (int)(x0 / GRASS_CELL) + gx, hz = (int)(z0 / GRASS_CELL) + gz;
+            float x = x0 + ((float)gx + Hash2(hx, hz * 3 + 1)) * GRASS_CELL, z = z0 + ((float)gz + Hash2(hx * 5 + 2, hz)) * GRASS_CELL;
+            if (fabsf(x) > WORLD_LIMIT - 2.0f || fabsf(z) > WORLD_LIMIT - 2.0f) continue;
+            float green = WestBank(x) ? 0.75f : Greenness(x, z), roll = Hash2(hx * 7 + 3, hz * 11 + 5);
+            float steppe = !WestBank(x) && TerrainHeight(x, z) > 1.5f ? 0.12f : 0.0f;   // the rises hold a little more
+            if (roll > 0.05f + steppe + 0.62f * green) continue;
+            if (InsideWalls(x, z, 4.0f) || InWater(x, z) || RoadDistance(x, z) < 2.6f) continue;
+            float ground = GroundSurface(x, z);
+            bool free = true;
+            for (int k = 0; k < c->boxCount && free; k++) {
+                const Box *b = &G.boxes[c->boxes[k]];
+                if (b->pos.y - b->size.y / 2 > ground + 1.2f) continue;   // high up: a roof, a branch
+                free = fabsf(x - b->pos.x) > b->size.x / 2 + 0.35f || fabsf(z - b->pos.z) > b->size.z / 2 + 0.35f;
+            }
+            if (!free) continue;
+            float pick = Hash2(hz * 13 + 1, hx * 17 + 9);
+            int kind = green > 0.45f && pick > 0.2f ? LEAF_GRASS : LEAF_DRY;
+            float h = kind == LEAF_GRASS ? 0.42f + 0.38f * pick : 0.28f + 0.3f * pick;
+            Color tint = kind == LEAF_GRASS ? (Color){ (unsigned char)(170 + 20 * roll), 182, (unsigned char)(160 + 20 * pick), 255 } : LEAF_TINT;
+            DrawLeafTuft((Vector3){ x, ground + 0.02f, z }, h, roll * 9.0f, kind, tint);
+        }
+    Release();
+    MeshFrom(&c->grass, scratch.v, scratch.n);
+}
 
 // A chunk's buildings, plants and rocks at one level of detail: the finest has bevels and round
 // columns, the farthest leaves out everything small.
@@ -812,10 +863,18 @@ static void ChooseLods(void)
     for (int ci = 0; ci < CHUNKS * CHUNKS; ci++) {
         Chunk *c = &chunks[ci];
         c->lod = -1;
-        if (c->lo.x > c->hi.x || (!c->boxCount && !c->resCount)) continue;
+        c->grassShown = false;
+        if (c->lo.x > c->hi.x) continue;
+        if (!c->boxCount && !c->resCount) {   // open land only: its grass, near enough
+            c->grassShown = BoxDistance(eye, c->lo, c->hi) < (GfxTier() == GFX_LOW ? 45.0f : 80.0f);
+            if (c->grassShown && !c->grass.built && TimeLeft()) BuildGrass(c, ci);
+            continue;
+        }
         if (c->resCount && c->sig != ResSig(c)) DropThings(c);
         float d = BoxDistance(eye, c->lo, c->hi);
         if (d > reach) continue;
+        c->grassShown = d < (GfxTier() == GFX_LOW ? 45.0f : 80.0f);
+        if (c->grassShown && !c->grass.built && TimeLeft()) BuildGrass(c, ci);
         int want = d < 40.0f ? 0 : d < 150.0f ? 1 : 2;
         if (!c->things[want].built && (TimeLeft() || (!c->things[0].built && !c->things[1].built && !c->things[2].built)))
             BuildThings(c, want);
@@ -832,6 +891,7 @@ static void DrawChunks(const Frustum *f)
         if (c->lo.x > c->hi.x || !InFrustum(f, c->lo, c->hi)) continue;
         DrawMeshBlocks(&c->ground);
         if (c->lod >= 0) DrawMeshBlocks(&c->things[c->lod]);
+        if (c->grassShown && c->grass.built) DrawMeshBlocks(&c->grass);
     }
 }
 
@@ -1123,6 +1183,8 @@ static void WorldUniforms(const SkyNow *s, Matrix lightVP, int quality)
     BindTexture(TEX_DETAIL, detailTex.id, l->detailMap);
     BindTexture(TEX_DETAIL2, detail2Tex.id, l->detailMap2);
     BindTexture(TEX_DETAIL3, detail3Tex.id, l->detailMap3);
+    BindTexture(TEX_DETAIL4, detail4Tex.id, l->detailMap4);
+    BindTexture(TEX_FOLIAGE, foliageTex.id, l->foliageMap);
     rlActiveTextureSlot(0);
 }
 

@@ -99,6 +99,41 @@ bool WestBank(float x)
     return x < RIVER_X0;
 }
 
+// How far (m) the nearest water is: the river and the canals, 0 on them.
+float WaterDistance(float x, float z)
+{
+    float best = 1e9f;
+    for (int i = 0; i < CHANNEL_COUNT; i++) {
+        const Channel *c = &CHANNELS[i];
+        if (!c->wet) continue;
+        float ox = fmaxf(fmaxf(c->x0 - x, x - c->x1), 0.0f), oz = fmaxf(fmaxf(c->z0 - z, z - c->z1), 0.0f);
+        best = fminf(best, sqrtf(ox * ox + oz * oz));
+    }
+    return best;
+}
+
+// Smooth noise in 0..1 over the land, for patches tens of metres across.
+static float Patches(float x, float z, float scale, int seed)
+{
+    float fx = x / scale, fz = z / scale;
+    int ix = (int)floorf(fx), iz = (int)floorf(fz);
+    float tx = fx - (float)ix, tz = fz - (float)iz;
+    tx = tx * tx * (3.0f - 2.0f * tx);
+    tz = tz * tz * (3.0f - 2.0f * tz);
+    float a = Hash2(ix * 7 + seed, iz), b = Hash2(ix * 7 + 7 + seed, iz), c = Hash2(ix * 7 + seed, iz + 1), d = Hash2(ix * 7 + 7 + seed, iz + 1);
+    return Lerp(Lerp(a, b, tx), Lerp(c, d, tx), tz);
+}
+
+// The open land's look at x, z on the city's side of the river: dusty, patchy earth with sparse grass, and
+// green only where water comes (the river, the canals, the irrigated fields and the villages' pastures),
+// sand and mud along the banks. 'lush' 0..1 is how green it is (it also decides where grass grows).
+float Greenness(float x, float z)
+{
+    float wd = WaterDistance(x, z);
+    float byWater = 1.0f - Clamp((wd - 3.0f) / 38.0f, 0.0f, 1.0f);
+    return fmaxf(byWater * byWater, Fertility(x, z) * 0.75f * (x > RIVER_X1 + 40.0f ? 1.0f : 0.0f));
+}
+
 static float Land(float x, float z)
 {
     float edge = Smooth(WORLD_HALF, WORLD_HALF - 20.0f, fabsf(x)) * Smooth(WORLD_HALF, WORLD_HALF - 20.0f, fabsf(z));
@@ -246,9 +281,10 @@ static void BlendCorners(void)
 
 void BuildTerrain(void)
 {
-    const Color dry = { 166, 160, 104, 255 }, lush = { 98, 132, 60, 255 }, earth = { 176, 154, 110, 255 };
-    const Color scrub = { 118, 128, 74, 255 }, rock = { 146, 134, 110, 255 };
-    const Color meadow = { 112, 152, 64, 255 }, woods = { 72, 114, 48, 255 }, track = { 150, 132, 96, 255 };
+    const Color dust = { 164, 148, 122, 255 }, mud = { 130, 110, 90, 255 }, pale = { 184, 172, 146, 255 };
+    const Color sparse = { 132, 132, 94, 255 }, lush = { 104, 124, 70, 255 }, sand = { 178, 162, 132, 255 }, earth = { 176, 154, 110, 255 };
+    const Color scrub = { 128, 126, 92, 255 }, rock = { 146, 134, 110, 255 };
+    const Color meadow = { 124, 146, 76, 255 }, woods = { 86, 114, 58, 255 }, track = { 150, 132, 96, 255 };
     const int n = GROUND_TILES;
 
     for (int i = 0; i <= n; i++)
@@ -263,7 +299,12 @@ void BuildTerrain(void)
         for (int j = 0; j < n; j++) {
             float x = -WORLD_HALF + ((float)i + 0.5f) * TILE_SIZE, z = -WORLD_HALF + ((float)j + 0.5f) * TILE_SIZE;
             float h = (G.heights[i][j] + G.heights[i + 1][j] + G.heights[i][j + 1] + G.heights[i + 1][j + 1]) / 4;
-            Color c = Mix(dry, lush, powf(Fertility(x, z), 0.8f));
+            // The open land: dust with patches of cracked mud and paler ground, sparse grass here and there,
+            // green by the water and the fields, sand and mud on the banks.
+            Color c = Mix(dust, mud, Clamp((Patches(x, z, 34.0f, 3) - 0.4f) * 2.2f, 0.0f, 1.0f));
+            c = Mix(c, pale, Clamp((Patches(x, z, 52.0f, 11) - 0.55f) * 2.0f, 0.0f, 0.7f));
+            c = Mix(c, sparse, Clamp((Patches(x, z, 26.0f, 19) - 0.5f) * 2.2f, 0.0f, 0.75f));
+            float wd = WaterDistance(x, z);
 
             // Across the river: meadows and darker woodland, bare rock only on the highest tops.
             if (WestBank(x)) {
@@ -271,9 +312,11 @@ void BuildTerrain(void)
                 c = Mix(meadow, woods, patch);
                 if (h > 15.0f) c = Mix(c, rock, Clamp((h - 15.0f) / 9.0f, 0.0f, 0.55f));
             } else {
-                if (h > 1.0f) c = Mix(c, scrub, Clamp((h - 1.0f) / 5.0f, 0.0f, 1.0f));
+                c = Mix(c, lush, Greenness(x, z));
+                if (h > 1.0f) c = Mix(c, scrub, Clamp((h - 1.0f) / 5.0f, 0.0f, 0.8f));
                 if (h > 11.0f) c = Mix(c, rock, Clamp((h - 11.0f) / 8.0f, 0.0f, 0.8f));
             }
+            if (wd < 7.0f) c = Mix(c, sand, 0.85f * (1.0f - Clamp((wd - 1.5f) / 5.5f, 0.0f, 1.0f)));
             if (InsideWalls(x, z, -4.0f)) c = Mix(c, earth, 0.85f);
             // Worn ground along the roads, so they still show where their strips are not drawn.
             float rd = RoadDistance(x, z);

@@ -584,6 +584,8 @@ void DrawWater(void);
 float RayTerrain(Vector3 o, Vector3 dir, float maxT);
 float Fertility(float x, float z);
 bool WestBank(float x);
+float WaterDistance(float x, float z);
+float Greenness(float x, float z);
 void BuildTerrain(void);
 void DrawGround(void);
 float GroundTorch(float x, float z);
@@ -1187,7 +1189,7 @@ void SfxExport(const char *dir);
 // (Lit() leaves them as they are), a material and normals, and the shaders do the light. The vertex
 // stream below is how every piece of the world is drawn, whichever way it goes.
 enum { GFX_AUTO, GFX_HIGH, GFX_LOW, GFX_CLASSIC, GFX_CHOICES };
-enum { MAT_THING, MAT_GROUND, MAT_WATER, MAT_GLOW, MAT_FIGURE, MAT_BUILT, MAT_UNLIT };
+enum { MAT_THING, MAT_GROUND, MAT_WATER, MAT_GLOW, MAT_FIGURE, MAT_BUILT, MAT_UNLIT, MAT_FOLIAGE };
 void GfxLoadSetting(void);
 int GfxChoice(void);               // what the player picked, GFX_AUTO included
 int GfxTier(void);                 // what runs: GFX_HIGH, GFX_LOW or GFX_CLASSIC
@@ -1208,6 +1210,13 @@ void VEnd(void);
 void VColor(Color c);
 void VNormal(float x, float y, float z);
 void VVertex(float x, float y, float z);
+void VLeaf(int u, int v, int up);
+// Leaves as cut-out pictures from assets/foliage.png (render.c): only while the shaders draw (GfxOn).
+enum { LEAF_GRASS, LEAF_DRY, LEAF_REEDS, LEAF_FROND, LEAF_FROND2 };
+#define LEAF_TINT CLITERAL(Color){ 186, 186, 186, 255 }   // leaves in their own colors
+void DrawLeafCard(Vector3 base, float w, float h, float yaw, int cell, Color tint);
+void DrawLeafTuft(Vector3 base, float h, float yaw, int cell, Color tint);
+void DrawFrond(Vector3 at, float yaw, float len, float rise, float droop, int cell, Color tint);
 
 
 // Battle royale (royale.c)
