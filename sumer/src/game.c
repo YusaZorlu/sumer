@@ -88,7 +88,7 @@ bool TitleBackdrop(float dt)
         titleState = 2;
     }
     titleT += fminf(dt, 0.1f);
-    G.hour = 18.1f + 0.9f * fminf(titleT / 600.0f, 1.0f);   // the dusk deepens over ten minutes
+    G.hour = 17.55f + 0.85f * fminf(titleT / 600.0f, 1.0f);   // from the golden hour into dusk over ten minutes
     G.raining = false;
     G.player.pos = (Vector3){ 0, -80.0f, ZIG_Z };   // out of the picture
     // Aimed to the right of the ziggurat, so that it stands at the left beside the window, not behind it.

@@ -1397,9 +1397,19 @@ static void TestPets(void)
     Interact(false);
     Check(asked && offered && BagCount(IT_FISH) == 1 && PetFriend(cat) == G.self && PetEating(cat),
           "a cat wants a fish; given one it eats (fish left %d, friend %d)", BagCount(IT_FISH), PetFriend(cat));
+    // 7 m off in the open: a way with nothing solid or wet on the straight line from the cat (a wall in
+    // between made this depend on where the cat had wandered).
     Vector3 away = { c.x + 7.0f, 0, c.z };
-    bool walkable = !SolidAt(away.x, away.z, 0.5f) && !InWater(away.x, away.z);
-    if (!walkable) away = (Vector3){ c.x - 7.0f, 0, c.z };
+    for (int k = 0; k < 8; k++) {
+        float a = (float)k * PI / 4.0f, dx = cosf(a), dz = sinf(a);
+        bool clear = true;
+        for (float t = 0.5f; t <= 7.0f && clear; t += 0.4f)
+            clear = !SolidAt(c.x + dx * t, c.z + dz * t, 0.35f) && !InWater(c.x + dx * t, c.z + dz * t);
+        if (clear) {
+            away = (Vector3){ c.x + dx * 7.0f, 0, c.z + dz * 7.0f };
+            break;
+        }
+    }
     PlaceAt(away.x, away.z, 0);
     SyncSelf();
     G.cam.position = (Vector3){ away.x, away.y + 3, away.z + 4 };

@@ -270,12 +270,15 @@ and kept in `sumer.gfx` next to the saves:
   on a computer where High cannot keep up (most frames slower than 24 a second for six seconds; it says so).
 - **High**: everything is lit on the graphics card. The sun casts soft shadows (the moon at night); torches,
   fires and the guards' hand torches light what is round them, with a flicker; walls show their mud bricks
-  and patches of plaster, the ground its grain, wood its grain, and water ripples and mirrors the sky and
-  the sun. Sky with drifting clouds, stars and the moon at night, haze in the distance, rain that darkens the
-  ground and makes it shine, a glow round fire and bright light, smoothed edges. Round things (people,
-  trees, columns) are shaded round.
+  and patches of plaster, the ground its grain, wood its grain, and water ripples and mirrors the sky, its
+  clouds and the sun, which glitters on it. The sky is photographed: a clear day with drifting clouds, a
+  sunset (turned so that its glow is where the sun rises or sets), and an overcast sky when it rains, blended
+  through the day; at night the day's clouds, dimmed, hide some of the stars round the moon. Haze in the
+  distance, thicker near the ground and a little dusty, a warm color grade, rain that darkens the ground and
+  makes it shine, a glow round fire and bright light, smoothed edges. Round things (people, trees, columns)
+  are shaded round.
 - **Low**: the same look made cheaper for phones: a smaller picture scaled up, sharper-edged shadows over a
-  smaller area, no clouds or glow, fewer torches at once, buildings far away left out sooner.
+  smaller area, no glow, fewer torches at once, buildings far away left out sooner (the sky's pictures stay).
 - **Classic**: the old way, colors lit on the processor. It also runs by itself where the shaders cannot
   (OpenGL 2.1, or a browser whose graphics refuse them).
 
@@ -438,6 +441,10 @@ script builds all of them. Everything else is drawn in code.
 The game boards' wood frame is `wood_table_001` from Poly Haven (**CC0**), darkened into `assets/board.png` by
 `python3 -I tools/assets/make_detail.py board`. The windows' clay is `clay_plaster` from Poly Haven (**CC0**),
 in light grey in `assets/clay.png` (`make_detail.py clay`).
+
+The sky is three Poly Haven HDRIs (**CC0**): `kloofendal_48d_partly_cloudy_puresky` (the day),
+`kloppenheim_06_puresky` (the sunset) and `overcast_soil_puresky` (rain), their upper halves with the sun
+painted out, in `assets/sky_day.jpg`, `sky_dusk.jpg` and `sky_grey.jpg` (`make_detail.py skies`, needs numpy).
 
 The fonts are OSerif and Jupiteroid by GGBotNet, from the
 [GGBotNet Fonts CC0](https://opengameart.org/content/ggbotnet-fonts-cc0-all-in-1) pack on OpenGameArt (**CC0**,

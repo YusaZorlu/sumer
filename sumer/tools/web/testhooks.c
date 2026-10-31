@@ -188,6 +188,12 @@ EMSCRIPTEN_KEEPALIVE void TestCommand(int cmd, float a, float b)
     case 27:   // the storage jars filled with one of each item from item a on (to look at their pictures)
         for (int i = 0; i < STORE_SLOTS; i++) G.store[i] = (Slot){ (int)a + i < IT_COUNT ? (int)a + i : IT_NONE, (int)a + i < IT_COUNT ? 1 : 0 };
         break;
+    case 28:   // rain today from now for a hours (a = 0: no rain today), to look at the wet sky and ground
+        G.rainToday = a > 0;
+        G.rainDone = false;
+        G.rainStart = G.hour;
+        G.rainEnd = G.hour + a;
+        break;
     case 25:   // at the alehouse's board a, on the stool of side b
         p->pos = BoardSeat((int)a, (int)b, NULL);
         p->vy = 0;

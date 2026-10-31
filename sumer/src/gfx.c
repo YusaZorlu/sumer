@@ -37,6 +37,8 @@ extern const char *SH_BRIGHT_FS, *SH_BLUR_FS, *SH_POST_FS;
 #define TEX_DETAIL      14
 #define TEX_DETAIL2     15
 #define TEX_DETAIL3     9                   // WebGL 2 promises only 16 units
+#define TEX_SKY         6                   // 6, 7 and 8: the sky's three pictures
+#define SKY_MEAN        0.3f                // their mean brightness (make_detail.py's SKY_MEAN)
 
 // 24 bytes: position, normal (0 when the shader is to work it out), color, material.
 typedef struct { float x, y, z; signed char n[4]; unsigned char c[4]; unsigned char m[4]; } GVert;
@@ -56,11 +58,15 @@ typedef struct {
     int torchCol, fogDensity, time, worldHalf, night, wet, shadowTexel, shadowRange, groundTile, groundN;
     int heightScale, heightBase, torchSlots, gridN, gridCell, torchRadius, dynCount, dynLights, lightVP;
     int shadowMap, heightMap, torchGrid, torchData, moonDir, cloudy, texel, bloom, bloomAmt, dir, detailMap, detailMap2, detailMap3;
+    int skyDay, skyDusk, skyGrey, skyMix, skyTurn, skyLevel;
 } Locs;
 
 typedef struct {
     Vector3 lightDir, lightCol, sunDir, sunGlow, moonDir, zen, hor, ambSky, ambGround;
     float exposure, fog, day, wet;
+    Vector4 picMix;      // how much of the day, sunset and grey pictures; w: how much the pictures show at all
+    Vector3 picTurn;     // each picture turned round the sky (in turns)
+    float picLevel;      // the pictures' brightness, to match the hour's light
 } SkyNow;
 
 #if defined(SUMER_TEST) && defined(__EMSCRIPTEN__)
@@ -79,7 +85,7 @@ static unsigned int quadIndex;
 static Block dynBlocks[MAX_DYN_BLOCKS], skyBlock;
 static int dynUsed;
 static VList dyn, scratch;
-static Texture2D heightTex, gridTex, torchTex, detailTex, detail2Tex, detail3Tex, flameTex;
+static Texture2D heightTex, gridTex, torchTex, detailTex, detail2Tex, detail3Tex, flameTex, skyTex[3];
 static float heightScale = 1.0f, heightBase;
 static RenderTexture2D scene, brightRT, blurRT, shadowRT;
 static int sceneW, sceneH, shadowSize, targetTier = -1;
@@ -329,6 +335,7 @@ static Locs Find(Shader s)
     L_(shadowTexel); L_(shadowRange); L_(groundTile); L_(groundN); L_(heightScale); L_(heightBase); L_(torchSlots);
     L_(gridN); L_(gridCell); L_(torchRadius); L_(dynCount); L_(dynLights); L_(lightVP); L_(shadowMap); L_(heightMap);
     L_(torchGrid); L_(torchData); L_(moonDir); L_(cloudy); L_(texel); L_(bloom); L_(bloomAmt); L_(dir); L_(detailMap); L_(detailMap2); L_(detailMap3);
+    L_(skyDay); L_(skyDusk); L_(skyGrey); L_(skyMix); L_(skyTurn); L_(skyLevel);
 #undef L_
     return l;
 }
@@ -387,12 +394,29 @@ Texture2D BoardTexture(void)
     return t;
 }
 
+// The sky's pictures: the upper half of a panorama each, 2048 x 512, the zenith at the top and the horizon
+// at the foot; smooth without mipmaps (the sky is only ever magnified), round and round across.
+static Texture2D LoadSkyPicture(const char *name)
+{
+    Image im = LoadImage(TextFormat("assets/%s", name));
+    if (!im.data) im = LoadImage(TextFormat("%s../../assets/%s", GetApplicationDirectory(), name));
+    if (!im.data) return (Texture2D){ 0 };
+    ImageFormat(&im, PIXELFORMAT_UNCOMPRESSED_R8G8B8);
+    Texture2D t = LoadTextureFromImage(im);
+    UnloadImage(im);
+    SetTextureFilter(t, TEXTURE_FILTER_BILINEAR);
+    SetTextureWrap(t, TEXTURE_WRAP_REPEAT);
+    return t;
+}
+
 static void LoadDetail(void)
 {
     detailTex = LoadAsset("detail.png", true);
     detail2Tex = LoadAsset("detail2.png", true);
     detail3Tex = LoadAsset("detail3.png", true);
     flameTex = LoadAsset("flame.png", false);
+    static const char *const SKIES[3] = { "sky_day.jpg", "sky_dusk.jpg", "sky_grey.jpg" };
+    for (int i = 0; i < 3; i++) skyTex[i] = LoadSkyPicture(SKIES[i]);
 }
 
 static void Init(void)
@@ -933,6 +957,19 @@ static SkyNow Sky(void)
     Vector3 grey = Vector3Scale(V3(0.30f, 0.32f, 0.35f), 0.15f + 0.85f * day);
     s.zen = Vector3Lerp(s.zen, Vector3Scale(grey, 0.8f), wet * 0.8f);
     s.hor = Vector3Lerp(s.hor, grey, wet * 0.8f);
+    // The sky's pictures (assets/sky_*.jpg): the day's clouds, by night dimmed under the moon and stars; the
+    // sunset round sunrise and sunset, turned so that its sun is where the game's rises or sets; the grey one
+    // as rain comes. They take the brightness of the plain sky they stand in for, and the haze on the land
+    // takes the color of their horizon.
+    float risen = Smooth(-0.10f, 0.02f, elev), high = Smooth(0.06f, 0.32f, elev), dusk = risen * (1.0f - high);
+    s.picMix = (Vector4){ (1.0f - dusk) * (1.0f - wet), dusk * (1.0f - wet), wet, skyTex[0].id && skyTex[1].id && skyTex[2].id ? Lerp(0.5f, 1.0f, risen) : 0.0f };
+    Vector3 mid = Vector3Lerp(s.hor, s.zen, 0.5f);
+    s.picLevel = (0.2126f * mid.x + 0.7152f * mid.y + 0.0722f * mid.z) / SKY_MEAN;
+    float t = (float)fmod(GetTime(), 20000.0), setU = atan2f(-0.35f, G.hour < 12.0f ? 1.0f : -1.0f) / (2.0f * PI) + 0.5f;
+    s.picTurn = V3(t * 0.0004f, 0.5f - setU, t * 0.0006f);
+    static const Vector3 PIC_HOR[3] = { { 0.310f, 0.333f, 0.405f }, { 0.343f, 0.281f, 0.244f }, { 0.191f, 0.177f, 0.163f } };   // make_detail.py prints them
+    Vector3 picHor = Vector3Scale(Vector3Add(Vector3Add(Vector3Scale(PIC_HOR[0], s.picMix.x), Vector3Scale(PIC_HOR[1], s.picMix.y)), Vector3Scale(PIC_HOR[2], s.picMix.z)), s.picLevel);
+    s.hor = Vector3Lerp(s.hor, picHor, s.picMix.w * 0.7f);
     s.sunGlow = Vector3Scale(Vector3Lerp(V3(2.35f, 2.2f, 1.95f), V3(2.4f, 1.3f, 0.6f), low), Smooth(-0.18f, 0.02f, elev) * (1.0f - 0.8f * wet));
     Vector3 skyAmb = Vector3Add(Vector3Scale(Vector3Lerp(s.hor, s.zen, 0.35f), 0.72f), V3(0.06f, 0.04f, 0.0f));
     s.ambSky = Vector3Lerp(V3(0.035f, 0.045f, 0.085f), skyAmb, day);
@@ -950,6 +987,8 @@ static SkyNow Sky(void)
     return s;
 }
 
+static void BindTexture(int unit, unsigned int id, int loc);
+
 static void SkyUniforms(const Locs *l, const SkyNow *s, int quality)
 {
     U3(l->camPos, G.cam.position);
@@ -959,6 +998,13 @@ static void SkyUniforms(const Locs *l, const SkyNow *s, int quality)
     U3(l->skyHor, s->hor);
     U1(l->exposure, s->exposure);
     UI(l->quality, quality);
+    rlSetUniform(l->skyMix, &s->picMix, RL_SHADER_UNIFORM_VEC4, 1);
+    U3(l->skyTurn, s->picTurn);
+    U1(l->skyLevel, s->picLevel);
+    BindTexture(TEX_SKY, skyTex[0].id, l->skyDay);
+    BindTexture(TEX_SKY + 1, skyTex[1].id, l->skyDusk);
+    BindTexture(TEX_SKY + 2, skyTex[2].id, l->skyGrey);
+    rlActiveTextureSlot(0);
 }
 
 // ---- Render targets ----
