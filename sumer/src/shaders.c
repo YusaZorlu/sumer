@@ -16,14 +16,26 @@ const char *SH_WORLD_VS =
     "  gl_Position=mvp*vec4(vertexPosition,1.0); }\n";
 
 // The sky's color in a direction, the tone curve and the noise: shared by the sky and the world.
+// The sky: a plain gradient from the horizon up with the sun's glow, and over it the photographed skies
+// (skyDay, skyDusk, skyGrey: the upper half of a panorama each, the zenith at the top), blended by skyMix
+// (w: how much they show) and turned round by skyTurn. skyFlat is the plain one, for the haze on the land.
 const char *SH_COMMON =
     "uniform vec3 camPos; uniform vec3 sunDir; uniform vec3 sunGlow; uniform vec3 skyZen; uniform vec3 skyHor;\n"
     "uniform float exposure; uniform int quality;\n"
+    "uniform sampler2D skyDay; uniform sampler2D skyDusk; uniform sampler2D skyGrey; uniform vec4 skyMix; uniform vec3 skyTurn; uniform float skyLevel;\n"
     "vec3 aces(vec3 x){ return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),0.0,1.0); }\n"
     "vec3 toScreen(vec3 c){ return pow(aces(c*exposure),vec3(1.0/2.2)); }\n"
-    "vec3 skyColor(vec3 d){ float h=max(d.y,0.0); vec3 c=mix(skyHor,skyZen,pow(h,0.45));\n"
-    "  float s=max(dot(d,sunDir),0.0); c+=sunGlow*(pow(s,6.0)*0.10+pow(s,48.0)*0.25);\n"
-    "  if(d.y<0.0) c=mix(skyHor,skyHor*0.7,clamp(-d.y*4.0,0.0,1.0)); return c; }\n"
+    "vec3 sunHalo(vec3 d){ float s=max(dot(d,sunDir),0.0); return sunGlow*(pow(s,6.0)*0.10+pow(s,48.0)*0.25); }\n"
+    "vec3 skyFlat(vec3 d){ if(d.y<0.0) return mix(skyHor,skyHor*0.7,clamp(-d.y*4.0,0.0,1.0));\n"
+    "  return mix(skyHor,skyZen,pow(d.y,0.45))+sunHalo(d); }\n"
+    "vec2 skyUV(vec3 d){ return vec2(atan(d.z,d.x)*0.1591549+0.5,clamp(acos(clamp(d.y,0.0,1.0))*0.6366198,0.002,0.998)); }\n"
+    "vec3 skyPicture(vec3 d){ vec2 uv=skyUV(d); vec3 c=vec3(0.0);\n"
+    "  if(skyMix.x>0.001) c+=pow(texture(skyDay,uv+vec2(skyTurn.x,0.0)).rgb,vec3(2.2))*skyMix.x;\n"
+    "  if(skyMix.y>0.001) c+=pow(texture(skyDusk,uv+vec2(skyTurn.y,0.0)).rgb,vec3(2.2))*skyMix.y;\n"
+    "  if(skyMix.z>0.001) c+=pow(texture(skyGrey,uv+vec2(skyTurn.z,0.0)).rgb,vec3(2.2))*skyMix.z;\n"
+    "  return c*skyLevel; }\n"
+    "vec3 skyColor(vec3 d){ if(d.y<0.0||skyMix.w<=0.0) return skyFlat(d);\n"
+    "  return mix(mix(skyHor,skyZen,pow(d.y,0.45)),skyPicture(d),skyMix.w*smoothstep(0.0,0.04,d.y))+sunHalo(d); }\n"
     "float hash(vec3 p){ p=fract(p*0.3183099+0.1); p*=17.0; return fract(p.x*p.y*p.z*(p.x+p.y+p.z)); }\n"
     "float noise(vec3 x){ vec3 i=floor(x); vec3 f=fract(x); f=f*f*(3.0-2.0*f);\n"
     "  return mix(mix(mix(hash(i),hash(i+vec3(1,0,0)),f.x),mix(hash(i+vec3(0,1,0)),hash(i+vec3(1,1,0)),f.x),f.y),\n"
@@ -42,10 +54,11 @@ const char *SH_SKY_FS =
     "  c+=sunGlow*6.0*smoothstep(0.9994,0.9998,dot(d,sunDir));\n"
     "  if(night>0.0){ float m=dot(d,moonDir);\n"
     "    c+=vec3(0.75,0.78,0.9)*(smoothstep(0.99935,0.99965,m)*1.4+pow(max(m,0.0),300.0)*0.05)*night;\n"
-    "    if(d.y>0.0){ vec3 p=d*360.0; float h=hash(floor(p));\n"
+    "    if(d.y>0.0){ vec3 p=d*360.0; float h=hash(floor(p)); float clear=1.0;\n"   // stars hide behind the clouds
+    "      if(skyMix.w>0.0){ vec3 q=texture(skyDay,skyUV(d)+vec2(skyTurn.x,0.0)).rgb; clear=(1.0-smoothstep(0.62,0.9,q.r/max(q.b,0.02)))*(1.0-skyMix.z); }\n"
     "      if(h>0.9965){ float k=smoothstep(0.32,0.0,length(fract(p)-0.5)); float tw=0.65+0.35*sin(time*2.3+h*400.0);\n"
-    "        c+=vec3(0.85,0.88,1.0)*k*tw*night*smoothstep(0.0,0.15,d.y)*(h-0.9965)*100.0; } } }\n"
-    "  if(quality>0 && d.y>0.0){ vec2 uv=d.xz/(d.y+0.12);\n"
+    "        c+=vec3(0.85,0.88,1.0)*k*tw*night*clear*smoothstep(0.0,0.15,d.y)*(h-0.9965)*100.0; } } }\n"
+    "  if(quality>0 && d.y>0.0 && skyMix.w<=0.0){ vec2 uv=d.xz/(d.y+0.12);\n"
     "    float n=fbm(vec3(uv*1.2+vec2(time*0.006,time*0.002),time*0.01));\n"
     "    float cover=smoothstep(0.52-cloudy*0.35,0.82-cloudy*0.2,n);\n"
     "    vec3 cc=mix(skyHor*1.15+sunGlow*0.18,vec3(0.42,0.44,0.47)*(skyHor.g*2.0+0.05),cloudy);\n"
@@ -158,9 +171,13 @@ const char *SH_WORLD_FS =
     "  float fres=spec+(1.0-spec)*pow(1.0-max(dot(n,V),0.0),5.0);\n"
     "  vec3 col=base*(lightCol*ndl*sh+amb+torch)+lightCol*sp*sh*fres;\n"
     "  if(water){ vec3 r=reflect(-V,n); r.y=abs(r.y);\n"
-    "    col=mix(base*(amb+lightCol*0.1+torch),skyColor(r)*1.1,fres)+min(lightCol*sp*sh*0.35,vec3(2.5)); }\n"
-    "  float fog=1.0-exp(-dist*fogDensity);\n"
-    "  col=mix(col,skyColor(-V)*1.05,fog);\n"
+    "    col=mix(base*(amb+lightCol*0.1+torch),skyColor(r)*1.1,fres)+min(lightCol*sp*sh*0.35,vec3(2.5));\n"
+    // the sun glittering on the ripples: tiny bright points where the sun's reflection falls, never still
+    "    float glint=pow(max(dot(r,sunDir),0.0),90.0)*smoothstep(0.78,0.98,noise(vec3(wpos.x*7.0,time*2.1,wpos.z*7.0)));\n"
+    "    col+=sunGlow*glint*sh*near*4.0; }\n"
+    "  float fog=1.0-exp(-dist*fogDensity*(0.55+0.75*exp(-max(wpos.y,0.0)*0.05)));\n"   // thicker down by the ground
+    "  vec3 haze=skyFlat(-V); float hl=dot(haze,vec3(0.3,0.59,0.11));\n"
+    "  col=mix(col,mix(haze,vec3(0.78,0.66,0.52)*hl*1.15,0.22)*1.05,fog);\n"
     "  finalColor=vec4(toScreen(col),(vmat==4||vmat==1||vcol.a>0.982)?1.0:vcol.a);\n"
     "}\n";
 
@@ -199,5 +216,8 @@ const char *SH_POST_FS =
     "  vec3 b=a*0.5+0.25*(texture(texture0,uv+d*-0.5).rgb+texture(texture0,uv+d*0.5).rgb);\n"
     "  float lb=dot(b,L); return (lb<mn||lb>mx)?a:b; }\n"
     "void main(){ vec2 uv=fragTexCoord; vec3 c=fx(uv); if(bloomAmt>0.0) c+=texture(bloom,uv).rgb*bloomAmt;\n"
-    "  float l=dot(c,vec3(0.299,0.587,0.114)); c=mix(vec3(l),c,1.18); c=clamp((c-0.5)*1.06+0.5,0.0,1.0);\n"
+    "  float l=dot(c,vec3(0.299,0.587,0.114)); c=mix(vec3(l),c,1.12); c=clamp((c-0.5)*1.06+0.5,0.0,1.0);\n"
+    // warm and a little dusty, like a photograph of the dry land: reds up and blues down in the middle tones,
+    // the shadows lifted toward brown
+    "  c=pow(c,vec3(0.96,1.0,1.07)); c+=vec3(0.018,0.010,0.0)*(1.0-c);\n"
     "  vec2 q=uv-0.5; c*=1.0-0.35*dot(q,q)*1.6; finalColor=vec4(c,1.0); }\n";

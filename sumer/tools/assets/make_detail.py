@@ -13,10 +13,13 @@
 - assets/clay.png: the grain of the windows' clay tablets, from Poly Haven's clay_plaster, in light grey.
 - assets/fonts: OSerif (titles) and Jupiteroid (the rest), two fonts by GGBotNet from their CC0 pack on
   OpenGameArt, cut down to the letters the game loads (lang.c). Needs fontTools (pip install fonttools).
+- assets/sky_day.jpg, sky_dusk.jpg, sky_grey.jpg: the upper half of three Poly Haven sky panoramas (2k HDR,
+  2048x512): a clear day with clouds, a sunset and an overcast sky, with the sun painted out (the game draws
+  its own), the sunset's sun turned to the middle, each brought to the same mean brightness. Needs numpy.
 
 The game keeps its own colors and takes only light and dark from the textures.
-Usage: python3 -I tools/assets/make_detail.py [board|clay|fonts]   (needs Pillow and the network; downloads
-into tools/out/assets; 'board', 'clay' or 'fonts' builds that alone)
+Usage: python3 -I tools/assets/make_detail.py [board|clay|fonts|skies]   (needs Pillow and the network;
+downloads into tools/out/assets; a name builds that alone)
 """
 import json
 import os
@@ -139,12 +142,116 @@ def fonts():
             f.write(z.read(licence))
 
 
+SKIES = [('sky_day', 'kloofendal_48d_partly_cloudy_puresky'), ('sky_dusk', 'kloppenheim_06_puresky'),
+         ('sky_grey', 'overcast_soil_puresky')]
+SKY_MEAN = 0.3   # each sky's mean brightness, linear (gfx.c scales it to the hour's light)
+
+
+def read_hdr(path):
+    # Radiance RGBE, run-length coded scanlines: linear RGB as floats.
+    import numpy as np
+    data = open(path, 'rb').read()
+    pos = data.index(b'\n\n') + 2
+    end = data.index(b'\n', pos)
+    res = data[pos:end].split()
+    pos = end + 1
+    h, w = int(res[1]), int(res[3])
+    px = np.zeros((h, w, 4), np.uint8)
+    for y in range(h):
+        if not (data[pos] == 2 and data[pos + 1] == 2):
+            raise ValueError('only run-length coded HDR files are read')
+        pos += 4
+        for c in range(4):
+            x = 0
+            while x < w:
+                n = data[pos]
+                pos += 1
+                if n > 128:
+                    n -= 128
+                    px[y, x:x + n, c] = data[pos]
+                    pos += 1
+                else:
+                    px[y, x:x + n, c] = np.frombuffer(data, np.uint8, n, pos)
+                    pos += n
+                x += n
+    e = px[..., 3].astype(np.int32)
+    f = np.where(e > 0, np.ldexp(1.0, e - 136), 0.0)
+    return px[..., :3].astype(np.float64) * f[..., None]
+
+
+def sky(out, asset):
+    import numpy as np
+    path = os.path.join(CACHE, asset + '_2k.hdr')
+    if not os.path.exists(path):
+        url = json.loads(get('https://api.polyhaven.com/files/' + asset))['hdri']['2k']['hdr']['url']
+        with open(path, 'wb') as f:
+            f.write(get(url))
+    img = read_hdr(path)
+    h, w = img.shape[0] // 2, img.shape[1]
+    up = img[:h].copy()                      # the sky: row 0 the zenith, the last row the horizon
+    lum = up @ np.array([0.2126, 0.7152, 0.0722])
+    elev = (0.5 - (np.arange(h) + 0.5) / (2 * h)) * np.pi          # each row's height above the horizon
+    weight = np.cos(elev)[:, None] * np.ones((1, w))                # solid angle, as the rows shrink to the zenith
+    sy, sx = np.unravel_index(np.argmax(lum), lum.shape)
+    sunny = lum[sy, sx] > 40 * np.median(lum)
+    if sunny:
+        # The sun painted out (the game draws its own): each point of a disc round it takes the color of the
+        # ring just outside, in its own direction from the sun, then the patch is smoothed. The sunset keeps
+        # its glow and loses only the bright core.
+        radius = np.radians(7.0 if out == 'sky_day' else 3.0)
+        az = (np.arange(w) + 0.5) / w * 2 * np.pi
+        ce, ca = elev[sy], az[sx]
+        cosd = np.sin(elev)[:, None] * np.sin(ce) + np.cos(elev)[:, None] * np.cos(ce) * np.cos(az[None, :] - ca)
+        mask = cosd > np.cos(radius)
+        ring = (cosd <= np.cos(radius)) & (cosd > np.cos(radius + np.radians(1.5)))
+
+        def angle(ys, xs):
+            return np.arctan2(ys - sy, ((xs - sx + w // 2) % w) - w // 2)
+        nb = 96
+        ry, rx = np.nonzero(ring)
+        rb = ((angle(ry, rx) + np.pi) / (2 * np.pi) * nb).astype(int) % nb
+        sums, counts = np.zeros((nb, 3)), np.zeros(nb)
+        np.add.at(sums, rb, up[ry, rx])
+        np.add.at(counts, rb, 1)
+        have = counts > 0
+        cols = np.zeros((nb, 3))
+        cols[have] = sums[have] / counts[have][:, None]
+        idx = np.arange(nb)
+        for c in range(3):   # directions with no ring (under the horizon) from their neighbours round the circle
+            cols[:, c] = np.interp(idx, np.concatenate([idx[have] - nb, idx[have], idx[have] + nb]), np.tile(cols[have, c], 3))
+        my, mx = np.nonzero(mask)
+        t = (angle(my, mx) + np.pi) / (2 * np.pi) * nb - 0.5
+        i0 = np.floor(t).astype(int) % nb
+        f = (t - np.floor(t))[:, None]
+        up[my, mx] = cols[i0] * (1 - f) + cols[(i0 + 1) % nb] * f
+        rows = np.where(mask.any(axis=1))[0]
+        y0, y1 = max(rows.min() - 2, 0), min(rows.max() + 3, h)
+        sub, m = up[y0:y1], mask[y0:y1]
+        for _ in range(120):
+            avg = (np.roll(sub, 1, 1) + np.roll(sub, -1, 1) + np.vstack([sub[:1], sub[:-1]]) + np.vstack([sub[1:], sub[-1:]])) / 4
+            sub[m] = avg[m]
+        up[y0:y1] = sub
+        if out == 'sky_dusk':                # its sun turned to the middle, where gfx.c expects it
+            up = np.roll(up, w // 2 - sx, axis=1)
+    lum = up @ np.array([0.2126, 0.7152, 0.0722])
+    up *= SKY_MEAN / (lum * weight).sum() * weight.sum()
+    hor = up[h - h // 16:].reshape(-1, 3).mean(axis=0)
+    rgb = np.clip(up, 0.0, 1.0) ** (1 / 2.2) * 255.0
+    Image.fromarray(np.round(rgb).astype(np.uint8), 'RGB').save(os.path.join(ROOT, 'assets', out + '.jpg'), quality=86, optimize=True)
+    print('%s: sun %s, horizon color %.3f %.3f %.3f (linear, mean %.2f)' % (out, 'painted out' if sunny else 'none', hor[0], hor[1], hor[2], SKY_MEAN))
+
+
+def skies():
+    for out, asset in SKIES:
+        sky(out, asset)
+
+
 def main():
     os.makedirs(CACHE, exist_ok=True)
-    one = {'board': board, 'clay': clay, 'fonts': fonts}
+    one = {'board': board, 'clay': clay, 'fonts': fonts, 'skies': skies}
     if len(sys.argv) == 2 and sys.argv[1] in one:
         one[sys.argv[1]]()
-        print('wrote', 'assets/fonts' if sys.argv[1] == 'fonts' else 'assets/%s.png' % sys.argv[1])
+        print('wrote', {'fonts': 'assets/fonts', 'skies': 'assets/sky_*.jpg'}.get(sys.argv[1], 'assets/%s.png' % sys.argv[1]))
         return 0
     chans = [detail(fetch(a)) for a in SOURCES]
     Image.merge('RGBA', chans).save(os.path.join(ROOT, 'assets', 'detail.png'), optimize=True)
@@ -155,7 +262,8 @@ def main():
     flames()
     board()
     clay()
-    print('wrote assets/detail.png, detail2.png, detail3.png, flame.png, board.png and clay.png (fonts: run with fonts)')
+    skies()
+    print('wrote assets/detail.png, detail2.png, detail3.png, flame.png, board.png, clay.png and sky_*.jpg (fonts: run with fonts)')
 
 
 if __name__ == '__main__':

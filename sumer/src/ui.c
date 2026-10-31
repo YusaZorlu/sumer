@@ -1576,19 +1576,58 @@ static void DrawHelpPanel(void)
     Text("H or Esc: close", r.x + r.width - 30 - (float)Measure(L("H or Esc: close"), 17), r.y + 26, 17, C_DIM);
 }
 
-// Whether a point is in sight and near the middle of the screen, where the crosshair is: what you aim at.
-static bool Aimed(Vector3 p, float reach)
+// How far a point in sight is from the middle of the screen, where the crosshair is (UI units, scaled so a
+// person's height counts less than their width); -1 when it is behind, too far or well off the middle.
+static float AimGap(Vector3 p, float reach)
 {
     Vector3 fwd = Vector3Normalize(Vector3Subtract(G.cam.target, G.cam.position));
-    if (Vector3DotProduct(Vector3Subtract(p, G.cam.position), fwd) < 0 || Vector3Distance(p, G.cam.position) > reach) return false;
+    if (G.panel != PANEL_NONE || Vector3DotProduct(Vector3Subtract(p, G.cam.position), fwd) < 0 || Vector3Distance(p, G.cam.position) > reach) return -1.0f;
     Vector2 sp = OnScreen(p);
-    return fabsf(sp.x - UiWidth() / 2) < 46.0f && fabsf(sp.y - UiHeight() / 2) < 70.0f;
+    float dx = fabsf(sp.x - UiWidth() / 2) / 46.0f, dy = fabsf(sp.y - UiHeight() / 2) / 70.0f;
+    return dx < 1.0f && dy < 1.0f ? dx * dx + dy * dy : -1.0f;
+}
+
+// Of those near the crosshair, the one nearest it is what you aim at (several would stack their names).
+static int AimedFighter(void)
+{
+    int best = -1;
+    float gap = 1e9f;
+    for (int i = 0; i < FighterCount(); i++) {
+        Vector3 pos;
+        float hp, maxHp;
+        const char *name;
+        bool hostile, dead;
+        if (!FighterInfo(i, &pos, &hp, &maxHp, &name, &hostile, &dead) || dead) continue;
+        float g = AimGap((Vector3){ pos.x, pos.y + 1.4f, pos.z }, 40.0f);
+        if (g >= 0.0f && g < gap) {
+            gap = g;
+            best = i;
+        }
+    }
+    return best;
+}
+
+static int AimedAnimal(void)
+{
+    int best = -1;
+    float gap = 1e9f;
+    for (int i = 0; i < G.animalCount; i++) {
+        const Animal *a = &G.animals[i];
+        if (!a->active || a->state == ST_DEAD || AnimalHidden(a)) continue;
+        float g = AimGap((Vector3){ a->pos.x, AnimalTop(a) - 0.2f, a->pos.z }, 45.0f);
+        if (g >= 0.0f && g < gap) {
+            gap = g;
+            best = i;
+        }
+    }
+    return best;
 }
 
 // A beast's health over it while it is hurt, hunting you or aimed at; the calm and whole ones go bare.
 static void DrawAnimalBars(void)
 {
     Vector3 fwd = Vector3Normalize(Vector3Subtract(G.cam.target, G.cam.position));
+    int aim = AimedAnimal();
 
     for (int i = 0; i < G.animalCount; i++) {
         const Animal *a = &G.animals[i];
@@ -1596,7 +1635,7 @@ static void DrawAnimalBars(void)
         float dist = XZDist(a->pos, G.player.pos);
         int max = AnimalMaxHp(a->type);
         Vector3 head = { a->pos.x, AnimalTop(a) - 0.2f, a->pos.z };
-        bool hurt = a->hp < max, hunting = a->state == ST_HUNT, aimed = G.panel == PANEL_NONE && Aimed(head, 45.0f);
+        bool hurt = a->hp < max, hunting = a->state == ST_HUNT, aimed = i == aim;
         if (!hurt && !hunting && !aimed) continue;
         if (dist > 60.0f) continue;
         if (Vector3DotProduct(Vector3Subtract(head, G.cam.position), fwd) < 0) continue;
@@ -1625,6 +1664,7 @@ static void DrawMarkDiamond(int mark, Vector2 c)
 static void DrawPeopleBars(void)
 {
     Vector3 fwd = Vector3Normalize(Vector3Subtract(G.cam.target, G.cam.position));
+    int aim = AimedFighter();
 
     for (int i = 0; i < FighterCount(); i++) {
         Vector3 pos;
@@ -1637,7 +1677,7 @@ static void DrawPeopleBars(void)
         if (PartyGame() == PG_HIDE && !hostile) continue;
         float dist = Vector3Distance(pos, G.player.pos);
         Vector3 head = { pos.x, pos.y + 2.25f, pos.z };
-        bool hurt = hp < maxHp, aimed = G.panel == PANEL_NONE && Aimed((Vector3){ pos.x, pos.y + 1.4f, pos.z }, 40.0f);
+        bool hurt = hp < maxHp, aimed = i == aim;
         if (!hurt && !hostile && !aimed) continue;
         if (dist > 50.0f || (!hostile && fabsf(pos.y - G.player.pos.y) > 3.5f)) continue;
         if (Vector3DotProduct(Vector3Subtract(head, G.cam.position), fwd) < 0) continue;

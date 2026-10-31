@@ -419,10 +419,18 @@ in `src/game.h`) holds the whole world.
   `UiBegin`: `BeginTextureMode` resets the matrices). A new item needs a case there, or it shows as a ball of its
   colour. `DrawItemIcon` returns false when there is no picture (the caller draws the old colour square).
 - **What shows over the game**: name plates and bars (`DrawPeopleBars`, `DrawAnimalBars`) only for what is
-  aimed at (`Aimed`, near the crosshair), hurt, hostile or (beasts) hunting. **Hide and seek**: a hider is a player
+  aimed at (`AimedFighter`, `AimedAnimal`: the one nearest the crosshair), hurt, hostile or (beasts) hunting. **Hide and seek**: a hider is a player
   drawn as one of the townsfolk with no tag, so nothing may single out townsfolk either: no plates or map dots for
   peaceful people while `PartyGame() == PG_HIDE` (players' tags are off too, `DrawPeerTags`). Check any new marker
   against that. News is `DrawMessage`, a band at the top between the status box (`STATUS_W`) and the map.
+- **The sky's pictures** (gfx.c `Sky`, shaders.c `SH_COMMON`): three panoramas' upper halves (2048 x 512, zenith at
+  the top) on texture units 6-8 (`TEX_SKY`; 9-15 are the world shader's). `picMix` weighs day, sunset and grey
+  (x, y, z) and how much they replace the plain gradient (w, less at night); `picTurn` turns each round (the day
+  and grey ones drift; the sunset's sun, rolled to the middle by `make_detail.py skies`, is turned to where the
+  sun rises or sets); `picLevel` scales them (each is made to a mean of `SKY_MEAN`) to the brightness of the
+  plain sky they replace. `skyColor` (sky dome, water reflections) uses them, `skyFlat` (the haze) does not; the
+  haze's horizon color is pulled toward the pictures' (`PIC_HOR`, printed by the script: rebuild them together).
+  No mipmaps on the pictures (the seam of `atan` would show). A missing file turns the pictures off.
 - **The title's backdrop** (`TitleBackdrop` in game.c): `OpenLobby` calls `TitleReset`; the frame after, the lobby
   calls `GameInit` and from then on draws the world with `GfxDrawWorld` from an orbiting camera at dusk, the
   player moved underground. Only where `GfxTier()` is not Classic, so the browser tests (Classic unless `?gfx=`) keep
@@ -451,7 +459,8 @@ in `src/game.h`) holds the whole world.
   parentheses (`var o = ({ a: 1, b: 2 });`) and declare one `var` per line.
 - Test hooks for the browser (`tools/web/testhooks.c`): `TestInfo()` returns the state as JSON, `TestCommand(n, a, b)`
   drives the game (1 teleport, 2 E, 3 F, 4 look, 5 shoot, 6 swing, 7 add item, 9 set hour, 13 hurt, 14 equip, 15 open a
-  panel, 25 sit at a board, 27 fill the storage jars with one of each item from item a on, to look at the pictures ...). Add
+  panel, 25 sit at a board, 27 fill the storage jars with one of each item from item a on, to look at the pictures, 28 rain from now for a
+  hours ...). Add
   fields there when a test needs to see something new. The server program's own (`tools/web/hosthooks.c`) answer
   `hostInfo(room)` and `hostCmd(room, n, a, b)` in `tools/web/lib.js` (9 hour, 20 start a royale round, 21 the round's
   clock, 22 the countdown, 30 the party's clock, 31 the hide-and-seek seeker finds a player), and `stopRoom(room)` stops a room as if it stood empty. `lib.js`'s `open(browser, name, url)`
