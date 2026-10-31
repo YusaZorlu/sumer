@@ -83,6 +83,7 @@
 #define COL_HOUSE_DARK  CLITERAL(Color){ 186, 160, 118, 255 }
 #define COL_WALL        CLITERAL(Color){ 198, 172, 126, 255 }
 #define COL_WHITEWASH   CLITERAL(Color){ 228, 218, 196, 255 }
+#define COL_CONES       CLITERAL(Color){ 196, 162, 120, 249 }   // alpha 249: a clay-cone mosaic (the shaders)
 #define COL_LAPIS       CLITERAL(Color){  38,  84, 160, 255 }
 #define COL_DOORWAY     CLITERAL(Color){  52,  36,  26, 255 }
 #define COL_WATER       CLITERAL(Color){  58, 110, 128, 255 }
@@ -94,7 +95,7 @@
 #define COL_PALM_LEAF   CLITERAL(Color){  62, 118,  52, 253 }
 #define COL_DATES       CLITERAL(Color){ 150,  72,  30, 255 }
 #define COL_REED        CLITERAL(Color){ 146, 160,  70, 255 }
-#define COL_STRAW       CLITERAL(Color){ 190, 168, 104, 255 }
+#define COL_STRAW       CLITERAL(Color){ 190, 168, 104, 250 }   // alpha 250: woven or thatched (the shaders)
 #define COL_GRASS       CLITERAL(Color){  92, 128,  54, 255 }
 #define COL_SHRUB       CLITERAL(Color){ 118, 122,  70, 255 }
 #define COL_TREE        CLITERAL(Color){  74, 108,  58, 253 }
@@ -608,6 +609,7 @@ void DrawRoadMap(float mx, float mz, float scale);
 enum { VIL_HUNTERS, VIL_HERDERS, VIL_FISHERS, VILLAGES };
 void BuildVillages(void);
 Vector3 VillageCenter(int v);
+void BuildDetails(void);
 const char *VillageName(int v);
 int VillageAt(Vector3 p);
 bool InAlehouse(Vector3 p);

@@ -16,12 +16,13 @@
 - assets/foliage.png: tufts of grass (green and dry), a reed clump with plumes and two palm fronds, built from
   the blades and plumes of ambientCG's Foliage001, 002 and 004.
 - assets/detail4.png: the open land: R cracked mud, G sparse grass, B sand by the water, A dry mud (Poly Haven).
+- assets/detail5.png: buildings: R clay plaster, G patterned clay plaster, B reed thatch, A white stucco (Poly Haven).
 - assets/sky_day.jpg, sky_dusk.jpg, sky_grey.jpg: the upper half of three Poly Haven sky panoramas (2k HDR,
   2048x512): a clear day with clouds, a sunset and an overcast sky, with the sun painted out (the game draws
   its own), the sunset's sun turned to the middle, each brought to the same mean brightness. Needs numpy.
 
 The game keeps its own colors and takes only light and dark from the textures.
-Usage: python3 -I tools/assets/make_detail.py [board|clay|fonts|skies|foliage|ground]   (needs Pillow and the network;
+Usage: python3 -I tools/assets/make_detail.py [board|clay|fonts|skies|foliage|ground|walls]   (needs Pillow and the network;
 downloads into tools/out/assets; a name builds that alone)
 """
 import io
@@ -384,6 +385,13 @@ def foliage():
 
 
 GROUND = ['cracked_red_ground', 'sparse_grass', 'coast_sand_01', 'brown_mud_dry']
+WALLS = ['clay_plaster', 'patterned_clay_plaster', 'reed_roof_04', 'white_stucco']
+
+
+def walls():
+    # assets/detail5.png: what buildings are made of, light and dark only: R clay plaster, G patterned clay
+    # plaster, B reed thatch (and woven straw), A whitewashed stucco (all Poly Haven, CC0).
+    Image.merge('RGBA', [detail(fetch(a)) for a in WALLS]).save(os.path.join(ROOT, 'assets', 'detail5.png'), optimize=True)
 
 
 def ground():
@@ -394,10 +402,10 @@ def ground():
 
 def main():
     os.makedirs(CACHE, exist_ok=True)
-    one = {'board': board, 'clay': clay, 'fonts': fonts, 'skies': skies, 'foliage': foliage, 'ground': ground}
+    one = {'board': board, 'clay': clay, 'fonts': fonts, 'skies': skies, 'foliage': foliage, 'ground': ground, 'walls': walls}
     if len(sys.argv) == 2 and sys.argv[1] in one:
         one[sys.argv[1]]()
-        print('wrote', {'fonts': 'assets/fonts', 'skies': 'assets/sky_*.jpg', 'ground': 'assets/detail4.png'}.get(sys.argv[1], 'assets/%s.png' % sys.argv[1]))
+        print('wrote', {'fonts': 'assets/fonts', 'skies': 'assets/sky_*.jpg', 'ground': 'assets/detail4.png', 'walls': 'assets/detail5.png'}.get(sys.argv[1], 'assets/%s.png' % sys.argv[1]))
         return 0
     chans = [detail(fetch(a)) for a in SOURCES]
     Image.merge('RGBA', chans).save(os.path.join(ROOT, 'assets', 'detail.png'), optimize=True)
@@ -411,6 +419,7 @@ def main():
     skies()
     foliage()
     ground()
+    walls()
     print('wrote assets/detail.png, detail2-4.png, flame.png, board.png, clay.png, foliage.png and sky_*.jpg (fonts: run with fonts)')
 
 

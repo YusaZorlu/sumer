@@ -608,6 +608,7 @@ void BuildWorld(void)
     SettleOnGround();
     BuildRoads();
     BuildLights();
+    BuildDetails();   // last: only to look at, and nothing built before it moves
 
     for (int i = 0; i < MAX_STARS; i++) {
         float x = RandF(-1, 1), y = RandF(0.12f, 1), z = RandF(-1, 1);
