@@ -958,6 +958,7 @@ static void CatchMoving(void)
     DrawFields();
     DrawResourcesOf(false, true);
     DrawTorches();
+    DrawLife();
     Release();
 
     int n = dyn.n - dyn.n % 4;
@@ -1225,6 +1226,7 @@ static void ScenePass(const SkyNow *s, Matrix lightVP, int quality)
     rlDisableVertexArray();
     rlDisableShader();
     DrawFlames();
+    DrawPuffs();
 
     // Sparks, trails and rain go through rlgl's batch with the same shader, after everything solid.
     BeginShaderMode(worldSh);

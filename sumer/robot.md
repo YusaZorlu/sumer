@@ -348,6 +348,16 @@ in `src/game.h`) holds the whole world.
   transform (or `GripAt` with a point on the body); the next `DrawHuman` reaches that hand there (two-bone `Reach`).
   The player's and other players' weapons go through `HoldWeapon`/`DrawWeaponPart` (player.c), whose frames
   (`SwordFrame`, `ArmFrame`, `BlowFrame` for people's tools and axes) the swing trail also uses: change them together.
+  **Gait and idle poses** (`Body`): walking, the upper body sways over the bearing foot (`dx`) and the free arms
+  swing fully. Standing (`stride == 0`, not crouching, no bow), each free hand takes an idle pose (`IdlePose`/
+  `IdleHand`: sides, clasped at the chest, a hand on the hip, both, behind the back), chosen from the person's
+  0.5 m cell and the time and eased over 0.8 s. It must stay one rule for everyone, players included, with no
+  per-role or per-kind exception: hide and seek depends on a hider standing exactly as the townsfolk do.
+  `DrawPersonBody` (lying down) passes `atEase` false. **Loads**: `CarryNext(CARRY_JAR or CARRY_BASKET)` before
+  `DrawHuman` puts the load on the head and a hand on it; `VillagerLoad(i, woman)` (village.c) says who carries,
+  and returns `CARRY_NONE` in hide and seek (`TestHide` draws the city and checks `LoadsDrawn() == 0`; it fails if
+  that guard goes). Players never carry. Eyes: the statues' inlaid eyes (`P_DARK` rim, `P_EYE`, `P_PUPIL`) at
+  `LOD_FINE`, a dark band at `LOD_MID`.
 - **Battle royale** (`src/royale.c`, Sumer Royale on the title screen): `Royale()` is set by the room joined
   (`SetRoyale` from the room's kind; `?mode=br` opens the title on its page). `MAX_PLAYERS` is 21 (slot 0 the server's),
   `PlayerLimit()` 20 players in it and 6 outside it; there are `MAX_HOUSES` 6 houses (`HouseOf(slot)`). A round starts
@@ -515,8 +525,17 @@ The world's draw code (`render.c` primitives, `DrawGround`, `DrawWater`, `DrawRo
   first needed, a few milliseconds a frame (`ChooseLods`). A chunk's meshes are thrown away when one of its resources
   is cut or grows back (`ResSig`). Crop rows (`FieldBox`, `DrawFields`) and fish rings move, so they are not in them.
   About 220k vertices of ground and 600k of things in all; `GFX_STATS=1` prints the numbers.
-- **What moves** (`CatchMoving`): people, animals, boats, caravans, players, arrows, flames, every frame, into
-  dynamic buffers of 65536 vertices. Everything is quads, so every buffer shares one index buffer.
+- **What moves** (`CatchMoving`): people, animals, boats, caravans, players, arrows, flames, birds and fireflies
+  (`DrawLife`), every frame, into dynamic buffers of 65536 vertices. Everything is quads, so every buffer shares
+  one index buffer.
+- **Signs of life** (`src/life.c`, every setting): smoke from each fire `FireSpots` lists (lights.c: every
+  `AddFireLight`, 48 at most; the world has 25, and the old 24 left out the oven's flame), the kiln's from its
+  chimney; dust from the local player running (`UpdateLife`, in `UpdateWorld`) and running animals; both drawn by
+  `DrawPuffs` as billboards of one radial picture (white fading to transparent white: fading to `BLANK` gives every
+  puff a dark rim) through rlgl's default shader after `DrawFlames` (and after `DrawEffects` in Classic), with the
+  depth mask off. Never `RandF` there (its own `Rnd`), never anything sent: `TestLife` checks the game's random
+  numbers stay untouched. Other players' dust is not drawn on purpose (a running hider would stand out). The
+  fish leaping at fishing spots are drawn with the spots (`DrawFish` in world.c) and only while there are fish.
 - **A frame** (`GfxDrawWorld`): the sun's view into a 2048 (Low: 1024) shadow map, depth packed into the colors
   (`SH_DEPTH_FS`), over a 130 m (90 m) square ahead of the camera stepped by whole texels; the sky dome; the chunks
   in view and what moves, with the world shader; effects and rain through rlgl with the same shader; then glow
@@ -582,6 +601,9 @@ no sound files. Read the comment at the top of the file and the notation comment
   and tree models (Quaternius nature packs are CC0 low-poly with flat colors, which suits baking into the static
   meshes), then a second ground (grass) map. There is no model loader yet.
 - More sound effects: footsteps, the bow, animals, ambience (blows, parries and arrows have theirs).
+- Of the October 2026 visual plan, E (animals that move their legs and heads) and H (sound) were put off by the
+  owner. From F and G: awnings and cloth shades do not move in the wind (they are in the still meshes), shawls have
+  no fringe, and other players' running raises no dust (left out so a hider cannot be told by it).
 - Accounts cannot change their password or delete themselves yet, and a lost password cannot be recovered (there is
   no e-mail by design). The guest is trusted with its own things (records come from its game), so a changed page could
   give itself anything; experience is only shown, which is why that was left so.

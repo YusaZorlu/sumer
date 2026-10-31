@@ -1220,6 +1220,16 @@ static void DrawCow(const Wanderer *w, int i)
     rlPopMatrix();
 }
 
+// What villager i carries on the head about their day (CARRY_NONE, CARRY_JAR or CARRY_BASKET): about one in
+// five of the townsfolk and villagers, women most often a water jar, the rest a basket of dates. Never in
+// hide and seek, where the hiders (players) can carry nothing: a load would mark out the real townsfolk.
+int VillagerLoad(int i, bool woman)
+{
+    const Villager *v = &G.villagers[i];
+    if ((v->kind != NPC_CIVILIAN && v->kind != NPC_VILLAGER) || PartyGame() == PG_HIDE || Hash2(i, 41) >= 0.22f) return CARRY_NONE;
+    return woman && Hash2(i, 42) < 0.75f ? CARRY_JAR : CARRY_BASKET;
+}
+
 void DrawVillage(void)
 {
     DrawFarm();
@@ -1277,6 +1287,7 @@ void DrawVillage(void)
                 DrawTravelGear(pos, face, v->robe);
                 GripAt(HAND_WEAPON, 0.36f, 1.12f, 0.24f);
             }
+            if (!atWork && talk == 0.0f && !v->crouch && !v->vit.override) CarryNext(VillagerLoad(i, look.woman));
             DrawHuman(pos, face, stride, look, v->crouch && !v->vit.override, archer, pull);
         } else if (v->kind == NPC_GUARD && v->crouch && !v->vit.override) {
             // A guard off duty sits at ease; their spear and shield hang on the rack until they are needed.

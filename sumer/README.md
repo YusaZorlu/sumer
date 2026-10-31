@@ -291,6 +291,14 @@ nets at the fishers'; jars with necks and lips, baskets with their dates or grai
 fishers' reed houses (the marsh's mudhif) and reed boats with curling ends; cloth shades over the village
 traders' counters; a thatched roof, perches, a nest and a water dish at your hen coop; buttresses along the
 temple's wall. None of it is solid, so it changes no one's way through the streets.
+
+**Signs of life** (all graphics settings): smoke rises from every fire, grey and leaning with the wind (from the
+hearths, camp fires and the gate towers' braziers, from the kiln's chimney, the smelter and your oven), lit warm
+from below at night; dust rises behind you when you run on dry ground and behind animals running for their lives
+or after their prey; herons and kites wheel over the river and the marsh by day, a few wing beats, then a glide;
+where there are fish to catch, now and then one leaps clear of the water and falls back with a splash; fireflies
+blink round the reeds at night. None of it changes the game: it is drawn on each screen only, from no shared
+random numbers, and no one's dust but your own is drawn, so hide and seek is the same for everyone.
 - **Low**: the same look made cheaper for phones: a smaller picture scaled up, sharper-edged shadows over a
   smaller area, no glow, fewer torches at once, buildings far away left out sooner (the sky's pictures stay).
 - **Classic**: the old way, colors lit on the processor. It also runs by itself where the shaders cannot
@@ -745,8 +753,17 @@ loot.
 ## People and your look
 
 Everyone is drawn in code, like the rest of the world (no model files): shaped bodies whose knees and
-elbows bend as they walk, crouch and fight, the large eyes and strong nose of Sumerian statues, and the
-clothes of the time.
+elbows bend as they walk, crouch and fight, the great inlaid eyes (shell in a dark rim round a wide dark pupil,
+under brows that all but meet) and strong nose of Sumerian statues, and the clothes of the time.
+
+- **Walking:** the body rocks over the foot that bears it and the arms swing fully, the elbow bending on the
+  forward swing.
+- **Standing at ease,** everyone (players too) changes how they hold their hands every eight to fourteen
+  seconds: at their sides, clasped before the chest as the temple's statues stand, a hand or both on the hips,
+  behind the back; and they shift their weight. The pose comes from where they stand and the time, by one rule
+  for everyone, so a hider standing among the townsfolk stands just as they do.
+- **Loads:** about one in five of the townsfolk and villagers going about the day carry a water jar or a basket
+  of dates on the head, steadied with one hand; never in hide and seek, where the hiders can carry nothing.
 
 - **Clothes:** the tufted fleece skirt (kaunakes), a short linen kilt, a fringed shawl wrapped over the left
   shoulder, a long robe.

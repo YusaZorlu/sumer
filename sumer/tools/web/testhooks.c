@@ -122,7 +122,8 @@ EMSCRIPTEN_KEEPALIVE const char *TestInfo(void)
     n += snprintf(buf + n, sizeof(buf) - (size_t)n, ",\"pets\":[");
     for (int i = 0; i < PetCount(); i++)
         n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%s[%.2f,%.2f,%.2f,%d,%d]", i ? "," : "", PetPos(i).x, PetPos(i).y, PetPos(i).z, PetIsDog(i), PetFriend(i));
-    n += snprintf(buf + n, sizeof(buf) - (size_t)n, "],\"villager0\":[%.2f,%.2f]}", VillagerPos(&G.villagers[0]).x, VillagerPos(&G.villagers[0]).z);
+    n += snprintf(buf + n, sizeof(buf) - (size_t)n, "],\"villager0\":[%.2f,%.2f],\"running\":%d,\"dust\":%d}", VillagerPos(&G.villagers[0]).x,
+                  VillagerPos(&G.villagers[0]).z, G.player.running, DustInAir());
     return buf;
 }
 
@@ -138,7 +139,8 @@ static float LandingHeight(float x, float z)
 // down dead at the player's feet (a = index); 9 set the hour to a; 10 shoot at the ground point (a, b)
 // at body height; 11 language a; 12 barter offer b of trader a; 13 hurt the player by a; 14 equip a;
 // 15 open panel a (PANEL_* in game.h); 20 start a battle royale round (the host); 21 skip the round's clock to a s;
-// 23 forget whose this browser's saves are, as if made before accounts; 25 to board a's seat b; 26 beside pet a.
+// 23 forget whose this browser's saves are, as if made before accounts; 25 to board a's seat b; 26 beside pet a;
+// 29 b metres in front of the a-th of the townsfolk carrying a load, looking at them.
 EMSCRIPTEN_KEEPALIVE void TestCommand(int cmd, float a, float b)
 {
     Player *p = &G.player;
@@ -198,6 +200,22 @@ EMSCRIPTEN_KEEPALIVE void TestCommand(int cmd, float a, float b)
         p->pos = BoardSeat((int)a, (int)b, NULL);
         p->vy = 0;
         break;
+    case 29: {   // b metres in front of the a-th of the townsfolk who carry a load on the head, looking at them
+        int seen = 0;
+        for (int i = 0; i < G.villagerCount; i++) {
+            const Villager *v = &G.villagers[i];
+            if (v->kind != NPC_CIVILIAN || VillagerLoad(i, true) == CARRY_NONE || seen++ < (int)a) continue;
+            Vector3 q = VillagerPos(v);
+            p->pos = (Vector3){ q.x + sinf(v->face) * b, 0, q.z + cosf(v->face) * b };
+            p->pos.y = LandingHeight(p->pos.x, p->pos.z);
+            p->vy = 0;
+            p->yaw = v->face;
+            p->pitch = 0.05f;
+            FollowCamera(1.0f);
+            break;
+        }
+        break;
+    }
     case 26: {   // beside cat or dog a, b metres east of it
         Vector3 q = PetPos((int)a);
         p->pos = (Vector3){ q.x + (b > 0 ? b : 1.0f), q.y, q.z };
