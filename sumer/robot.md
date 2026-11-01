@@ -470,6 +470,12 @@ in `src/game.h`) holds the whole world.
 
 ## Traps already hit
 
+- **The coop's dry days** (`G.coopDry`, `CoopHours` in farm.c) once counted while the coop stood empty, so a hen
+  bought into a coop dry for 6 days died of thirst at once. They count only while hens live there now, and
+  `CoopTakesHen` (water in the coop, at least 1 feed) gates selling one: in `OfferCheck` for the offer (the trade
+  panel shows why) and again at the host for `RQ_HEN`, since the coop is shared. `TestHens` covers both; the
+  mp2 browser suite scatters seeds first (test hook 30).
+
 - Emscripten 6 no longer exposes `Module.HEAPF32`, which raylib's Web Audio code reads on every audio callback:
   without `-sEXPORTED_RUNTIME_METHODS=HEAPF32` (now in `build-web.sh` and `tools/web/build.sh`) the browser game
   throws on each audio block and is silent. Check after any Emscripten or raylib upgrade (`tools/web/audio.js`).

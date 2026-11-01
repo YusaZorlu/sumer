@@ -65,8 +65,12 @@ const count = (s, item) => s.bag.filter(x => x[0] === item).reduce((n, x) => n +
     h = await waitHost(ROOM, 'the carcass gone at the server', i => !i.animals[gi][1], 20000).catch(e => null);
     check(!!h, 'the carcass is gone from the server\'s world');
 
-    // The gazelle buys a hen for the shared coop.
+    // The gazelle buys a hen for the shared coop, which takes one only with water (a new world's coop has six
+    // days of it) and seeds in its trough: Bob scatters two there first (the server checks he is at the coop).
     const hens = h.henCount;
+    await cmd(bob, 7, 3, 2);
+    await cmd(bob, 1, 18.0, 33.5); await sleep(2500);
+    await cmd(bob, 30); await sleep(2500);
     await cmd(bob, 12, 1, 3);
     h = await waitHost(ROOM, 'a hen in the coop', i => i.henCount === hens + 1, 20000).catch(e => null);
     b = await waitFor(bob, 'paid with the gazelle', i => count(i, 12) === 0, 20000).catch(e => null);

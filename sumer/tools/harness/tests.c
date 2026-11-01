@@ -2964,6 +2964,44 @@ static void TestLife(void)
     Check(loads >= 3, "some of the townsfolk carry a jar or a basket on the head (%d)", loads);
 }
 
+// The farmer sells a hen only to a coop with water and seeds in its trough, and says which is missing; a
+// coop that stood dry and empty does not kill the next hen (dry days count only while hens live there).
+static void TestHens(void)
+{
+    G.role = NET_SOLO;
+    GameInit();
+    const Trader *f = &G.traders[TR_FARMER];
+    const Offer *hen = NULL;
+    for (int i = 0; i < f->offerCount && !hen; i++)
+        if (f->offers[i].kind == OUT_HEN) hen = &f->offers[i];
+    if (!hen) {
+        Check(false, "the farmer sells hens");
+        return;
+    }
+    BagAdd(hen->in1, hen->n1);
+    const char *why;
+    G.coopFeed = 0;
+    bool seeds = !OfferCheck(hen, &why) && strstr(why, "seeds") != NULL;
+    G.coopFeed = 2;
+    G.coopWater = 0;
+    bool water = !OfferCheck(hen, &why) && strstr(why, "water") != NULL;
+    Check(seeds && water && G.henCount == 0, "no hen for a coop without seeds or water: \"%s\"", why);
+
+    for (int t = 0; t < 240; t++) FarmHours(1.0f);
+    Check(G.coopDry == 0.0f, "ten days dry with no hens count for nothing (dry %.1f days)", G.coopDry);
+    G.coopWater = WATER_DAYS;
+    bool sold = OfferApply(hen);
+    for (int t = 0; t < 24; t++) FarmHours(1.0f);
+    Check(sold && G.henCount == 1, "filled, the coop takes a hen and it lives (%d hens)", G.henCount);
+
+    G.coopWater = 0;
+    for (int t = 0; t < 5 * 24; t++) FarmHours(1.0f);
+    int after5 = G.henCount;
+    for (int t = 0; t < 36; t++) FarmHours(1.0f);
+    Check(after5 == 1 && G.henCount == 0, "a hen still dies after six days without water (alive at five days: %d)", after5);
+    GameInit();
+}
+
 // A server's game keeps slot 0 for itself: its first player gets the first house and color.
 static void TestSeats(void)
 {
@@ -3098,6 +3136,7 @@ static void RunTests(void)
     TestParty();
     TestHide();
     TestLife();
+    TestHens();
     TestLevels();
     TestSha256();
     TestSeats();

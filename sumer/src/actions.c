@@ -342,8 +342,10 @@ bool ServeRequest(int slot, int kind, const int *args, int n, int *res, int *nre
         return res[0] > 0;
     case RQ_SLAUGHTER:
         return XZDist(G.coop, by) < REACH + 2.0f && SlaughterServe(a, b);
-    case RQ_HEN:
-        return AddHen();
+    case RQ_HEN: {
+        const char *why;
+        return CoopTakesHen(&why) && AddHen();
+    }
     case RQ_LOOT: {
         int i = FighterByOwner(a);
         Vector3 pos;
@@ -433,7 +435,13 @@ void ApplyReply(int kind, const int *args, int n, bool ok, const int *res, int n
         if (a < 0 || a >= TR_COUNT || b < 0 || b >= G.traders[a].offerCount) break;
         const Offer *o = &G.traders[a].offers[b];
         if (!ok) {
-            Say("The coop is full (%d hens).", MAX_HENS);
+            const char *why;
+            char msg[96];
+            if (CoopTakesHen(&why)) {   // it could, as this machine sees it: the host's coop changed meanwhile
+                Fmt(msg, sizeof(msg), "The coop could not take the hen");
+                why = msg;
+            }
+            Say("%s.", why);
             break;
         }
         OfferPay(o);

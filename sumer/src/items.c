@@ -281,10 +281,7 @@ bool OfferCheck(const Offer *o, const char **why)
         break;
     }
     case OUT_HEN:
-        if (G.henCount >= MAX_HENS) {
-            Fmt(reason, sizeof(reason), "Your coop is full (%d hens)", MAX_HENS);
-            return false;
-        }
+        if (!CoopTakesHen(why)) return false;
         break;
     case OUT_BASKET:
         if (G.bagSlots >= BAG_MAX) {

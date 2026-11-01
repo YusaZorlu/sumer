@@ -290,13 +290,27 @@ bool AddHen(void)
     return true;
 }
 
+// Whether the coop can take another hen: room, water in it and seeds in its trough (a hen bought into a
+// dry coop or with nothing to eat soon dies). 'why' says what is missing.
+bool CoopTakesHen(const char **why)
+{
+    static char reason[96];
+    *why = reason;
+    if (G.henCount >= MAX_HENS) Fmt(reason, sizeof(reason), "Your coop is full (%d hens)", MAX_HENS);
+    else if (G.coopWater <= 0.0f) Fmt(reason, sizeof(reason), "Fill the coop's water first");
+    else if (G.coopFeed < 1.0f) Fmt(reason, sizeof(reason), "Put seeds in the coop first");
+    else return true;
+    return false;
+}
+
 static void CoopHours(float h)
 {
     float now = NowDays(), before = G.coopWater;
 
     G.coopWater = fmaxf(0.0f, G.coopWater - h / 24.0f);
     WaterWarning(before, G.coopWater, true, G.henCount > 0);
-    if (G.coopWater <= 0) G.coopDry += h / 24.0f;
+    // Dry days count only while hens live there: a coop that stood dry and empty must not kill the next hen.
+    if (G.coopWater <= 0 && G.henCount > 0) G.coopDry += h / 24.0f;
     else G.coopDry = 0;
 
     for (int i = 0; i < G.henCount; i++)
@@ -432,7 +446,7 @@ void CoopPrompt(char *e, char *f, int size, bool *okE, bool *okF)
     e[0] = f[0] = '\0';
     *okF = false;
     *okE = true;
-    if (G.henCount == 0) Fmt(e, size, "[E] Coop: no hens yet (the farmer sells them). Water %.1f days", G.coopWater);
+    if (G.henCount == 0) Fmt(e, size, "[E] Coop: no hens. Water and seeds first, then buy hens (water %.1f, feed %d)", G.coopWater, (int)G.coopFeed);
     else Fmt(e, size, "[E] Tend the hens: %d hens, %d eggs, feed %d, water %.1f days", G.henCount, G.coopEggs, (int)G.coopFeed, G.coopWater);
 }
 
