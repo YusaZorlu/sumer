@@ -1479,7 +1479,8 @@ static void DrawHelpPanel(void)
         "Harvest: 4 wheat, 2 seeds. The farm and the coop each hold 6 days of water. Fill the bucket from your storeroom "
         "at the well or the river (E), then pour it into the farm ditch or at the coop. Rain fills both; 6 dry days kill "
         "growing wheat. The shepherd takes withered plant waste, the cattle herder spare seeds.",
-        "Hens live 12 seasons, eat every 3 days, and die after 6 days without food or water. E at the coop shows each hen.",
+        "Give the coop water and seeds before you buy a hen. Hens live 12 seasons, eat every 3 days, and die after 6 days "
+        "without food or water. E at the coop shows each hen.",
         "Home: quern, trough, oven, storage, bed. The workbench sews leather armor or a wolf-pelt cloak. The smith makes "
         "bronze armor (5 bronze, 3 sheepskin, 3 cowhide) and sells a war mace (key 3) that strikes everything in front of "
         "you. Tin comes with the caravans. Picking dates is free; all other gathering costs food, mining the most, then "

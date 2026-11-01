@@ -605,14 +605,16 @@ shows the season and day.
 
 ## Hens
 
-Up to 5 hens; the farmer sells them. E at the coop opens the coop panel: water, feed, eggs, and each
-hen's age, life left and next meal.
+Up to 5 hens; the farmer sells them, but only once the coop has water and seeds in its trough (his offer
+says which is missing; you start with 6 seeds in your storeroom). E at the coop opens the coop panel: water,
+feed, eggs, and each hen's age, life left and next meal.
 
 - Each hen eats 1 feed every 3 days and lays an egg a day while fed and watered. Seeds give 1 feed,
   wheat 2 (up to 30 stored).
 - The coop holds 6 days of water like the farm; pour a bucket there too.
 - A hen lives 12 seasons (108 days) from the day you get it. It dies after 6 days without food or
-  6 days without water.
+  6 days without water (the dry days count only while hens live in the coop, so a coop that stood empty and
+  dry does not kill a new hen).
 - After a season a hen can be killed for meat; the button asks twice. The oven roasts it into 2 roast
   meat.
 

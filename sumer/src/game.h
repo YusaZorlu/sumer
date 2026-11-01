@@ -921,6 +921,7 @@ void FeedWheat(void);
 void PourCoop(void);
 bool SlaughterHen(int i);
 bool AddHen(void);
+bool CoopTakesHen(const char **why);
 void BuildFarm(void);
 void DrawFarm(void);
 void FarmHours(float h);
