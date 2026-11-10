@@ -326,23 +326,31 @@ static const Color CAT_COATS[6] = {
 };
 static const Color DOG_COATS[3] = { { 212, 184, 142, 255 }, { 96, 70, 48, 255 }, { 176, 130, 80, 255 } };
 
-static void Leg(Vector3 at, float len, float r, float swing, Color c)
+// How the pets' legs move as they are drawn (this machine's own): the stride comes from the steps they have
+// taken, eased in and out as they start and stop.
+static BeastAnim petAnim[HOME_COUNT];
+static double petClock;
+
+// A leg from its hip, swinging and bending at the knee as the other animals' do (leg: bit 0 right, bit 1 fore).
+static void Leg(const BeastAnim *m, int leg, Vector3 at, float len, float r, float still, Color c)
 {
-    DrawShadedCylinder((Vector3){ at.x, at.y - len, at.z + swing }, r, r, len, 1.25f, 5, c);
+    float swing, bend;
+    BeastLegPose(m, leg, 24.0f * (1.0f - still), false, &swing, &bend);
+    DrawBeastLeg(at, len, r * 1.15f, swing, bend, true, c);
 }
 
-static void DrawCat(const Pet *p, float t)
+static void DrawCat(const Pet *p, const BeastAnim *m, float t)
 {
     Color c = CAT_COATS[p->coat % 6], dark = Mix(c, BLACK, 0.45f), pink = { 210, 150, 140, 255 };
-    float gait = sinf(p->step * 9.0f) * 0.06f, sit = p->sit, eat = p->eatT > 0 ? 1.0f : 0.0f;
+    float sit = p->sit, eat = p->eatT > 0 ? 1.0f : 0.0f;
     rlPushMatrix();
     rlTranslatef(p->pos.x, p->pos.y, p->pos.z);
     rlRotatef(p->heading * RAD2DEG, 0, 1, 0);
     float hip = 0.2f - sit * 0.1f;
-    Leg((Vector3){ -0.05f, 0.2f, 0.13f }, 0.2f, 0.022f, gait, c);
-    Leg((Vector3){ 0.05f, 0.2f, 0.13f }, 0.2f, 0.022f, -gait, c);
-    Leg((Vector3){ -0.05f, hip, -0.13f }, hip, 0.025f, -gait * (1 - sit), c);
-    Leg((Vector3){ 0.05f, hip, -0.13f }, hip, 0.025f, gait * (1 - sit), c);
+    Leg(m, 2, (Vector3){ -0.05f, 0.2f, 0.13f }, 0.2f, 0.022f, 0, c);
+    Leg(m, 3, (Vector3){ 0.05f, 0.2f, 0.13f }, 0.2f, 0.022f, 0, c);
+    Leg(m, 0, (Vector3){ -0.05f, hip, -0.13f }, hip, 0.025f, sit, c);
+    Leg(m, 1, (Vector3){ 0.05f, hip, -0.13f }, hip, 0.025f, sit, c);
     // Body (the rear lower when it sits), head, ears, tail curling up.
     rlPushMatrix();
     rlTranslatef(0, 0.24f - sit * 0.05f, 0);
@@ -364,20 +372,19 @@ static void DrawCat(const Pet *p, float t)
     rlPopMatrix();
 }
 
-static void DrawDog(const Pet *p, float t)
+static void DrawDog(const Pet *p, const BeastAnim *m, float t)
 {
     Color c = DOG_COATS[p->coat % 3], dark = Mix(c, BLACK, 0.5f);
     bool big = p->coat == 1, slim = p->coat == 0;
     float k = big ? 1.2f : 1.0f, leg = (slim ? 0.42f : 0.36f) * k, sit = p->sit, eat = p->eatT > 0 ? 1.0f : 0.0f;
-    float gait = sinf(p->step * 6.0f) * 0.09f;
     rlPushMatrix();
     rlTranslatef(p->pos.x, p->pos.y, p->pos.z);
     rlRotatef(p->heading * RAD2DEG, 0, 1, 0);
     float hip = leg * (1 - sit * 0.55f);
-    Leg((Vector3){ -0.08f * k, leg, 0.24f * k }, leg, 0.035f * k, gait, c);
-    Leg((Vector3){ 0.08f * k, leg, 0.24f * k }, leg, 0.035f * k, -gait, c);
-    Leg((Vector3){ -0.08f * k, hip, -0.24f * k }, hip, 0.04f * k, -gait * (1 - sit), c);
-    Leg((Vector3){ 0.08f * k, hip, -0.24f * k }, hip, 0.04f * k, gait * (1 - sit), c);
+    Leg(m, 2, (Vector3){ -0.08f * k, leg, 0.24f * k }, leg, 0.035f * k, 0, c);
+    Leg(m, 3, (Vector3){ 0.08f * k, leg, 0.24f * k }, leg, 0.035f * k, 0, c);
+    Leg(m, 0, (Vector3){ -0.08f * k, hip, -0.24f * k }, hip, 0.04f * k, sit, c);
+    Leg(m, 1, (Vector3){ 0.08f * k, hip, -0.24f * k }, hip, 0.04f * k, sit, c);
     rlPushMatrix();
     rlTranslatef(0, leg + 0.06f * k - sit * 0.08f, 0);
     rlRotatef(-sit * 20.0f, 1, 0, 0);
@@ -405,12 +412,14 @@ static void DrawDog(const Pet *p, float t)
 
 void DrawPets(void)
 {
-    float t = (float)GetTime();
+    float t = (float)GetTime(), dt = DrawDt(&petClock);
     for (int i = 0; i < petCount; i++) {
         const Pet *p = &pets[i];
         if (XZDist(p->pos, G.cam.position) > 70.0f || !InView(p->pos, 1.0f)) continue;
         LightFor(p->pos);
-        if (p->kind == PET_DOG) DrawDog(p, t + (float)i);
-        else DrawCat(p, t + (float)i);
+        BeastStep(&petAnim[i], p->speed, 0.0f, dt);
+        petAnim[i].phase = p->step * (p->kind == PET_DOG ? 6.0f : 9.0f);   // in step with the ground they cover
+        if (p->kind == PET_DOG) DrawDog(p, &petAnim[i], t + (float)i);
+        else DrawCat(p, &petAnim[i], t + (float)i);
     }
 }

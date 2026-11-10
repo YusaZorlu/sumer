@@ -27,25 +27,23 @@ const count = (s, item) => s.bag.filter(x => x[0] === item).reduce((n, x) => n +
   await cmd(bob, 11, 0);
 
   // Bob shoots a calm gazelle: the server's arrow kills it, Bob takes the carcass and his arrow back.
-  let h = await hostInfo(ROOM);
-  let gi = -1;
-  for (let i = 0; i < h.animals.length && gi < 0; i++) {
-    const x = h.animals[i];
-    if (x[0] === 0 && x[1] === 1 && x[2] === 0) gi = i;
-  }
-  // The server's world runs in real time: shoot from a way off at once, where the gazelle is now, and
-  // again if it moved out of the way.
+  // The server's world runs in real time and a gazelle may wander out of the arrow's way, so each try picks a
+  // gazelle that is calm now and shoots at once from where it stands; up to eight tries.
+  let h = null, gi = -1;
   b = await info(bob);
   const xp0 = b.xp;
   let q0 = b.quiver;
-  for (let shot = 0; shot < 4 && !(h && h.animals[gi][5] < 20); shot++) {
-    let gp = (await hostInfo(ROOM)).animals[gi];
-    await cmd(bob, 1, gp[3] + 14, gp[4]);
-    await sleep(400);
+  for (let shot = 0; shot < 8 && !h; shot++) {
+    const now = await hostInfo(ROOM);
+    gi = now.animals.findIndex(x => x[0] === 0 && x[1] === 1 && x[2] === 0 && x[5] >= 20);
+    if (gi < 0) break;
+    let gp = now.animals[gi];
+    await cmd(bob, 1, gp[3] + 12, gp[4]);
+    await sleep(300);
     gp = (await hostInfo(ROOM)).animals[gi];
     q0 = (await info(bob)).quiver;
     await cmd(bob, 10, gp[3], gp[4]);
-    h = await waitHost(ROOM, 'the gazelle hit', i => i.animals[gi][5] < 20, 8000).catch(e => null);
+    h = await waitHost(ROOM, 'the gazelle hit', i => i.animals[gi][5] < 20, 6000).catch(e => null);
   }
   check(!!h, `Bob's arrow strikes the server's gazelle (hp ${h ? h.animals[gi][5] : '?'}, state ${h ? h.animals[gi][2] : '?'})`);
   b = await waitFor(bob, 'the kill reported', i => /down|wounded/.test(i.msg), 20000).catch(e => null);

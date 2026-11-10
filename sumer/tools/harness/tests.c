@@ -2846,6 +2846,14 @@ static void TestHide(void)
     Check(UseArmor() == ARMOR_NONE && G.equip == EQ_NONE && PartyDisguise(0, &look) && !PartyDisguise(1, &look), "a hider wears no armor, carries nothing and looks like the townsfolk");
     Check(PartyMayHurt(1, 0) && !PartyMayHurt(0, 1) && !PartyMayHurt(2, 0), "only the seeker can hurt, and only hiders");
     Check(LoadsInCity() == 0, "no one carries a load on the head, townsfolk included: it would set them apart from the hiders");
+    {
+        // Played by day: the clock stands still at mid-morning, and no one is indoors.
+        G.hour = 23.0f;
+        ServerTick(0.05f);
+        int in = 0;
+        for (int i = 0; i < G.villagerCount; i++) in += G.villagers[i].indoors;
+        Check(G.hour == 10.0f && in == 0, "hide and seek has no night: the clock stands at %.0f h and all the townsfolk are in the streets", G.hour);
+    }
     for (int t = 0; t < 610; t++) {
         SyncSelf();
         PartyUpdate(0.1f);
@@ -3061,6 +3069,70 @@ static void TestEase(void)
     GameInit();
 }
 
+// Night in the city: the torch in your hand is the first of the lights sent to be drawn, whatever the guards
+// carry; most of the townsfolk go indoors where no one sees them go, and are out again by day; the first-day
+// guide goes on as its steps are done.
+static void TestNight(void)
+{
+    G.role = NET_SOLO;
+    GameInit();
+    SetPanel(PANEL_NONE);
+    int walkers = 0, home = 0, seen = 0;
+    for (int i = 0; i < G.villagerCount; i++) walkers += G.villagers[i].kind == NPC_CIVILIAN && G.villagers[i].from >= 0;
+
+    G.hour = 22.5f;
+    PlaceAt(0, 30, 0);
+    SyncSelf();
+    G.torchHeld = true;
+    UpdateSky();
+    UpdateLights();
+    Vector3 hand = G.player.pos;
+    Check(TorchBurning() && G.dynCount > 4 && XZDist(G.dynLights[0], hand) < 1.0f,
+          "at night your own torch is the first of %d hand lights (the guards' used to crowd it out)", G.dynCount);
+
+    for (int t = 0; t < 40; t++) UpdateVillage(0.05f);
+    for (int i = 0; i < G.villagerCount; i++) {
+        const Villager *v = &G.villagers[i];
+        if (v->kind != NPC_CIVILIAN || v->from < 0) continue;
+        home += v->indoors;
+        Villager out = *v;
+        out.indoors = false;
+        seen += v->indoors && XZDist(VillagerLanePos(&out), G.player.pos) < 28.0f;
+    }
+    Check(home >= walkers / 3 && home < walkers && seen == 0, "late at night %d of the %d townsfolk in the streets have gone indoors, none of them where you could see it", home, walkers);
+    bool inside = true;
+    for (int i = 0; i < G.villagerCount; i++)
+        if (G.villagers[i].indoors) inside &= SolidAt(VillagerPos(&G.villagers[i]).x, VillagerPos(&G.villagers[i]).z, 0.1f);
+    Check(inside, "indoors is inside a house's walls");
+    G.hour = 9.0f;
+    PlaceAt(300, 300, 0);
+    SyncSelf();
+    for (int t = 0; t < 40; t++) UpdateVillage(0.05f);
+    home = 0;
+    for (int i = 0; i < G.villagerCount; i++) home += G.villagers[i].indoors;
+    Check(home == 0, "by day they are all out again (%d still in)", home);
+    G.torchHeld = false;
+
+    // The guide: alone, step by step as the world shows each done.
+    GuideSetStep(0);
+    const char *first = GuideLine();
+    SetPanel(PANEL_STORAGE);
+    GuideUpdate();
+    SetPanel(PANEL_NONE);
+    bool second = GuideStepNow() == 1;
+    BagAdd(IT_BUCKET, 1);
+    BagAdd(IT_SEEDS, 2);
+    GuideUpdate();
+    BagAdd(IT_WATER, 1);
+    GuideUpdate();
+    Check(first && strstr(first, "storage jars") && second && GuideStepNow() == 3, "the first-day guide moves on as each step is done (now at step %d)", GuideStepNow() + 1);
+    G.role = NET_HOST;
+    Check(GuideLine() == NULL, "playing with others there is no guide");
+    G.role = NET_SOLO;
+    GuideSetStep(-1);
+    GameInit();
+}
+
 // A server's game keeps slot 0 for itself: its first player gets the first house and color.
 static void TestSeats(void)
 {
@@ -3197,6 +3269,7 @@ static void RunTests(void)
     TestLife();
     TestHens();
     TestEase();
+    TestNight();
     TestLevels();
     TestSha256();
     TestSeats();

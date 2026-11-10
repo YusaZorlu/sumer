@@ -247,8 +247,10 @@ static void DrawDonkey(Vector3 p, float facing, Color cloth, bool moving, float 
     rlPushMatrix();
     rlTranslatef(0, 0.88f, 0.52f);
     rlRotatef(nod, 1, 0, 0);
-    Part(0, 0.17f, 0.08f, 0.2f, 0.45f, 0.22f, coat);
+    DrawShadedCylinder((Vector3){ 0, -0.06f, 0.08f }, 0.11f, 0.13f, 0.46f, 0.75f, 6, coat);
     DrawShadedBlob((Vector3){ 0, 0.32f, 0.32f }, (Vector3){ 0.11f, 0.12f, 0.23f }, coat);
+    DrawShadedBlob((Vector3){ 0, 0.29f, 0.5f }, (Vector3){ 0.08f, 0.08f, 0.09f }, (Color){ 222, 214, 200, 255 });   // the pale muzzle
+    Part(0, 0.3f, 0.02f, 0.04f, 0.3f, 0.2f, dark);   // the mane
     Part(-0.06f, 0.57f + 0.015f * twitch, 0.18f, 0.05f, 0.28f, 0.05f, dark);
     Part(0.06f, 0.57f - 0.015f * twitch, 0.18f, 0.05f, 0.28f, 0.05f, dark);
     rlPopMatrix();

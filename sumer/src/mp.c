@@ -278,7 +278,7 @@ static void WriteSnapshot(Writer *w, bool slow)
         const Villager *v = &G.villagers[i];
         W16(w, (unsigned)Clamp((v->t + 0.5f) / 2.0f * 65535.0f, 0.0f, 65535.0f));
         W8(w, (unsigned)(int)roundf(Clamp(v->side * 40.0f, -127.0f, 127.0f)) & 255u);
-        W8(w, (v->dir > 0 ? 1u : 0u) | (v->moving ? 2u : 0u));
+        W8(w, (v->dir > 0 ? 1u : 0u) | (v->moving ? 2u : 0u) | (v->indoors ? 4u : 0u));
         W8(w, v->from >= 0 ? (unsigned)v->from : 255u);
         W8(w, v->to >= 0 ? (unsigned)v->to : 255u);
         WAngle(w, v->face);
@@ -489,6 +489,7 @@ static void ReadSnapshot(Reader *r)
         v->dir = (bits & 1u) ? 1.0f : -1.0f;
         v->moving = (bits & 2u) != 0;
         v->face = face;
+        SetIndoors(v, (bits & 4u) != 0);
         RVitals(r, &v->vit);
     }
     int workers = (int)R8(r);

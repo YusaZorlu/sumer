@@ -488,6 +488,8 @@ int main(int argc, char **argv)
     if (argc < 2) return 1;
     SetTraceLogLevel(LOG_WARNING);
     if (getenv("SUMER_ROYALE")) SetRoyale(true);
+    // The same animals and weather every run, so a test fails for a reason and not by chance (SUMER_SEED tries another).
+    FixRandom(getenv("SUMER_SEED") ? (unsigned)atoi(getenv("SUMER_SEED")) : 2100u);
     InitWindow(1280, 720, "harness");
     rlSetClipPlanes(0.1, 1200.0);
     GameInit();

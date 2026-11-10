@@ -140,7 +140,8 @@ static float LandingHeight(float x, float z)
 // at body height; 11 language a; 12 barter offer b of trader a; 13 hurt the player by a; 14 equip a;
 // 15 open panel a (PANEL_* in game.h); 20 start a battle royale round (the host); 21 skip the round's clock to a s;
 // 23 forget whose this browser's saves are, as if made before accounts; 25 to board a's seat b; 26 beside pet a;
-// 29 b metres in front of the a-th of the townsfolk carrying a load, looking at them; 30 scatter seeds into the coop.
+// 29 b metres in front of the a-th of the townsfolk carrying a load, looking at them; 30 scatter seeds into the coop;
+// 31 set the day to a; 32 take up (1) or put away (0) the torch.
 EMSCRIPTEN_KEEPALIVE void TestCommand(int cmd, float a, float b)
 {
     Player *p = &G.player;
@@ -216,6 +217,8 @@ EMSCRIPTEN_KEEPALIVE void TestCommand(int cmd, float a, float b)
         }
         break;
     }
+    case 31: G.day = (int)a; break;          // the day (the season follows from it)
+    case 32: G.torchHeld = a != 0; break;    // the torch in hand
     case 30: FeedSeeds(); break;   // the seeds in the baskets scattered into the coop's trough (its panel's button)
     case 26: {   // beside cat or dog a, b metres east of it
         Vector3 q = PetPos((int)a);
