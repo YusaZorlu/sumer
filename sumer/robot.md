@@ -534,6 +534,18 @@ The world's draw code (`render.c` primitives, `DrawGround`, `DrawWater`, `DrawRo
 - **What moves** (`CatchMoving`): people, animals, boats, caravans, players, arrows, flames, birds and fireflies
   (`DrawLife`), every frame, into dynamic buffers of 65536 vertices. Everything is quads, so every buffer shares
   one index buffer.
+- **Animals in motion** (`BeastAnim`, `BeastStep`, `BeastLegPose`, `DrawBeastLegs` in render.c): whoever draws an
+  animal keeps a `BeastAnim` for it in a static array (wildlife.c `anim[]`, village.c for cows, sheep and the flock,
+  farm.c for hens; the caravans' donkeys take their stride from `c->s`), stepped once a frame with `DrawDt`: the
+  stride's phase grows with the speed (no foot skating, no jump when the speed changes), `go` eases the legs in and
+  out of motion, `head` eases toward `HeadDown()`/`Grazes()` (grazing, rooting, sniffing). A speed over twice the
+  walk is a gallop. All of it is draw-side: it must never write to an `Animal` or `Wanderer`, use `RandF`, or move
+  `Center()`/`Radius()` (what arrows hit); `TestEase` draws everything and checks the game is untouched. A goose on
+  the water is drawn sunk by its leg height (it floats), its hit sphere left where it was.
+- **Hold E** (`HoldUse`, `RepeatsWork` in actions.c, called from `GameUpdate`): only crafting stations, plots and
+  resources repeat, and only while `G.okE`; anything that opens a window or toggles (bed, storeroom, traders, boards,
+  ladders) must stay out of `RepeatsWork`. **Store all** is `StoreAll` in items.c (the storeroom is each player's own,
+  so no request to the host). The minimap's home arrow is drawn after the scissor ends, not in a battle royale or party.
 - **Signs of life** (`src/life.c`, every setting): smoke from each fire `FireSpots` lists (lights.c: every
   `AddFireLight`, 48 at most; the world has 25, and the old 24 left out the oven's flame), the kiln's from its
   chimney; dust from the local player running (`UpdateLife`, in `UpdateWorld`) and running animals; both drawn by
@@ -599,7 +611,7 @@ no sound files. Read the comment at the top of the file and the notation comment
   weapon; Bag and Menu were added so the panels and the pause menu can be reached): no chat, torch or map keys on touch.
 - Graphics, later steps (the owner wants CC0-only art, a 25-50 MB download at most, and to weigh each effect's cost):
   buildings and props, then effects (wind on cloth and palms, light shafts, ambient occlusion, water reflections,
-  sharper far shadows, grass and reeds). Animals are still boxes and blobs. Free model and texture sites (poly.pizza,
+  sharper far shadows, grass and reeds). Animals are still made of boxes and blobs, though they move now. Free model and texture sites (poly.pizza,
   kenney.nl, quaternius.com, opengameart.org, polyhaven.com, ambientcg.com) were still denied by the cloud sandbox's
   network policy in October 2026 (403 from the proxy), so nothing has been downloaded; the owner must allow those
   hosts in the environment's network settings first. Since then the owner opened them (poly.pizza still 403s); four
@@ -607,8 +619,8 @@ no sound files. Read the comment at the top of the file and the notation comment
   and tree models (Quaternius nature packs are CC0 low-poly with flat colors, which suits baking into the static
   meshes), then a second ground (grass) map. There is no model loader yet.
 - More sound effects: footsteps, the bow, animals, ambience (blows, parries and arrows have theirs).
-- Of the October 2026 visual plan, E (animals that move their legs and heads) and H (sound) were put off by the
-  owner. From F and G: awnings and cloth shades do not move in the wind (they are in the still meshes), shawls have
+- Of the October 2026 visual plan, H (sound) was put off by the owner (E, the animals' movement, went in in
+  November). Cats and dogs keep their older, simpler leg swing. From F and G: awnings and cloth shades do not move in the wind (they are in the still meshes), shawls have
   no fringe, and other players' running raises no dust (left out so a hider cannot be told by it).
 - Accounts cannot change their password or delete themselves yet, and a lost password cannot be recovered (there is
   no e-mail by design). The guest is trusted with its own things (records come from its game), so a changed page could

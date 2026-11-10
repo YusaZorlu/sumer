@@ -718,6 +718,7 @@ void GameUpdate(void)
 
     if (play) {
         if ((KeyPressed(KEY_E) && !closedWithE) || TouchPressed(TB_USE)) Interact(false);
+        HoldUse((IsKeyDown(KEY_E) && !closedWithE) || TouchDown(TB_USE), dt);
         if (KeyPressed(KEY_F)) Interact(true);
         if (KeyPressed(KEY_R)) RefillQuiver();
         if (KeyPressed(KEY_ONE)) SetEquip(EQ_BOW);

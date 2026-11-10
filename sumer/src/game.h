@@ -512,6 +512,14 @@ Color Lit(Color c, float shade);
 void DrawShadedBox(Vector3 c, Vector3 s, Color col);
 void DrawGlowBox(Vector3 c, Vector3 s, Color col);
 void DrawShadedCylinder(Vector3 base, float rx, float rz, float h, float topScale, int sides, Color col);
+// How a beast moves as it is drawn (render.c), kept by whoever draws it and never part of the game: its
+// stride's phase, how much it is in motion (0 standing to 1, eased) and how far its head is down (0 to 1).
+typedef struct { float phase, go, head; } BeastAnim;
+float DrawDt(double *last);
+void BeastStep(BeastAnim *b, float speed, float head, float dt);
+void BeastLegPose(const BeastAnim *b, int leg, float amp, bool gallop, float *swing, float *bend);
+void DrawBeastLeg(Vector3 hip, float len, float r, float swing, float bend, bool fine, Color c);
+void DrawBeastLegs(const BeastAnim *b, float x, float z, float len, float r, float amp, bool gallop, bool fine, Color c);
 void DrawShadedBlob(Vector3 c, Vector3 r, Color col);
 void DrawShadedBlobFar(Vector3 c, Vector3 r, Color col);
 void DrawShadedBlobFine(Vector3 c, Vector3 r, Color col);
@@ -772,6 +780,7 @@ int SlotsSpace(const Slot *s, int n, int item);
 int SlotsAdd(Slot *s, int n, int item, int count);
 int SlotsRemove(Slot *s, int n, int item, int count);
 int MoveStack(Slot *src, Slot *dst, int dn);
+int StoreAll(int *left);
 int BagCount(int item);
 int BagAdd(int item, int count);
 int BagRemove(int item, int count);
@@ -1147,6 +1156,8 @@ bool ServeRequest(int slot, int kind, const int *args, int n, int *res, int *nre
 void ApplyReply(int kind, const int *args, int n, bool ok, const int *res, int nres);
 void FindTarget(bool play);
 void Interact(bool alt);
+bool RepeatsWork(void);
+void HoldUse(bool down, float dt);
 void Barter(int trader, int offer);
 bool TraderWilling(int i);
 void SaveNow(void);

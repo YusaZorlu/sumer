@@ -227,21 +227,36 @@ static void Part(float x, float y, float z, float w, float h, float d, Color c)
     DrawShadedBox((Vector3){ x, y, z }, (Vector3){ w, h, d }, c);
 }
 
-static void DrawDonkey(Vector3 p, float facing, Color cloth, bool moving)
+// 'stride': how far along the road it has come (its legs step with the ground under them); 'seed' tells one
+// donkey from the next.
+static void DrawDonkey(Vector3 p, float facing, Color cloth, bool moving, float stride, int seed)
 {
     const Color coat = { 140, 132, 124, 255 }, dark = { 70, 64, 60, 255 };
-    float bob = moving ? fabsf(sinf((float)GetTime() * 6.0f)) * 0.04f : 0.0f;
+    BeastAnim m = { stride * 3.4f + (float)seed * 1.9f, moving ? 1.0f : 0.0f, 0 };
+    float t = (float)GetTime() + (float)seed * 2.7f, bob = 0.03f * fabsf(sinf(m.phase)) * m.go;
+    // Walking, the head nods with each step; standing at the stall it hangs a little, an ear turning, the
+    // tail swishing.
+    float nod = moving ? 5.0f * sinf(m.phase * 2.0f) : 14.0f + 4.0f * sinf(t * 0.6f);
+    float twitch = sinf(t * 0.8f) > 0.75f ? sinf(t * 18.0f) : 0.0f;
 
     rlPushMatrix();
     rlTranslatef(p.x, p.y + bob, p.z);
     rlRotatef(facing * RAD2DEG, 0, 1, 0);
-    for (int i = 0; i < 4; i++)
-        DrawShadedCylinder((Vector3){ (i & 1) ? 0.15f : -0.15f, 0, (i & 2) ? 0.4f : -0.4f }, 0.055f, 0.055f, 0.62f, 0.7f, 5, coat);
+    DrawBeastLegs(&m, 0.15f, 0.4f, 0.62f, 0.06f, 20.0f, false, true, coat);
     DrawShadedBlob((Vector3){ 0, 0.82f, 0 }, (Vector3){ 0.25f, 0.29f, 0.62f }, coat);
-    Part(0, 1.05f, 0.6f, 0.2f, 0.45f, 0.22f, coat);
-    DrawShadedBlob((Vector3){ 0, 1.2f, 0.84f }, (Vector3){ 0.11f, 0.12f, 0.23f }, coat);
-    Part(-0.06f, 1.45f, 0.7f, 0.05f, 0.28f, 0.05f, dark);
-    Part(0.06f, 1.45f, 0.7f, 0.05f, 0.28f, 0.05f, dark);
+    rlPushMatrix();
+    rlTranslatef(0, 0.88f, 0.52f);
+    rlRotatef(nod, 1, 0, 0);
+    Part(0, 0.17f, 0.08f, 0.2f, 0.45f, 0.22f, coat);
+    DrawShadedBlob((Vector3){ 0, 0.32f, 0.32f }, (Vector3){ 0.11f, 0.12f, 0.23f }, coat);
+    Part(-0.06f, 0.57f + 0.015f * twitch, 0.18f, 0.05f, 0.28f, 0.05f, dark);
+    Part(0.06f, 0.57f - 0.015f * twitch, 0.18f, 0.05f, 0.28f, 0.05f, dark);
+    rlPopMatrix();
+    rlPushMatrix();
+    rlTranslatef(0, 0.98f, -0.6f);
+    rlRotatef(sinf(t * 2.0f) * (moving ? 8.0f : 16.0f), 0, 0, 1);
+    Part(0, -0.2f, 0, 0.05f, 0.42f, 0.05f, dark);
+    rlPopMatrix();
     Part(-0.33f, 0.9f, -0.05f, 0.22f, 0.42f, 0.6f, cloth);
     Part(0.33f, 0.9f, -0.05f, 0.22f, 0.42f, 0.6f, cloth);
     Part(0, 1.15f, -0.05f, 0.5f, 0.2f, 0.5f, COL_STRAW);
@@ -314,7 +329,7 @@ void DrawCaravans(void)
         for (int k = 1; k <= 2; k++) {
             Vector3 d = Member(c, k, &f);
             LightFor(d);
-            DrawDonkey(d, f, c->cloth, moving);
+            DrawDonkey(d, f, c->cloth, moving, c->s, i * 2 + k);
         }
 
         for (int k = 0; k < CARAVAN_GUARDS; k++) {

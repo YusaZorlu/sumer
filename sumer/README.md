@@ -346,6 +346,7 @@ The controls show on a phone or tablet, and on any other screen once a finger to
 | V | Strike with the melee weapon |
 | Right mouse or Q | Parry with the melee weapon or the mace |
 | Z | Arrow camera on/off |
+| E (held) | Keeps at work done over and over: grinding at the quern, kneading, baking, firing pots, smelting, sowing or reaping plot after plot, gathering from one thing to the next (after half a second, about three times a second) |
 | E / F | Use, talk, pick up, climb a ladder, search a body, fill or pour a bucket, open the coop, feed a cat or a dog / alternate action (plant a date). E also closes what it opened (barter, storeroom, coop, a game board) |
 | R | Refill quiver from carried arrow baskets |
 | B | Torch on/off (it burns from 17:00, brighter as dusk turns to night; also a button in Tab, see Combat) |
@@ -355,7 +356,7 @@ The controls show on a phone or tablet, and on any other screen once a finger to
 | Enter | Battle royale and party, between rounds: ready / not ready |
 | F5 | Save |
 | F11 or Alt+Enter | Borderless fullscreen on/off |
-| M | Map zoom (whole world, x2.5, x6 around you); the map shows the main roads, both villages and the camps |
+| M | Map zoom (whole world, x2.5, x6 around you); the map shows the main roads, both villages and the camps. When your house is off the zoomed map, a blue arrowhead on its edge points the way home |
 | N | Music volume: off, low, medium, high (also a button in the Esc menu and on the title screen) |
 | G | Graphics: auto, high, low, classic (also a button in the Esc menu and on the title screen) |
 | H | Controls and tips window |
@@ -639,6 +640,9 @@ Gathering one gives 2 herbs; the plant grows back in a day and a half. Click her
 an empty stomach (the HUD shows "Herbs" with the seconds left). Herbs also barter: the farmer gives
 seeds, the hunter arrows, the shepherd sheepskin and the Dilmun merchant tin.
 
+In the storeroom, **Store all** (Q) empties every basket you carry into the storage jars, as far as they have
+room; a click on a jar takes back what you want with you.
+
 ## Saving
 
 Three save slots: `sumer.sav`, `sumer2.sav`, `sumer3.sav`, kept in the browser's storage. The game saves to the slot in play when you sleep,
@@ -872,6 +876,15 @@ warning; stay and it strikes (8 damage) every couple of seconds. Back away and i
 an arrow landing close sends it slithering off to new grass. A dead snake gives nothing.
 
 Animals you kill stay gone until the next spring, when their herds are full again.
+
+**How they move** (all graphics settings): every animal walks on legs that step and bend at the knee, and
+gallops when it flees or hunts, the body rising and rocking with each bound. Standing calm, gazelles and
+onagers lower their heads to graze and look up now and then, boars root with their snouts in the earth, a
+wolf noses the ground, turns its head to look about when wary and runs with its head low on the hunt; tails
+swish and flick, ears twitch. Geese waddle on land, reach down to graze, and float on the water with their legs
+under them. In the city's pen and the herders' fold the cows and sheep graze and chew, the caravans' donkeys
+nod as they walk, and your hens step about with a hen's jerking head. It is only how they are drawn: where
+they are, what they notice and where an arrow hits are as before.
 
 ## Source layout
 
