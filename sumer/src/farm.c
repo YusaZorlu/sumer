@@ -140,7 +140,7 @@ static bool CropsPlanted(void)
     return false;
 }
 
-static bool TooLateToSow(void)
+bool TooLateToSow(void)
 {
     return Season() == WINTER || DaysToWinter() < WHEAT_DAYS;
 }

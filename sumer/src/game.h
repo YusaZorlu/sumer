@@ -85,7 +85,7 @@
 #define COL_WHITEWASH   CLITERAL(Color){ 228, 218, 196, 255 }
 #define COL_CONES       CLITERAL(Color){ 196, 162, 120, 249 }   // alpha 249: a clay-cone mosaic (the shaders)
 #define COL_LAPIS       CLITERAL(Color){  38,  84, 160, 255 }
-#define COL_DOORWAY     CLITERAL(Color){  52,  36,  26, 255 }
+#define COL_DOORWAY     CLITERAL(Color){  52,  36,  26, 248 }   // alpha 248: a door or window, lamplit at night (the shaders)
 #define COL_WATER       CLITERAL(Color){  58, 110, 128, 255 }
 #define COL_ROAD        CLITERAL(Color){ 168, 148, 110, 255 }
 #define COL_PALM_TRUNK  CLITERAL(Color){ 118,  88,  58, 255 }
@@ -224,6 +224,8 @@ typedef struct {
     int bow;   // 0: no bow; 1-3: the bow they shoot with (hunting, composite, war)
     bool crouch;   // someone at work low down: grinding grain, mending a net, tending a fire
     bool perch;    // an archer posted up high (a gate tower's top): stays there and shoots, never comes down
+    bool indoors;  // gone home for the night (the host's call): inside the house at 'homeAt', not drawn, not walking
+    Vector3 homeAt;
 } Villager;
 // 'camp' 0 to CAMPS-1 is the camp they live in; CAMPS + b is roaming band b.
 typedef struct { Vector3 home, pos, netPos; float face, timer, speed, respawnDay; bool moving; int camp; Vitals vit; } Raider;
@@ -573,6 +575,11 @@ void DrawEffects(void);
 void UpdateLife(float dt);
 void DrawPuffs(void);
 void DrawLife(void);
+void FixRandom(unsigned seed);
+int GuideStepNow(void);
+void GuideSetStep(int s);
+const char *GuideLine(void);
+void GuideUpdate(void);
 int DustInAir(void);
 
 enum { OWNER_PLAYER = 1, OWNER_VILLAGER = 1000, OWNER_WORKER = 2000, OWNER_TRADER = 3000, OWNER_CARAVAN = 4000, OWNER_RAIDER = 5000 };
@@ -861,6 +868,8 @@ void UpdateVillage(float dt);
 void AdvanceHours(float h);
 void DrawVillage(void);
 int VillagerLoad(int i, bool woman);
+Vector3 NearestHouse(Vector3 p);
+void SetIndoors(Villager *v, bool in);
 Vector3 VillagerPos(const Villager *v);
 Vector3 VillagerLanePos(const Villager *v);
 int StreetNodeCount(void);
@@ -930,6 +939,7 @@ void FeedWheat(void);
 void PourCoop(void);
 bool SlaughterHen(int i);
 bool AddHen(void);
+bool TooLateToSow(void);
 bool CoopTakesHen(const char **why);
 void BuildFarm(void);
 void DrawFarm(void);

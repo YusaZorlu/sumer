@@ -542,6 +542,22 @@ The world's draw code (`render.c` primitives, `DrawGround`, `DrawWater`, `DrawRo
   walk is a gallop. All of it is draw-side: it must never write to an `Animal` or `Wanderer`, use `RandF`, or move
   `Center()`/`Radius()` (what arrows hit); `TestEase` draws everything and checks the game is untouched. A goose on
   the water is drawn sunk by its leg height (it floats), its hit sphere left where it was.
+- **Night in the city** (`HomeHours`, `SetIndoors` in village.c, `NearestHouse` in city.c): from 20:00 to 21:30
+  three in four street townsfolk go indoors to the nearest house's middle, and come out from 05:00 to 06:30, each only
+  where no player is within 28 m (the host decides; one bit in the villager's flags carries it to guests). Indoors
+  they are not drawn and do not walk. Never in a party or a battle royale, and hide and seek holds the clock at
+  10:00 (`UpdateTime`), so it has no night at all; `TestNight` and `TestHide` check both. Doors and windows are
+  `COL_DOORWAY` with alpha 248, which the world shader lights from inside after dark (about seven houses in ten).
+- **Hand torches** in the shader: 8 at most (4 on Low); `UpdateLights` lists yours first and the shader upload takes
+  yours, then the nearest. The guards' torches used to fill the list first, so yours lit nothing.
+- **Seasons on the land** (`SeasonLand` in gfx.c, `season` in the world shader): thin grass goes to straw in the dry
+  months and freshens with the winter and spring rains; strong greens (banks, irrigated land) are left alone. Shaders
+  only; Classic keeps its light tint per season.
+- **Wading** (`UpdateWakes`/`DrawWakes` in life.c) and bank foam (water shader, where the water is shallow).
+- **First-day guide** (`src/guide.c`): alone only, one line under the status box; each step is done when the world
+  shows it, the step is kept in `sumer.prefs` (`guide`), Game settings turns it off or on again (from the start).
+- **Tests run on a fixed seed** (`FixRandom`, `SUMER_SEED` to try another): the animals and weather used to differ
+  every run, which made the townsfolk-crossing and crosshair checks fail now and then.
 - **Hold E** (`HoldUse`, `RepeatsWork` in actions.c, called from `GameUpdate`): only crafting stations, plots and
   resources repeat, and only while `G.okE`; anything that opens a window or toggles (bed, storeroom, traders, boards,
   ladders) must stay out of `RepeatsWork`. **Store all** is `StoreAll` in items.c (the storeroom is each player's own,
@@ -606,7 +622,7 @@ no sound files. Read the comment at the top of the file and the notation comment
 
 ## Ideas that were mentioned and not done
 
-- Firefox works (the owner tested it); Safari is untested. No gamepad input. Touch controls cover only the main keys
+- Firefox and Safari work (the owner played both). No gamepad input. Touch controls cover only the main keys
   (the owner asked for move, attack, parry, use, crouch, look, first/third person, then jump and previous/next
   weapon; Bag and Menu were added so the panels and the pause menu can be reached): no chat, torch or map keys on touch.
 - Graphics, later steps (the owner wants CC0-only art, a 25-50 MB download at most, and to weigh each effect's cost):
@@ -622,7 +638,9 @@ no sound files. Read the comment at the top of the file and the notation comment
 - Of the October 2026 visual plan, H (sound) was put off by the owner (E, the animals' movement, went in in
   November). Cats and dogs keep their older, simpler leg swing. From F and G: awnings and cloth shades do not move in the wind (they are in the still meshes), shawls have
   no fringe, and other players' running raises no dust (left out so a hider cannot be told by it).
-- Accounts cannot change their password or delete themselves yet, and a lost password cannot be recovered (there is
+- Accounts can be deleted by their owner; a password cannot be changed, and a lost one cannot be recovered (there is
   no e-mail by design). The guest is trusted with its own things (records come from its game), so a changed page could
   give itself anything; experience is only shown, which is why that was left so.
-- `web/` is rebuilt by hand; there is no CI. The desktop branch needs its own catching up if it is ever revived.
+- `web/` is rebuilt by hand and there is no CI: the owner prefers it so, so do not add one. No credits screen in the
+  game either (the owner declined it): credits stay in the README.
+- Possible later: cloth that moves in the wind (awnings, stall shades, banners); the owner put it off for now. The desktop branch needs its own catching up if it is ever revived.

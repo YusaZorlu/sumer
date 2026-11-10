@@ -55,6 +55,8 @@ static bool Dusty(Vector3 p)
     return InsideWalls(p.x, p.z, 0.0f) || Greenness(p.x, p.z) < 0.5f;
 }
 
+static void UpdateWakes(float dt);
+
 void UpdateLife(float dt)
 {
     for (int i = 0; i < MAX_DUST; i++)
@@ -63,6 +65,7 @@ void UpdateLife(float dt)
             dust[i].at = Vector3Add(dust[i].at, Vector3Scale(dust[i].drift, dt));
             dust[i].drift.y *= 1.0f - 1.5f * dt;
         }
+    UpdateWakes(dt);
     const Player *pl = &G.player;
     playerDust -= dt;
     if (pl->running && pl->moving && pl->grounded && playerDust <= 0 && Dusty(pl->pos)) {
@@ -77,6 +80,50 @@ void UpdateLife(float dt)
         if (XZDist(a->pos, G.cam.position) > 70.0f || !Dusty(a->pos)) continue;
         KickDust(a->pos, a->type == AN_ONAGER ? 0.8f : 0.6f);
         animalDust[i] = 0.16f;
+    }
+}
+
+// ---- Rings on the water round whoever wades ----
+
+#define MAX_WAKES 20
+static struct { Vector3 at; float age; } wakes[MAX_WAKES];
+static float wadeT[MAX_PLAYERS];
+
+// You and the players in sight leave spreading rings as you wade (people of the town never go into the water).
+static void UpdateWakes(float dt)
+{
+    for (int i = 0; i < MAX_WAKES; i++)
+        if (wakes[i].age < 1.6f) wakes[i].age += dt;
+    for (int s = 0; s < MAX_PLAYERS; s++) {
+        const Peer *p = &G.peers[s];
+        bool self = s == G.self;
+        Vector3 at = self ? G.player.pos : p->shown;
+        wadeT[s] -= dt;
+        if (!(self || p->active) || (p->flags & PF_OUT) || wadeT[s] > 0 || !(self ? G.player.moving : p->stride != 0.0f)) continue;
+        if (XZDist(at, G.cam.position) > 60.0f || at.y > WATER_LEVEL + 0.3f || !InWater(at.x, at.z)) continue;
+        int k = 0;
+        for (int i = 1; i < MAX_WAKES; i++)
+            if (wakes[i].age > wakes[k].age) k = i;
+        wakes[k].at = (Vector3){ at.x, WATER_LEVEL + 0.04f, at.z };
+        wakes[k].age = 0;
+        wadeT[s] = 0.45f;
+    }
+}
+
+static void DrawWakes(void)
+{
+    for (int i = 0; i < MAX_WAKES; i++) {
+        if (wakes[i].age >= 1.6f || wakes[i].at.y == 0.0f) continue;
+        float f = wakes[i].age / 1.6f, r = 0.35f + 1.1f * f;
+        Color c = Fade((Color){ 206, 224, 228, 255 }, 0.6f * (1.0f - f));
+        for (int k = 0; k < 12; k++) {
+            float a = (float)k * 2.0f * PI / 12.0f;
+            rlPushMatrix();
+            rlTranslatef(wakes[i].at.x + cosf(a) * r, wakes[i].at.y, wakes[i].at.z + sinf(a) * r);
+            rlRotatef(-a * RAD2DEG, 0, 1, 0);
+            DrawShadedBox((Vector3){ 0, 0, 0 }, (Vector3){ 0.04f, 0.01f, r * 0.4f }, c);
+            rlPopMatrix();
+        }
     }
 }
 
@@ -214,5 +261,6 @@ void DrawLife(void)
     SetMaterial(MAT_THING);
     if (G.daylight > 0.25f) DrawBirds(now);
     DrawFireflies(now);
+    DrawWakes();
     SetMaterial(mat);
 }

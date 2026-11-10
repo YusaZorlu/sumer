@@ -1198,16 +1198,37 @@ static void DrawAnimal(const Animal *a, int i, bool fine)
         Legs(d, m, 0.09f, amp, gallop, fine, d->dark);
         Blob(0, lh + bh / 2, 0, bw, bh, bl, d->coat);
         Blob(0, lh + bh * 0.32f, 0, bw * 0.92f, bh * 0.45f, bl * 0.82f, (Color){ 236, 222, 196, 255 });
+        if (fine) {   // near: deep chest and round haunches, the dark stripe along the flank, the white rump
+            Blob(0, lh + bh * 0.52f, bl * 0.27f, bw * 0.98f, bh * 1.04f, bl * 0.48f, d->coat);
+            Blob(0, lh + bh * 0.56f, -bl * 0.27f, bw * 1.04f, bh * 1.02f, bl * 0.5f, d->coat);
+            for (int s = -1; s <= 1; s += 2) Part((float)s * bw * 0.5f, lh + bh * 0.4f, 0, 0.02f, 0.06f, bl * 0.55f, d->dark);
+            Blob(0, lh + bh * 0.55f, -bl / 2 + 0.03f, bw * 0.7f, bh * 0.7f, 0.14f, (Color){ 240, 232, 214, 255 });
+        }
         // The neck from the shoulders: down to the grass to graze, stretched out at a run.
         rlPushMatrix();
         rlTranslatef(0, top - 0.08f - 0.08f * head, bl / 2 - 0.1f);
         rlRotatef(head * 122.0f + (gallop ? 24.0f * go : 0.0f) + nod, 1, 0, 0);
-        Part(0, 0.2f, 0.05f, 0.2f, 0.5f, 0.22f, d->coat);
+        DrawShadedCylinder((Vector3){ 0, -0.06f, 0.05f }, 0.1f, 0.12f, 0.52f, 0.62f, 6, d->coat);
         Blob(0, 0.48f, 0.21f, 0.2f, 0.22f, 0.4f, d->coat);
-        Part(-0.07f, 0.75f, 0.13f, 0.04f, 0.36f, 0.04f, d->dark);
-        Part(0.07f, 0.75f, 0.13f, 0.04f, 0.36f, 0.04f, d->dark);
-        if (fine)
-            for (int s = -1; s <= 1; s += 2) Part((float)s * (0.14f + 0.015f * twitch), 0.56f, 0.1f, 0.1f, 0.05f, 0.04f, d->coat);
+        if (fine) {
+            // A fine muzzle, ears, and ringed horns that sweep back and curve up at the tips.
+            Blob(0, 0.44f, 0.38f, 0.1f, 0.11f, 0.16f, Mix(d->coat, d->dark, 0.5f));
+            for (int s = -1; s <= 1; s += 2) {
+                Part((float)s * (0.14f + 0.015f * twitch), 0.56f, 0.1f, 0.1f, 0.05f, 0.04f, d->coat);
+                rlPushMatrix();
+                rlTranslatef((float)s * 0.06f, 0.56f, 0.13f);
+                rlRotatef(-20.0f, 1, 0, 0);
+                rlRotatef((float)s * -8.0f, 0, 0, 1);
+                DrawShadedCylinder((Vector3){ 0, 0, 0 }, 0.022f, 0.022f, 0.22f, 0.8f, 5, d->dark);
+                rlTranslatef(0, 0.21f, 0);
+                rlRotatef(26.0f, 1, 0, 0);
+                DrawShadedCylinder((Vector3){ 0, 0, 0 }, 0.018f, 0.018f, 0.18f, 0.3f, 5, d->dark);
+                rlPopMatrix();
+            }
+        } else {
+            Part(-0.07f, 0.75f, 0.13f, 0.04f, 0.36f, 0.04f, d->dark);
+            Part(0.07f, 0.75f, 0.13f, 0.04f, 0.36f, 0.04f, d->dark);
+        }
         rlPopMatrix();
         Part(0.025f * flick, top - 0.1f, -bl / 2 - 0.02f, 0.08f, 0.2f, 0.06f, d->dark);
         break;
@@ -1215,12 +1236,18 @@ static void DrawAnimal(const Animal *a, int i, bool fine)
         Legs(d, m, 0.12f, amp, gallop, fine, d->coat);
         Blob(0, lh + bh / 2, 0, bw, bh, bl, d->coat);
         Part(0, top + 0.01f, 0, 0.08f, 0.03f, bl, d->dark);
+        if (fine) {   // near: the chest and the round quarters, a pale belly
+            Blob(0, lh + bh * 0.5f, bl * 0.28f, bw * 0.98f, bh * 1.04f, bl * 0.46f, d->coat);
+            Blob(0, lh + bh * 0.55f, -bl * 0.28f, bw * 1.05f, bh * 1.03f, bl * 0.48f, d->coat);
+            Blob(0, lh + bh * 0.3f, 0, bw * 0.9f, bh * 0.45f, bl * 0.8f, (Color){ 214, 200, 178, 255 });
+        }
         rlPushMatrix();
         rlTranslatef(0, top - 0.12f - 0.14f * head, bl / 2 - 0.05f);
         rlRotatef(head * 118.0f + (gallop ? 20.0f * go : 0.0f) + nod, 1, 0, 0);
-        Part(0, 0.22f, 0.05f, 0.26f, 0.5f, 0.35f, d->coat);
+        DrawShadedCylinder((Vector3){ 0, -0.06f, 0.05f }, 0.14f, 0.19f, 0.54f, 0.72f, 6, d->coat);
         Blob(0, 0.42f, 0.4f, 0.25f, 0.28f, 0.58f, d->coat);
-        Part(0, 0.39f, 0.65f, 0.2f, 0.18f, 0.08f, d->dark);
+        Blob(0, 0.38f, 0.62f, 0.2f, 0.19f, 0.2f, Mix(d->coat, (Color){ 236, 226, 208, 255 }, 0.6f));
+        Part(0, 0.36f, 0.72f, 0.14f, 0.1f, 0.04f, d->dark);
         Part(0, 0.5f, 0.03f, 0.06f, 0.18f, 0.32f, d->dark);
         for (int s = -1; s <= 1; s += 2) Part((float)s * 0.07f, 0.67f + 0.02f * twitch * (float)s, 0.25f, 0.05f, 0.22f, 0.05f, d->coat);
         rlPopMatrix();
@@ -1236,6 +1263,10 @@ static void DrawAnimal(const Animal *a, int i, bool fine)
         Legs(d, m, 0.12f, amp, gallop, fine, d->dark);
         Blob(0, lh + bh / 2, 0, bw, bh, bl, d->coat);
         Part(0, top + 0.04f, -0.05f, 0.1f, 0.1f, bl * 0.8f, d->dark);
+        if (fine) {   // near: the high heavy shoulders falling away to lean quarters
+            Blob(0, lh + bh * 0.62f, bl * 0.2f, bw * 0.98f, bh * 1.0f, bl * 0.55f, d->coat);
+            Part(0, top + 0.11f, bl * 0.18f, 0.08f, 0.1f, bl * 0.36f, d->dark);
+        }
         // The head on its short neck: the snout down in the earth as it roots, working from side to side.
         float y = lh + bh * 0.5f, root = head > 0.8f && !moving ? sinf(t * 5.0f) : 0.0f;
         rlPushMatrix();
@@ -1255,6 +1286,10 @@ static void DrawAnimal(const Animal *a, int i, bool fine)
         Legs(d, m, 0.09f, amp, gallop, fine, d->dark);
         Blob(0, lh + bh / 2, 0, bw, bh, bl, d->coat);
         Blob(0, lh + bh * 0.3f, 0.05f, bw * 0.92f, bh * 0.5f, bl * 0.72f, (Color){ 176, 168, 154, 255 });
+        if (fine) {   // near: a deep chest, a ruff at the neck
+            Blob(0, lh + bh * 0.5f, bl * 0.26f, bw * 1.0f, bh * 1.1f, bl * 0.45f, d->coat);
+            Blob(0, top - 0.06f, bl / 2 - 0.06f, 0.3f, 0.32f, 0.26f, Mix(d->coat, d->dark, 0.35f));
+        }
         // The head low and forward on the hunt, nosing the ground at times, turning to look about when wary.
         float low = a->state == ST_HUNT ? 20.0f : head * 58.0f, scan = a->state == ST_ALERT ? sinf(t * 1.3f) * 28.0f : 0.0f;
         rlPushMatrix();
@@ -1270,7 +1305,8 @@ static void DrawAnimal(const Animal *a, int i, bool fine)
         rlTranslatef(0, top - 0.1f, -bl / 2);
         rlRotatef(dead ? 0.0f : sinf(t * 2.0f) * (a->state == ST_CALM ? 10.0f : 4.0f), 0, 1, 0);
         rlRotatef(a->state == ST_HUNT ? 4.0f : a->state == ST_FLEE ? -50.0f : -28.0f, 1, 0, 0);
-        Part(0, -0.02f, -0.22f, 0.1f, 0.1f, 0.45f, d->dark);
+        Blob(0, -0.02f, -0.22f, 0.14f, 0.14f, 0.5f, Mix(d->coat, d->dark, 0.5f));   // a brush of a tail, dark at the tip
+        Blob(0, -0.02f, -0.4f, 0.1f, 0.1f, 0.16f, d->dark);
         rlPopMatrix();
         break;
     }

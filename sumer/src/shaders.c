@@ -75,7 +75,7 @@ const char *SH_SKY_FS =
 const char *SH_WORLD_FS =
     "in vec3 wpos; in vec4 vcol; in vec3 vnrm; in vec3 vbody; flat in int vmat; out vec4 finalColor;\n"
     "uniform vec3 lightDir; uniform vec3 lightCol; uniform vec3 ambSky; uniform vec3 ambGround; uniform vec3 torchCol;\n"
-    "uniform float fogDensity; uniform float time; uniform float worldHalf; uniform float night; uniform float wet;\n"
+    "uniform float fogDensity; uniform float time; uniform float worldHalf; uniform float night; uniform float wet; uniform vec3 season;\n"
     "uniform float shadowTexel; uniform float shadowRange; uniform float groundTile; uniform float groundN;\n"
     "uniform float heightScale; uniform float heightBase;\n"
     "uniform int torchSlots; uniform int gridN; uniform float gridCell; uniform float torchRadius;\n"
@@ -138,6 +138,11 @@ const char *SH_WORLD_FS =
     "    float d=dot(texture(detailMap4,uv4),w4), dx=dot(texture(detailMap4,uv4+e),w4)-d, dz=dot(texture(detailMap4,uv4+e.yx),w4)-d;\n"
     "    float far=texture(detailMap,wpos.xz*0.043+0.37).r-0.5;\n"   // a second, larger scale breaks the repeat
     "    base*=0.80+0.30*big+(d-0.5)*0.85*mix(0.45,1.0,near)+far*0.25;\n"
+    // the year: thin grass burns to straw in the dry months and freshens after the rains; the strong green
+    // by the water and on irrigated land keeps its color
+    "    float thin=gW*(1.0-0.85*smoothstep(0.05,0.14,vc.g-vc.r));\n"
+    "    base=mix(base,base*vec3(1.30,1.06,0.58),season.x*thin); base=mix(base,base*vec3(0.86,1.10,0.84),season.y*gW*0.6);\n"
+    "    base=mix(base,base*vec3(1.06,1.0,0.9),season.x*(1.0-gW)*0.5);\n"   // bare earth paler and dustier when parched
     "    n=normalize(n-vec3(dx,0.0,dz)*6.0*near); rough=mix(0.97,0.35,wet); base*=mix(1.0,0.72,wet);\n"
     "    if(vcol.a<0.999){ float r=texture(detailMap2,wpos.xz*0.22).a; base*=1.0+(r-0.5)*0.7*mix(0.4,1.0,near); }\n"
     "  } else if(vmat==2){\n"   // water: ripples, the sky in it, the sun glinting, darker where deep
@@ -146,6 +151,9 @@ const char *SH_WORLD_FS =
     "    n=normalize(vec3(-(hx-h0)/e*0.35,1.0,-(hz-h0)/e*0.35)); n=normalize(mix(n,vec3(0.0,1.0,0.0),1.0-near*0.8));\n"
     "    rough=0.05; spec=0.02; float deep=max(wpos.y-groundAt(wpos.xz),0.0);\n"
     "    base=mix(vec3(0.05,0.10,0.08),vec3(0.015,0.05,0.055),smoothstep(0.2,2.0,deep));\n"
+    // where the water thins out on a bank, a broken line of pale foam that comes and goes with the ripples
+    "    float foam=(1.0-smoothstep(0.02,0.2,deep))*smoothstep(0.42,0.7,h0+0.2*sin(time*1.1+wpos.x*0.7+wpos.z*0.5))*near;\n"
+    "    base=mix(base,vec3(0.5,0.52,0.46),foam*0.75); rough=mix(rough,0.7,foam); n=normalize(mix(n,vec3(0.0,1.0,0.0),foam));\n"
     "  } else if(vmat!=4 && vmat!=7 && vcol.a>0.974 && vcol.a<0.979){\n"   // a clay-cone mosaic: zigzags of red, black and white cone heads
     "    float ang=atan(fn.z,fn.x)*6.0/3.14159, row=floor(wpos.y*4.0); vec2 cell=fract(vec2(ang*2.0,wpos.y*4.0))-0.5;\n"
     "    float zig=mod(floor(ang*2.0)+row+floor(abs(fract(wpos.y*0.5)-0.5)*8.0),3.0);\n"
@@ -188,6 +196,11 @@ const char *SH_WORLD_FS =
     "  } else if(sat<0.12){ base*=0.9+0.12*fbm(wpos*1.6)+det(wpos,n,0.35,3)*0.2*mix(0.4,1.0,near);\n"   // stone, rock
     "  } else { base*=0.88+0.22*fbm(wpos*1.6); }\n"
     "  float above=wpos.y-groundAt(wpos.xz);\n"
+    "  float lamp=0.0;\n"
+    // a door or a window (alpha 248): after dark most houses have a lamp burning inside, its light in the opening
+    "  if(vmat==5 && abs(vcol.a*255.0-248.0)<0.6 && night>0.0){\n"
+    "    float lit=step(0.3,hash(vec3(floor(wpos.x/7.0),3.0,floor(wpos.z/7.0))));\n"
+    "    lamp=night*lit*(0.8+0.2*sin(time*7.0+wpos.x*3.1)*sin(time*4.3+wpos.z*2.7))*(0.55+0.45*smoothstep(0.0,1.8,above)); }\n"
     "  if(vmat==5){\n"   // built: each house a little different, and the foot of a wall darker where the damp rises
     "    base*=0.94+0.12*hash(vec3(floor(wpos.x/7.0),0.0,floor(wpos.z/7.0)));\n"
     "    float damp=(1.0-smoothstep(0.08,0.5+0.35*noise(wpos*vec3(1.7,0.0,1.7)),above))*step(abs(fn.y),0.5);\n"
@@ -205,6 +218,7 @@ const char *SH_WORLD_FS =
     // the sun glittering on the ripples: tiny bright points where the sun's reflection falls, never still
     "    float glint=pow(max(dot(r,sunDir),0.0),90.0)*smoothstep(0.78,0.98,noise(vec3(wpos.x*7.0,time*2.1,wpos.z*7.0)));\n"
     "    col+=sunGlow*glint*sh*near*4.0; }\n"
+    "  col+=vec3(1.0,0.55,0.2)*lamp*0.55;\n"
     "  float fog=1.0-exp(-dist*fogDensity*(0.55+0.75*exp(-max(wpos.y,0.0)*0.05)));\n"   // thicker down by the ground
     "  vec3 haze=skyFlat(-V); float hl=dot(haze,vec3(0.3,0.59,0.11));\n"
     "  col=mix(col,mix(haze,vec3(0.78,0.66,0.52)*hl*1.15,0.22)*1.05,fog);\n"

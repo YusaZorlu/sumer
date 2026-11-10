@@ -1357,6 +1357,12 @@ static void DrawSettingsPanel(void)
         G.showFps = !G.showFps;
         SaveGamePrefs();
     }
+    y += 42;
+    // The first-day guide (alone only): off, or from its beginning again.
+    if (!Online() && Button((Rectangle){ bx, y, bw, 34 }, GuideStepNow() >= 0 ? "First-day guide: on" : "First-day guide: off", true, 0)) {
+        GuideSetStep(GuideStepNow() >= 0 ? -1 : 0);
+        SaveGamePrefs();
+    }
     if (Button((Rectangle){ bx, r.y + r.height - 58, bw, 40 }, "Back", true, KEY_BACKSPACE)) SetPanel(PANEL_PAUSE);
 }
 
@@ -1772,6 +1778,14 @@ static void DrawStatus(void)
     if (level < MAX_LEVEL) {
         float into = (float)(xp - LevelStart(level)) / (float)(LevelStart(level + 1) - LevelStart(level));
         Bar(right - 100, 185, 100, 8, into, C_GOLD);
+    }
+    // The first-day guide's one line, under the box (alone, until its last step is done).
+    const char *guide = GuideLine();
+    if (guide && G.panel == PANEL_NONE) {
+        float gw = (float)Measure(L(guide), 15) + 22;
+        DrawRectangleRounded((Rectangle){ 12, 12 + h + 6, gw, 24 }, 0.3f, 6, Fade(BLACK, 0.42f));
+        DrawCircleV((Vector2){ 23, 12 + h + 18 }, 3, C_GOLD);
+        Text(guide, 32, 12 + h + 10, 15, (Color){ 236, 226, 200, 255 });
     }
     float y = 200;
     if (alert) {

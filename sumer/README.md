@@ -139,7 +139,7 @@ The five minigames:
   after the nearest player; one brought down is back outside the walls a minute later. With fewer than four
   players the raiders stay at their camps and only the barbarians and bandits come. +2 for each one you
   bring down. Players cannot hurt each other.
-- **Hide and seek**: one player (by chance, never the same twice in a row) seeks with the party's gear;
+- **Hide and seek** (always by day): one player (by chance, never the same twice in a row) seeks with the party's gear;
   the others hide among the townsfolk, who hurry about the streets. Hiders look like townsfolk, wear no
   armor, carry nothing, cannot run, cannot hurt the seeker, and lose health outside the city's walls;
   nobody's name shows over their head, the map shows no players, no one carries a torch and the fight's
@@ -177,6 +177,12 @@ nobody anything; if you sit and do nothing for 45 seconds, the game plays your t
   and throws two dice, adding them. Pins go up your own side's 29 holes to the shared goal; any throw past 29 brings
   a pin home. Lines join hole 6 with 20 and 8 with 10: land on 6 or 8 and the pin goes up the line (the green end),
   land on 20 or 10 and it goes down (the red end). No two of your pins share a hole. First to bring all five home wins.
+
+### Night in the city
+
+After dark most of the townsfolk go home: from about eight in the evening the streets empty as they go indoors (never
+where you could watch someone vanish), and lamps burn in most houses' doorways and windows. They are out again from
+dawn. A party or a battle royale keeps them all outside, and hide and seek is always played by day.
 
 ### Playing together
 
@@ -582,6 +588,11 @@ fields outside. Gates: south (main road), east, west, north, plus the harbor wat
 
 ## Seasons and farming
 
+The land follows the year as the plain of Sumer does: green and in flower in spring after the winter rains, the
+grass away from the water burnt to straw through the summer, autumn the driest and dustiest until the rains come,
+winter cool and greening again. The banks, the canals' edges and the irrigated fields stay green all year (with the
+shaders; Classic only shifts its light).
+
 Each season lasts 9 days: spring, summer, fall, winter (day 1 is the first day of spring). The HUD
 shows the season and day.
 
@@ -639,6 +650,13 @@ Gathering one gives 2 herbs; the plant grows back in a day and a half. Click her
 (Tab) to chew one: +10 health at once, then 2.5 health a second for 20 seconds, even in a fight and on
 an empty stomach (the HUD shows "Herbs" with the seconds left). Herbs also barter: the farmer gives
 seeds, the hunter arrows, the shepherd sheepskin and the Dilmun merchant tin.
+
+**First-day guide** (alone): a single line under the status box names the next thing worth doing on your first
+day: open your storage jars, take the bucket and seeds, fill the bucket, sow a plot, get a hen, hunt and roast, sleep.
+Each step goes away as you do it, and after the last the guide is gone. Game settings turns it off, or on again
+from the start.
+
+Wading leaves rings spreading on the water, and the shallows by the banks show a broken line of foam.
 
 In the storeroom, **Store all** (Q) empties every basket you carry into the storage jars, as far as they have
 room; a click on a jar takes back what you want with you.

@@ -512,6 +512,19 @@ typedef struct { float x, z, w, d, h; int door, ix, iz; } HouseSpot;
 #define MAX_HOUSE_SPOTS 700
 static HouseSpot houseSpots[MAX_HOUSE_SPOTS];
 static int houseSpotCount, climbCount;
+
+// The middle of the house nearest to p (p itself where the city has no houses): where one of the townsfolk
+// spends the night.
+Vector3 NearestHouse(Vector3 p)
+{
+    Vector3 best = p;
+    float nearest = 1e9f;
+    for (int i = 0; i < houseSpotCount; i++) {
+        float dx = houseSpots[i].x - p.x, dz = houseSpots[i].z - p.z, d = dx * dx + dz * dz;
+        if (d < nearest) nearest = d, best = (Vector3){ houseSpots[i].x, 0, houseSpots[i].z };
+    }
+    return best;
+}
 // Each house's stairs: the ground at their foot and the roof at their head (for tests and anyone who asks).
 static Vector3 stairFoot[MAX_HOUSE_SPOTS], stairHead[MAX_HOUSE_SPOTS];
 static int stairCount;

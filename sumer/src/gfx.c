@@ -59,7 +59,7 @@ typedef struct {
 
 typedef struct {
     int mvp, camPos, sunDir, sunGlow, skyZen, skyHor, exposure, quality, lightDir, lightCol, ambSky, ambGround;
-    int torchCol, fogDensity, time, worldHalf, night, wet, shadowTexel, shadowRange, groundTile, groundN;
+    int torchCol, fogDensity, time, worldHalf, night, wet, season, shadowTexel, shadowRange, groundTile, groundN;
     int heightScale, heightBase, torchSlots, gridN, gridCell, torchRadius, dynCount, dynLights, lightVP;
     int shadowMap, heightMap, torchGrid, torchData, moonDir, cloudy, texel, bloom, bloomAmt, dir, detailMap, detailMap2, detailMap3;
     int skyDay, skyDusk, skyGrey, skyMix, skyTurn, skyLevel, detailMap4, detailMap5, foliageMap;
@@ -344,7 +344,7 @@ static Locs Find(Shader s)
     Locs l;
 #define L_(name) l.name = GetShaderLocation(s, #name)
     L_(mvp); L_(camPos); L_(sunDir); L_(sunGlow); L_(skyZen); L_(skyHor); L_(exposure); L_(quality); L_(lightDir);
-    L_(lightCol); L_(ambSky); L_(ambGround); L_(torchCol); L_(fogDensity); L_(time); L_(worldHalf); L_(night); L_(wet);
+    L_(lightCol); L_(ambSky); L_(ambGround); L_(torchCol); L_(fogDensity); L_(time); L_(worldHalf); L_(night); L_(wet); L_(season);
     L_(shadowTexel); L_(shadowRange); L_(groundTile); L_(groundN); L_(heightScale); L_(heightBase); L_(torchSlots);
     L_(gridN); L_(gridCell); L_(torchRadius); L_(dynCount); L_(dynLights); L_(lightVP); L_(shadowMap); L_(heightMap);
     L_(torchGrid); L_(torchData); L_(moonDir); L_(cloudy); L_(texel); L_(bloom); L_(bloomAmt); L_(dir); L_(detailMap); L_(detailMap2); L_(detailMap3);
@@ -1149,6 +1149,19 @@ static void BindTexture(int unit, unsigned int id, int loc)
     rlSetUniform(loc, &unit, RL_SHADER_UNIFORM_INT, 1);
 }
 
+// The year on the land, as the plain of Sumer has it (x: how parched, y: how fresh; each 0 to 1), eased from
+// one season into the next. Spring: the steppe green and in flower after the winter rains, the rivers high.
+// Summer: months without a cloud, the grass away from the water burnt to straw. Autumn: the driest of all,
+// dust and stubble until the first rains. Winter: cool and damp, green coming back. The banks, the canals'
+// edges and the irrigated fields stay green all year: the shader leaves strong greens alone.
+static Vector3 SeasonLand(void)
+{
+    static const float dry[5] = { 0.1f, 0.6f, 1.0f, 0.55f, 0.1f }, lush[5] = { 0.7f, 0.1f, 0.0f, 0.15f, 0.7f };
+    int s = Season() & 3;
+    float t = Clamp(((float)SeasonDay() - 1.0f + G.hour / 24.0f) / (float)SEASON_DAYS, 0.0f, 1.0f);
+    return (Vector3){ Lerp(dry[s], dry[s + 1], t), Lerp(lush[s], lush[s + 1], t), 0 };
+}
+
 static void WorldUniforms(const SkyNow *s, Matrix lightVP, int quality)
 {
     const Locs *l = &wl;
@@ -1163,6 +1176,7 @@ static void WorldUniforms(const SkyNow *s, Matrix lightVP, int quality)
     U1(l->worldHalf, WORLD_HALF);
     U1(l->night, G.torchGlow);   // in the world shader it only scales the torches
     U1(l->wet, s->wet);
+    U3(l->season, SeasonLand());
     U1(l->shadowTexel, 1.0f / (float)shadowSize);
     U1(l->shadowRange, shadowRange);
     U1(l->groundTile, TILE_SIZE);
@@ -1175,7 +1189,19 @@ static void WorldUniforms(const SkyNow *s, Matrix lightVP, int quality)
     U1(l->torchRadius, TORCH_REACH);
     Vector4 dl8[8];
     int n = 0;
-    for (int i = 0; i < G.dynCount && n < (quality > 0 ? 8 : 4); i++) dl8[n++] = (Vector4){ G.dynLights[i].x, G.dynLights[i].y, G.dynLights[i].z, 1.0f };
+    // The shader takes 8 hand torches (4 on Low): your own, always first in the list, then the nearest to the
+    // camera. (Taken in list order, the city's guards used to fill every place and your torch lit nothing.)
+    bool took[MAX_DYN_LIGHTS] = { false };
+    for (int most = quality > 0 ? 8 : 4; n < most && n < G.dynCount; ) {
+        int best = -1;
+        float nearest = 1e30f;
+        for (int i = 0; i < G.dynCount; i++) {
+            float d = n == 0 && TorchBurning() ? (float)i : Vector3DistanceSqr(G.dynLights[i], G.cam.position);
+            if (!took[i] && d < nearest) nearest = d, best = i;
+        }
+        took[best] = true;
+        dl8[n++] = (Vector4){ G.dynLights[best].x, G.dynLights[best].y, G.dynLights[best].z, 1.0f };
+    }
     UI(l->dynCount, n);
     if (n) rlSetUniform(l->dynLights, dl8, RL_SHADER_UNIFORM_VEC4, n);
     rlSetUniformMatrix(l->lightVP, lightVP);

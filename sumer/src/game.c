@@ -15,6 +15,14 @@ Game G;
 
 static float bedCool;
 
+// The tests ask for the same animals and weather every run (0: differ every game, as players have it).
+static unsigned fixedSeed;
+
+void FixRandom(unsigned seed)
+{
+    fixedSeed = seed;
+}
+
 void GameInit(void)
 {
     memset(&G, 0, sizeof(G));
@@ -49,7 +57,7 @@ void GameInit(void)
     BoardsInit();
     PetsInit();
     // The world comes from a fixed seed; animals and weather differ every game.
-    SetRandomSeed((unsigned int)time(NULL));
+    SetRandomSeed(fixedSeed ? fixedSeed : (unsigned int)time(NULL));
     InitWildlife();
     NewDay();
 
@@ -402,8 +410,8 @@ void SaveGamePrefs(void)
 {
     FILE *f = fopen(DataPath("sumer.prefs"), "w");
     if (!f) return;
-    fprintf(f, "arrowcam %d\nfirstperson %d\nfps %d\nlefthand %d\nshowfps %d\n", G.arrowCam ? 1 : 0, G.firstPerson ? 1 : 0, fpsLimit,
-            leftHanded ? 1 : 0, G.showFps ? 1 : 0);
+    fprintf(f, "arrowcam %d\nfirstperson %d\nfps %d\nlefthand %d\nshowfps %d\nguide %d\n", G.arrowCam ? 1 : 0, G.firstPerson ? 1 : 0, fpsLimit,
+            leftHanded ? 1 : 0, G.showFps ? 1 : 0, GuideStepNow());
     fclose(f);
     SyncStorage();
 }
@@ -420,6 +428,7 @@ void LoadGamePrefs(void)
         else if (strcmp(key, "fps") == 0) fpsLimit = v == 30 || v == 60 ? v : 0;
         else if (strcmp(key, "lefthand") == 0) leftHanded = v != 0;
         else if (strcmp(key, "showfps") == 0) G.showFps = v != 0;
+        else if (strcmp(key, "guide") == 0) GuideSetStep(v);
     }
     fclose(f);
 }
@@ -468,6 +477,12 @@ static void GuestDawn(void)
 // The world's clock runs where the world runs; a guest's comes with the host's pictures.
 static void UpdateTime(float h)
 {
+    // Hide and seek is played by day: the clock stands at mid-morning while it lasts (at night the streets
+    // empty and a torch would give a hider away).
+    if (PartyGame() == PG_HIDE) {
+        if (G.hour < 8.0f || G.hour > 15.0f) G.hour = 10.0f;
+        return;
+    }
     G.hour += h;
     if (G.hour >= 24.0f) {
         G.hour -= 24.0f;
@@ -715,6 +730,7 @@ void GameUpdate(void)
         UpdatePeers(dt);
     }
     FindTarget(play);
+    GuideUpdate();
 
     if (play) {
         if ((KeyPressed(KEY_E) && !closedWithE) || TouchPressed(TB_USE)) Interact(false);

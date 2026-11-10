@@ -516,7 +516,7 @@ int AddNpc(NpcKind kind, Vector3 a, Vector3 b, float speed, Color robe, float fa
 {
     if (G.villagerCount >= MAX_VILLAGERS) return -1;
     G.villagers[G.villagerCount] = (Villager){ a, b, speed > 0 ? RandF(0, 1) : 0.0f, 1.0f, speed, robe, kind, face, 0.0f, false, false, false,
-                                               { .hp = 0 }, -1, 0.0f, 0.0f, -1, -1, 0.0f, 0.0f, 0, false, false };
+                                               { .hp = 0 }, -1, 0.0f, 0.0f, -1, -1, 0.0f, 0.0f, 0, false, false, false, { 0, 0, 0 } };
     return G.villagerCount++;
 }
 
@@ -758,6 +758,7 @@ static float LaneLength(const Villager *v)
 
 Vector3 VillagerLanePos(const Villager *v)
 {
+    if (v->indoors) return v->homeAt;
     if (v->road >= 0) {
         Vector3 dir, p = RoadPoint(v->road, v->t * RoadLength(v->road), &dir);
         return (Vector3){ p.x + dir.z * v->side, p.y, p.z - dir.x * v->side };
@@ -766,6 +767,35 @@ Vector3 VillagerLanePos(const Villager *v)
     float dx = v->b.x - v->a.x, dz = v->b.z - v->a.z, len = sqrtf(dx * dx + dz * dz);
     if (len < 0.01f || v->side == 0) return p;
     return (Vector3){ p.x + dz / len * v->side, p.y, p.z - dx / len * v->side };
+}
+
+// In or out of doors: indoors they are at the middle of the nearest house, behind its walls.
+void SetIndoors(Villager *v, bool in)
+{
+    if (v->indoors == in) return;
+    if (in) v->homeAt = NearestHouse(VillagerLanePos(v));
+    v->indoors = in;
+    v->moving = false;
+}
+
+// At night the streets empty: three in four of the townsfolk who walk them go indoors between eight and half
+// past nine and come out again from five. They go in and come out only where no player is near enough to
+// see it happen (28 m), so no one ever vanishes or appears before your eyes. Never in a party (hide and seek
+// needs every one of them in the street) or a battle royale; the host decides and tells the guests.
+static void HomeHours(Villager *v, int i)
+{
+    if (v->kind != NPC_CIVILIAN || v->from < 0) return;
+    float late = 1.5f * Hash2(i, 92);
+    bool want = !Party() && !Royale() && Hash2(i, 91) < 0.75f && (G.hour >= 20.0f + late || G.hour < 5.0f + late)
+                && !v->vit.override && !v->vit.dead && v->vit.hostile <= 0;
+    if (want == v->indoors) return;
+    Villager out = *v;
+    out.indoors = false;
+    Vector3 at = VillagerLanePos(&out);
+    bool forced = v->indoors && (Party() || Royale());
+    for (int s = 0; s < MAX_PLAYERS && !forced; s++)
+        if (G.peers[s].active && XZDist(G.peers[s].pos, at) < 28.0f) return;
+    SetIndoors(v, want);
 }
 
 // Turns toward a heading over a moment instead of all at once.
@@ -785,7 +815,7 @@ static void WalkVillager(Villager *v, int i, float dt)
     Villager next = *v;
 
     v->moving = false;
-    if (v->speed <= 0 || v->vit.override) return;
+    if (v->speed <= 0 || v->vit.override || v->indoors) return;
     if (v->wait > 0) {
         v->wait -= dt;
         return;
@@ -916,7 +946,10 @@ void UpdateVillage(float dt)
             Vector3 post = G.templeAccess ? (Vector3){ 1.75f * s, 7, -24.4f } : (Vector3){ 0.55f * s, 7, -25.9f };
             v->a = v->b = post;
         }
-        if (!IsClient()) WalkVillager(v, i, dt);
+        if (!IsClient()) {
+            HomeHours(v, i);
+            WalkVillager(v, i, dt);
+        }
     }
     for (int i = 0; i < G.henCount; i++) WanderIn(&G.hens[i], (Rectangle){ 15.5f, 31.0f, 5.0f, 2.5f }, 0.6f, dt);
     for (int i = 0; i < MAX_COWS; i++) WanderIn(&G.cows[i], (Rectangle){ 51.5f, 27.8f, 7.0f, 7.0f }, 0.5f, dt);
@@ -1213,7 +1246,7 @@ static void DrawSheep(const Wanderer *w, const BeastAnim *m, int seed)
     Part(0.15f, 0.12f - 0.012f * twitch, 0.1f, 0.12f, 0.05f, 0.08f, face);
     Part(0, 0.18f, 0.08f, 0.26f, 0.1f, 0.14f, wool);
     rlPopMatrix();
-    Part(0.02f * twitch, 0.72f, -0.52f, 0.07f, 0.14f, 0.06f, wool);
+    DrawShadedBlob((Vector3){ 0.015f * twitch, 0.66f, -0.5f }, (Vector3){ 0.09f, 0.14f, 0.08f }, wool);   // the fat tail of the land's sheep
     rlPopMatrix();
 }
 
@@ -1230,13 +1263,26 @@ static void DrawCow(const Wanderer *w, const BeastAnim *m, int i)
     rlRotatef(w->heading * RAD2DEG, 0, 1, 0);
     DrawBeastLegs(m, 0.26f, 0.68f, 0.9f, 0.09f, 17.0f, false, true, coat);
     DrawShadedBlob((Vector3){ 0, 1.17f, 0 }, (Vector3){ 0.42f, 0.44f, 1.0f }, coat);
+    DrawShadedBlob((Vector3){ 0, 1.22f, -0.5f }, (Vector3){ 0.44f, 0.44f, 0.48f }, coat);   // the hips
+    DrawShadedBlob((Vector3){ 0, 1.2f, 0.52f }, (Vector3){ 0.4f, 0.46f, 0.44f }, coat);     // the shoulders
     if (i != 1) DrawShadedBlob((Vector3){ 0.12f, 1.3f, -0.3f }, (Vector3){ 0.36f, 0.3f, 0.36f }, dark);
     rlPushMatrix();
     rlTranslatef(0, 1.3f - 0.3f * head, 0.9f);
     rlRotatef(head * 78.0f + sinf(m->phase * 2.0f) * 2.5f * m->go, 1, 0, 0);
+    DrawShadedBlob((Vector3){ 0, 0.0f, -0.08f }, (Vector3){ 0.2f, 0.26f, 0.3f }, coat);   // the neck
     DrawShadedBlob((Vector3){ 0, 0.05f, 0.2f }, (Vector3){ 0.21f, 0.23f, 0.3f }, coat);
     Part(0, -0.08f + chew, 0.48f, 0.32f, 0.22f, 0.12f, pink);
-    Part(0, 0.3f, 0.1f, 0.6f, 0.06f, 0.06f, COL_LINEN);
+    // Long horns curving out and up, as on the cattle of the old reliefs.
+    for (int s = -1; s <= 1; s += 2) {
+        rlPushMatrix();
+        rlTranslatef((float)s * 0.12f, 0.27f, 0.1f);
+        rlRotatef((float)s * -62.0f, 0, 0, 1);
+        DrawShadedCylinder((Vector3){ 0, 0, 0 }, 0.035f, 0.035f, 0.24f, 0.75f, 5, COL_LINEN);
+        rlTranslatef(0, 0.23f, 0);
+        rlRotatef((float)s * 48.0f, 0, 0, 1);
+        DrawShadedCylinder((Vector3){ 0, 0, 0 }, 0.026f, 0.026f, 0.2f, 0.3f, 5, COL_LINEN);
+        rlPopMatrix();
+    }
     for (int s = -1; s <= 1; s += 2) Part((float)s * 0.26f, 0.2f + 0.02f * twitch * (float)s, 0.06f, 0.16f, 0.07f, 0.05f, coat);
     rlPopMatrix();
     Part(0, 0.74f, -0.4f, 0.3f, 0.16f, 0.3f, pink);
@@ -1295,7 +1341,7 @@ void DrawVillage(void)
         // The legs swing with the time walked, so a new stretch of street does not jolt them.
         float stride = v->moving ? (float)GetTime() * v->speed * 3.0f + (float)i : 0.0f;
         float face = v->vit.override ? v->vit.face : v->face;
-        if (XZDist(pos, G.cam.position) > 200.0f || !InView(pos, 2.0f)) continue;
+        if (v->indoors || XZDist(pos, G.cam.position) > 200.0f || !InView(pos, 2.0f)) continue;
         // At the alehouse's tables they turn from one to another, a hand up now and then as they speak.
         float talk = v->talks && !v->vit.override ? (float)GetTime() * 0.6f + (float)i * 1.7f : 0.0f;
         if (talk != 0.0f) face += 0.3f * sinf(talk);

@@ -145,14 +145,15 @@ void UpdateLights(void)
     G.dynCount = 0;
     if (!TorchesLit()) return;
 
+    // Players first, your own before all: the list is short, and a guard's torch must never crowd yours out.
+    if (TorchBurning()) AddDyn(HandPos(G.player.pos, G.player.facing));
+    for (int s = 0; s < MAX_PLAYERS; s++) {
+        const Peer *p = &G.peers[s];
+        if (s != G.self && p->active && (p->flags & PF_TORCH)) AddDynNear(p->shown, p->shownFacing);
+    }
     for (int i = 0; i < G.villagerCount; i++) {
         const Villager *v = &G.villagers[i];
         if ((v->kind == NPC_GUARD || v->kind == NPC_TRAVELLER) && !v->vit.dead) AddDynNear(VillagerPos(v), v->vit.override ? v->vit.face : v->face);
-    }
-    for (int s = 0; s < MAX_PLAYERS; s++) {
-        const Peer *p = &G.peers[s];
-        if (s == G.self ? TorchBurning() : (p->active && (p->flags & PF_TORCH)))
-            AddDynNear(s == G.self ? G.player.pos : p->shown, s == G.self ? G.player.facing : p->shownFacing);
     }
     for (int c = 0; c < MAX_CARAVANS; c++) {
         for (int k = 0; k < 3 + CARAVAN_GUARDS; k++) {
