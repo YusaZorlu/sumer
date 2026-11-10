@@ -148,6 +148,21 @@ int MoveStack(Slot *src, Slot *dst, int dn)
     return moved;
 }
 
+// Everything carried goes into the storage jars, as far as they have room: how many baskets were emptied,
+// and in 'left' how many still hold something.
+int StoreAll(int *left)
+{
+    int emptied = 0;
+    *left = 0;
+    for (int i = 0; i < G.bagSlots; i++) {
+        if (G.bag[i].item == IT_NONE) continue;
+        MoveStack(&G.bag[i], G.store, STORE_SLOTS);
+        if (G.bag[i].item == IT_NONE) emptied++;
+        else (*left)++;
+    }
+    return emptied;
+}
+
 int BagCount(int item)
 {
     return SlotsCount(G.bag, G.bagSlots, item);

@@ -1181,42 +1181,71 @@ static void DrawTravelGear(Vector3 pos, float face, Color robe)
     rlPopMatrix();
 }
 
-static void DrawSheep(const Wanderer *w, int i)
+// How the livestock move as they are drawn (this machine's own, eased from frame to frame): strides, and heads
+// that go down to graze while they stand.
+static BeastAnim cowAnim[MAX_COWS], sheepAnim[MAX_SHEEP], flockAnim[MAX_FLOCK];
+static double herdClock;
+
+// Standing, they graze most of the time and lift their heads to look about now and then.
+static float Grazes(const Wanderer *w, int seed, float t)
+{
+    return w->speed <= 0 && sinf(t * 0.45f + (float)seed * 1.9f) > -0.6f ? 1.0f : 0.0f;
+}
+
+static void DrawSheep(const Wanderer *w, const BeastAnim *m, int seed)
 {
     const Color wool = { 226, 220, 204, 255 }, face = { 52, 44, 40, 255 };
+    float t = (float)GetTime() + (float)seed * 1.7f, head = m->head;
+    float chew = head < 0.2f && w->speed <= 0 ? 0.008f * sinf(t * 7.0f) : 0.0f, twitch = sinf(t * 0.8f) > 0.8f ? sinf(t * 20.0f) : 0.0f;
 
     rlPushMatrix();
-    rlTranslatef(w->pos.x, w->pos.y, w->pos.z);
+    rlTranslatef(w->pos.x, w->pos.y + 0.012f * fabsf(sinf(m->phase)) * m->go, w->pos.z);
     rlRotatef(w->heading * RAD2DEG, 0, 1, 0);
-    for (int k = 0; k < 4; k++)
-        DrawShadedCylinder((Vector3){ (k & 1) ? 0.16f : -0.16f, 0, (k & 2) ? 0.32f : -0.32f }, 0.04f, 0.04f, 0.5f, 0.8f, 5, face);
+    DrawBeastLegs(m, 0.16f, 0.32f, 0.5f, 0.045f, 20.0f, false, true, face);
     DrawShadedBlob((Vector3){ 0, 0.72f, 0 }, (Vector3){ 0.34f, 0.3f, 0.52f }, wool);
     DrawShadedBlob((Vector3){ 0, 0.82f, 0.05f }, (Vector3){ 0.28f, 0.26f, 0.42f }, Mix(wool, COL_LINEN, 0.5f));
-    DrawShadedBlob((Vector3){ 0, 0.86f, 0.58f }, (Vector3){ 0.12f, 0.15f, 0.17f }, face);
-    Part(-0.15f, 0.92f, 0.52f, 0.12f, 0.05f, 0.08f, face);
-    Part(0.15f, 0.92f, 0.52f, 0.12f, 0.05f, 0.08f, face);
-    Part(0, 0.98f, 0.5f, 0.26f, 0.1f, 0.14f, wool);
-    (void)i;
+    // The head, down in the grass or up and chewing; a stub of a tail that wags.
+    rlPushMatrix();
+    rlTranslatef(0, 0.8f - 0.12f * head, 0.42f);
+    rlRotatef(head * 72.0f + sinf(m->phase * 2.0f) * 3.0f * m->go, 1, 0, 0);
+    DrawShadedBlob((Vector3){ 0, 0.06f + chew, 0.16f }, (Vector3){ 0.12f, 0.15f, 0.17f }, face);
+    Part(-0.15f, 0.12f + 0.012f * twitch, 0.1f, 0.12f, 0.05f, 0.08f, face);
+    Part(0.15f, 0.12f - 0.012f * twitch, 0.1f, 0.12f, 0.05f, 0.08f, face);
+    Part(0, 0.18f, 0.08f, 0.26f, 0.1f, 0.14f, wool);
+    rlPopMatrix();
+    Part(0.02f * twitch, 0.72f, -0.52f, 0.07f, 0.14f, 0.06f, wool);
     rlPopMatrix();
 }
 
-static void DrawCow(const Wanderer *w, int i)
+static void DrawCow(const Wanderer *w, const BeastAnim *m, int i)
 {
     Color coat = (i == 1) ? (Color){ 128, 86, 54, 255 } : (Color){ 226, 220, 206, 255 };
     const Color pink = { 200, 150, 140, 255 }, dark = { 60, 48, 40, 255 };
+    float t = (float)GetTime() + (float)i * 2.3f, head = m->head;
+    // Head up, a cow chews the cud; an ear flicks at a fly now and then, and the tail swishes.
+    float chew = head < 0.2f && w->speed <= 0 ? 0.014f * sinf(t * 5.0f) : 0.0f, twitch = sinf(t * 0.7f) > 0.8f ? sinf(t * 18.0f) : 0.0f;
 
     rlPushMatrix();
-    rlTranslatef(w->pos.x, 0, w->pos.z);
+    rlTranslatef(w->pos.x, 0.015f * fabsf(sinf(m->phase)) * m->go, w->pos.z);
     rlRotatef(w->heading * RAD2DEG, 0, 1, 0);
-    for (int k = 0; k < 4; k++)
-        DrawShadedCylinder((Vector3){ (k & 1) ? 0.26f : -0.26f, 0, (k & 2) ? 0.68f : -0.68f }, 0.08f, 0.08f, 0.9f, 0.75f, 6, coat);
+    DrawBeastLegs(m, 0.26f, 0.68f, 0.9f, 0.09f, 17.0f, false, true, coat);
     DrawShadedBlob((Vector3){ 0, 1.17f, 0 }, (Vector3){ 0.42f, 0.44f, 1.0f }, coat);
     if (i != 1) DrawShadedBlob((Vector3){ 0.12f, 1.3f, -0.3f }, (Vector3){ 0.36f, 0.3f, 0.36f }, dark);
-    DrawShadedBlob((Vector3){ 0, 1.35f, 1.1f }, (Vector3){ 0.21f, 0.23f, 0.3f }, coat);
-    Part(0, 1.22f, 1.38f, 0.32f, 0.22f, 0.12f, pink);
-    Part(0, 1.6f, 1.0f, 0.6f, 0.06f, 0.06f, COL_LINEN);
+    rlPushMatrix();
+    rlTranslatef(0, 1.3f - 0.3f * head, 0.9f);
+    rlRotatef(head * 78.0f + sinf(m->phase * 2.0f) * 2.5f * m->go, 1, 0, 0);
+    DrawShadedBlob((Vector3){ 0, 0.05f, 0.2f }, (Vector3){ 0.21f, 0.23f, 0.3f }, coat);
+    Part(0, -0.08f + chew, 0.48f, 0.32f, 0.22f, 0.12f, pink);
+    Part(0, 0.3f, 0.1f, 0.6f, 0.06f, 0.06f, COL_LINEN);
+    for (int s = -1; s <= 1; s += 2) Part((float)s * 0.26f, 0.2f + 0.02f * twitch * (float)s, 0.06f, 0.16f, 0.07f, 0.05f, coat);
+    rlPopMatrix();
     Part(0, 0.74f, -0.4f, 0.3f, 0.16f, 0.3f, pink);
-    Part(0, 1.1f, -0.92f, 0.06f, 0.6f, 0.06f, dark);
+    rlPushMatrix();
+    rlTranslatef(0, 1.4f, -0.92f);
+    rlRotatef(sinf(t * 2.2f) * 16.0f, 0, 0, 1);
+    Part(0, -0.3f, 0, 0.06f, 0.6f, 0.06f, dark);
+    Part(0, -0.62f, 0, 0.09f, 0.14f, 0.09f, dark);
+    rlPopMatrix();
     rlPopMatrix();
 }
 
@@ -1234,12 +1263,20 @@ void DrawVillage(void)
 {
     DrawFarm();
     LightFor(G.pen);
-    for (int i = 0; i < MAX_COWS; i++) DrawCow(&G.cows[i], i);
-    for (int i = 0; i < MAX_SHEEP; i++) DrawSheep(&G.sheep[i], i);
+    float herdDt = DrawDt(&herdClock), herdT = (float)GetTime();
+    for (int i = 0; i < MAX_COWS; i++) {
+        BeastStep(&cowAnim[i], G.cows[i].speed, Grazes(&G.cows[i], i, herdT), herdDt);
+        DrawCow(&G.cows[i], &cowAnim[i], i);
+    }
+    for (int i = 0; i < MAX_SHEEP; i++) {
+        BeastStep(&sheepAnim[i], G.sheep[i].speed, Grazes(&G.sheep[i], i + 5, herdT), herdDt);
+        DrawSheep(&G.sheep[i], &sheepAnim[i], i + 5);
+    }
     for (int i = 0; i < MAX_FLOCK; i++) {
         if (XZDist(G.flock[i].pos, G.cam.position) > 200.0f || !InView(G.flock[i].pos, 1.5f)) continue;
         LightFor(G.flock[i].pos);
-        DrawSheep(&G.flock[i], i);
+        BeastStep(&flockAnim[i], G.flock[i].speed, Grazes(&G.flock[i], i + 11, herdT), herdDt);
+        DrawSheep(&G.flock[i], &flockAnim[i], i + 11);
     }
 
     for (int i = 0; i < TR_COUNT; i++) {

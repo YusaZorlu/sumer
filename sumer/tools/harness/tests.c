@@ -3002,6 +3002,65 @@ static void TestHens(void)
     GameInit();
 }
 
+// Held, E keeps at work that is done over and over (here the quern), and only at such work; "Store all" empties
+// the baskets into the jars as far as they have room. The animals' strides and grazing heads are only drawn:
+// drawing them leaves the game's random numbers and the animals themselves alone.
+static void TestEase(void)
+{
+    G.role = NET_SOLO;
+    GameInit();
+    SetPanel(PANEL_NONE);
+    while (BagCount(IT_WHEAT) > 0) BagRemove(IT_WHEAT, BagCount(IT_WHEAT));
+    BagAdd(IT_WHEAT, 12);
+    int flour0 = BagCount(IT_FLOUR), wheat0 = BagCount(IT_WHEAT);
+    G.target = (Target){ TGT_STATION, STN_QUERN };
+    G.okE = true;
+    for (int t = 0; t < 4; t++) HoldUse(true, 0.1f);
+    int early = BagCount(IT_FLOUR) - flour0;
+    for (int t = 0; t < 8; t++) HoldUse(true, 0.1f);
+    int ground = BagCount(IT_FLOUR) - flour0, used = wheat0 - BagCount(IT_WHEAT);
+    Check(early == 0 && ground > 0 && used == 6,   // two wheat a grind, at 0.5, 0.8 and 1.1 s
+          "E held at the quern: nothing for half a second, then it goes on grinding (%d wheat ground in 1.2 s)", used);
+    HoldUse(false, 0.1f);
+    G.target = (Target){ TGT_STATION, STN_STORAGE };
+    for (int t = 0; t < 12; t++) HoldUse(true, 0.1f);
+    Check(G.panel == PANEL_NONE && !RepeatsWork(), "held at the storeroom door (or a bed, a trader) it does nothing");
+    HoldUse(false, 0.1f);
+    G.target = (Target){ TGT_NONE, 0 };
+
+    int carried = 0, left = -1;
+    for (int i = 0; i < G.bagSlots; i++) carried += G.bag[i].item != IT_NONE;
+    int stored = SlotsCount(G.store, STORE_SLOTS, IT_FLOUR), flour = BagCount(IT_FLOUR);
+    int emptied = StoreAll(&left);
+    Check(carried > 0 && emptied == carried && left == 0 && BagCount(IT_FLOUR) == 0 && SlotsCount(G.store, STORE_SLOTS, IT_FLOUR) == stored + flour,
+          "Store all: %d baskets emptied into the jars", emptied);
+    for (int i = 0; i < STORE_SLOTS; i++) G.store[i] = (Slot){ IT_REEDS, 1 };
+    BagAdd(IT_WOOD, 3);
+    emptied = StoreAll(&left);
+    Check(emptied == 0 && left == 1 && BagCount(IT_WOOD) == 3, "with the jars full, what does not fit stays in the baskets");
+
+    // Every animal drawn, calm and running: nothing of the game changes.
+    Camera3D cam = G.cam;
+    G.cam.position = G.cam.target = G.animals[0].pos;
+    Vector3 at = G.animals[0].pos;
+    float heading = G.animals[0].heading;
+    for (int i = 0; i < G.animalCount; i++)
+        if (i % 3 == 0) G.animals[i].speed = 7.0f;
+    SetRandomSeed(91);
+    int expect = GetRandomValue(0, 1 << 30);
+    SetRandomSeed(91);
+    for (int f = 0; f < 5; f++) {
+        DrawWildlife();
+        DrawVillage();
+        DrawCaravans();
+        rlDrawRenderBatchActive();
+    }
+    Check(GetRandomValue(0, 1 << 30) == expect && Vector3Equals(G.animals[0].pos, at) && G.animals[0].heading == heading,
+          "the animals' strides and grazing are only drawn: the game's random numbers and the animals stay as they were");
+    G.cam = cam;
+    GameInit();
+}
+
 // A server's game keeps slot 0 for itself: its first player gets the first house and color.
 static void TestSeats(void)
 {
@@ -3137,6 +3196,7 @@ static void RunTests(void)
     TestHide();
     TestLife();
     TestHens();
+    TestEase();
     TestLevels();
     TestSha256();
     TestSeats();

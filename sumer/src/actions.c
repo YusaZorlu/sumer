@@ -476,6 +476,36 @@ void Barter(int trader, int offer)
     Act(RQ_HEN, args, 2);
 }
 
+// Whether what is aimed at is work done over and over, and can be done now (its prompt is lit): grinding,
+// kneading, baking, firing pots, smelting; sowing or reaping a plot; gathering.
+bool RepeatsWork(void)
+{
+    int i = G.target.index;
+    if (!G.okE) return false;
+    switch (G.target.kind) {
+    case TGT_RES:
+    case TGT_PLOT:    return true;
+    case TGT_STATION: return StashCamp(i) < 0 && (i == STN_QUERN || i == STN_TROUGH || i == STN_OVEN || i == STN_KILN || i == STN_SMELTER);
+    default:          return false;
+    }
+}
+
+// E (or the Use button) held: after half a second such work goes on by itself, about three times a second,
+// so a sack of wheat is ground or a row of plots sown without a press for each. Anything else (a door, a
+// trader, a bed, a board) answers only to a press.
+void HoldUse(bool down, float dt)
+{
+    static float held;
+    held = down ? held + dt : 0.0f;
+    if (held < 0.5f) return;
+    if (!RepeatsWork()) {
+        held = 0.5f;
+        return;
+    }
+    held = 0.2f;
+    Interact(false);
+}
+
 void Interact(bool alt)
 {
     int i = G.target.index;

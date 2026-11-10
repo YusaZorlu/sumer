@@ -1134,73 +1134,144 @@ static void Blob(float x, float y, float z, float w, float h, float l, Color c)
     DrawShadedBlob((Vector3){ x, y, z }, (Vector3){ w * 0.56f, h * 0.6f, l * 0.56f }, c);
 }
 
-static void Legs(const AnimalDef *d, float w, Color c)
+// How the animals move as they are drawn: their strides, and their heads going down to graze. Kept here,
+// by this machine only, and eased from frame to frame; nothing in the game reads it.
+static BeastAnim anim[MAX_ANIMALS];
+static double animClock;
+
+// How far down an animal's head is meant to be (0 up, 1 at the grass): standing calm, gazelles and onagers
+// graze and look up now and then, a boar roots, a wolf noses the ground at times, a goose dabbles; walking,
+// a boar keeps its snout low. Roused, every head is up.
+static float HeadDown(const Animal *a, int i, float t)
 {
-    float x = d->body.x / 2 - w / 2 - 0.02f, z = d->body.z / 2 - 0.14f;
-    for (int i = 0; i < 4; i++)
-        DrawShadedCylinder((Vector3){ (i & 1) ? x : -x, 0, (i & 2) ? z : -z }, w * 0.55f, w * 0.55f, d->legH + 0.08f, 0.65f, 5, c);
+    if (a->state != ST_CALM) return 0.0f;
+    bool still = a->speed < 0.1f;
+    float look = sinf(t * (0.5f + 0.2f * Hash2(i, 3)) + (float)i * 2.1f);
+    switch (a->type) {
+    case AN_GAZELLE:
+    case AN_ONAGER: return still && look > -0.5f ? 1.0f : 0.0f;
+    case AN_BOAR:   return still ? 1.0f : 0.45f;
+    case AN_WOLF:   return still && look > 0.55f ? 1.0f : 0.0f;
+    case AN_GOOSE:  return still && look > 0.2f ? 1.0f : 0.0f;
+    default:        return 0.0f;
+    }
 }
 
-static void DrawAnimal(const Animal *a)
+static void Legs(const AnimalDef *d, const BeastAnim *m, float w, float amp, bool gallop, bool fine, Color c)
 {
+    DrawBeastLegs(m, d->body.x / 2 - w / 2 - 0.02f, d->body.z / 2 - 0.14f, d->legH + 0.08f, w * 0.55f, amp, gallop, fine, c);
+}
+
+// 'fine': near enough for knees, ears and the like.
+static void DrawAnimal(const Animal *a, int i, bool fine)
+{
+    static const BeastAnim still = { 0, 0, 0 };
     const AnimalDef *d = &DEFS[a->type];
     float bw = d->body.x, bh = d->body.y, bl = d->body.z, lh = d->legH, top = lh + bh;
-    bool moving = a->speed > 0.1f && a->state != ST_DEAD;
-    float t = (float)GetTime();
-    float bob = moving ? fabsf(sinf(t * a->speed * 2.5f)) * 0.05f : 0.0f;
+    bool dead = a->state == ST_DEAD, moving = a->speed > 0.1f && !dead;
+    const BeastAnim *m = dead ? &still : &anim[i];
+    // Fleeing or hunting they gallop: a longer reach, the body rising and rocking with each bound.
+    bool gallop = !dead && a->speed > d->walk * 2.0f;
+    bool legged = a->type != AN_SNAKE && !(d->flies && a->pos.y > 0.3f && a->type == AN_GOOSE) && !(a->type == AN_PARTRIDGE && a->state == ST_FLEE);
+    float t = (float)GetTime() + (float)i * 1.3f;
+    float go = m->go, head = m->head, amp = gallop ? 36.0f : 22.0f;
+    float bob = legged ? (gallop ? 0.08f * (0.5f + 0.5f * sinf(m->phase + 0.6f)) : 0.02f * fabsf(sinf(m->phase))) * go : 0.0f;
+    float nod = sinf(m->phase * 2.0f) * 3.0f * go;   // the head nodding with each step
+    // A tail flicked in short bursts, an ear twitched.
+    float flick = !dead && sinf(t * 1.3f) > 0.6f ? sinf(t * 16.0f) : 0.0f, twitch = !dead && sinf(t * 0.9f + 2.0f) > 0.85f ? sinf(t * 22.0f) : 0.0f;
 
     rlPushMatrix();
     rlTranslatef(a->pos.x, a->pos.y + bob, a->pos.z);
     rlRotatef(a->heading * RAD2DEG, 0, 1, 0);
-    if (a->state == ST_DEAD && a->type != AN_SNAKE) {
+    if (dead && a->type != AN_SNAKE) {
         rlTranslatef(0, bw / 2, 0);
         rlRotatef(90, 0, 0, 1);
+    }
+    if (gallop && legged) {
+        rlTranslatef(0, lh + bh / 2, 0);
+        rlRotatef(-sinf(m->phase + 1.2f) * 5.0f * go, 1, 0, 0);
+        rlTranslatef(0, -(lh + bh / 2), 0);
     }
 
     switch (a->type) {
     case AN_GAZELLE:
-        Legs(d, 0.09f, d->dark);
+        Legs(d, m, 0.09f, amp, gallop, fine, d->dark);
         Blob(0, lh + bh / 2, 0, bw, bh, bl, d->coat);
         Blob(0, lh + bh * 0.32f, 0, bw * 0.92f, bh * 0.45f, bl * 0.82f, (Color){ 236, 222, 196, 255 });
-        Part(0, top + 0.12f, bl / 2 - 0.05f, 0.2f, 0.5f, 0.22f, d->coat);
-        Blob(0, top + 0.4f, bl / 2 + 0.11f, 0.2f, 0.22f, 0.4f, d->coat);
-        Part(-0.07f, top + 0.67f, bl / 2 + 0.03f, 0.04f, 0.36f, 0.04f, d->dark);
-        Part(0.07f, top + 0.67f, bl / 2 + 0.03f, 0.04f, 0.36f, 0.04f, d->dark);
-        Part(0, top - 0.1f, -bl / 2 - 0.02f, 0.08f, 0.2f, 0.06f, d->dark);
+        // The neck from the shoulders: down to the grass to graze, stretched out at a run.
+        rlPushMatrix();
+        rlTranslatef(0, top - 0.08f - 0.08f * head, bl / 2 - 0.1f);
+        rlRotatef(head * 122.0f + (gallop ? 24.0f * go : 0.0f) + nod, 1, 0, 0);
+        Part(0, 0.2f, 0.05f, 0.2f, 0.5f, 0.22f, d->coat);
+        Blob(0, 0.48f, 0.21f, 0.2f, 0.22f, 0.4f, d->coat);
+        Part(-0.07f, 0.75f, 0.13f, 0.04f, 0.36f, 0.04f, d->dark);
+        Part(0.07f, 0.75f, 0.13f, 0.04f, 0.36f, 0.04f, d->dark);
+        if (fine)
+            for (int s = -1; s <= 1; s += 2) Part((float)s * (0.14f + 0.015f * twitch), 0.56f, 0.1f, 0.1f, 0.05f, 0.04f, d->coat);
+        rlPopMatrix();
+        Part(0.025f * flick, top - 0.1f, -bl / 2 - 0.02f, 0.08f, 0.2f, 0.06f, d->dark);
         break;
     case AN_ONAGER:
-        Legs(d, 0.12f, d->coat);
+        Legs(d, m, 0.12f, amp, gallop, fine, d->coat);
         Blob(0, lh + bh / 2, 0, bw, bh, bl, d->coat);
         Part(0, top + 0.01f, 0, 0.08f, 0.03f, bl, d->dark);
-        Part(0, top + 0.1f, bl / 2, 0.26f, 0.5f, 0.35f, d->coat);
-        Blob(0, top + 0.3f, bl / 2 + 0.35f, 0.25f, 0.28f, 0.58f, d->coat);
-        Part(0, top + 0.27f, bl / 2 + 0.6f, 0.2f, 0.18f, 0.08f, d->dark);
-        Part(0, top + 0.38f, bl / 2 - 0.02f, 0.06f, 0.18f, 0.32f, d->dark);
-        Part(-0.07f, top + 0.55f, bl / 2 + 0.2f, 0.05f, 0.22f, 0.05f, d->coat);
-        Part(0.07f, top + 0.55f, bl / 2 + 0.2f, 0.05f, 0.22f, 0.05f, d->coat);
-        Part(0, top - 0.28f, -bl / 2 - 0.04f, 0.06f, 0.45f, 0.06f, d->dark);
+        rlPushMatrix();
+        rlTranslatef(0, top - 0.12f - 0.14f * head, bl / 2 - 0.05f);
+        rlRotatef(head * 118.0f + (gallop ? 20.0f * go : 0.0f) + nod, 1, 0, 0);
+        Part(0, 0.22f, 0.05f, 0.26f, 0.5f, 0.35f, d->coat);
+        Blob(0, 0.42f, 0.4f, 0.25f, 0.28f, 0.58f, d->coat);
+        Part(0, 0.39f, 0.65f, 0.2f, 0.18f, 0.08f, d->dark);
+        Part(0, 0.5f, 0.03f, 0.06f, 0.18f, 0.32f, d->dark);
+        for (int s = -1; s <= 1; s += 2) Part((float)s * 0.07f, 0.67f + 0.02f * twitch * (float)s, 0.25f, 0.05f, 0.22f, 0.05f, d->coat);
+        rlPopMatrix();
+        // The tail swishing at flies, streaming behind at a gallop.
+        rlPushMatrix();
+        rlTranslatef(0, top - 0.06f, -bl / 2 - 0.04f);
+        rlRotatef(gallop ? 55.0f * go : 0.0f, 1, 0, 0);
+        rlRotatef(dead ? 0.0f : sinf(t * 2.4f) * 14.0f, 0, 0, 1);
+        Part(0, -0.22f, 0, 0.06f, 0.45f, 0.06f, d->dark);
+        rlPopMatrix();
         break;
-    case AN_BOAR:
-        Legs(d, 0.12f, d->dark);
+    case AN_BOAR: {
+        Legs(d, m, 0.12f, amp, gallop, fine, d->dark);
         Blob(0, lh + bh / 2, 0, bw, bh, bl, d->coat);
         Part(0, top + 0.04f, -0.05f, 0.1f, 0.1f, bl * 0.8f, d->dark);
-        Blob(0, lh + bh * 0.5f, bl / 2 + 0.2f, 0.42f, 0.42f, 0.46f, d->coat);
-        Part(0, lh + bh * 0.35f, bl / 2 + 0.47f, 0.22f, 0.18f, 0.14f, (Color){ 120, 90, 80, 255 });
-        Part(-0.09f, lh + bh * 0.32f, bl / 2 + 0.43f, 0.03f, 0.1f, 0.03f, COL_LINEN);
-        Part(0.09f, lh + bh * 0.32f, bl / 2 + 0.43f, 0.03f, 0.1f, 0.03f, COL_LINEN);
-        Part(-0.13f, lh + bh * 0.5f + 0.24f, bl / 2 + 0.1f, 0.08f, 0.12f, 0.05f, d->dark);
-        Part(0.13f, lh + bh * 0.5f + 0.24f, bl / 2 + 0.1f, 0.08f, 0.12f, 0.05f, d->dark);
+        // The head on its short neck: the snout down in the earth as it roots, working from side to side.
+        float y = lh + bh * 0.5f, root = head > 0.8f && !moving ? sinf(t * 5.0f) : 0.0f;
+        rlPushMatrix();
+        rlTranslatef(0, y - 0.06f * head, bl / 2);
+        rlRotatef(head * 30.0f + 4.0f * root + nod, 1, 0, 0);
+        rlRotatef(6.0f * root, 0, 1, 0);
+        Blob(0, 0, 0.2f, 0.42f, 0.42f, 0.46f, d->coat);
+        Part(0, -0.15f * bh, 0.47f, 0.22f, 0.18f, 0.14f, (Color){ 120, 90, 80, 255 });
+        Part(-0.09f, -0.18f * bh, 0.43f, 0.03f, 0.1f, 0.03f, COL_LINEN);
+        Part(0.09f, -0.18f * bh, 0.43f, 0.03f, 0.1f, 0.03f, COL_LINEN);
+        for (int s = -1; s <= 1; s += 2) Part((float)s * 0.13f, 0.24f + 0.012f * twitch, 0.1f, 0.08f, 0.12f, 0.05f, d->dark);
+        rlPopMatrix();
+        if (fine) Part(0.03f * flick, top - 0.12f, -bl / 2 - 0.03f, 0.03f, 0.16f, 0.03f, d->dark);
         break;
+    }
     case AN_WOLF: {
-        float head = (a->state == ST_HUNT) ? -0.12f : 0.0f;
-        Legs(d, 0.09f, d->dark);
+        Legs(d, m, 0.09f, amp, gallop, fine, d->dark);
         Blob(0, lh + bh / 2, 0, bw, bh, bl, d->coat);
         Blob(0, lh + bh * 0.3f, 0.05f, bw * 0.92f, bh * 0.5f, bl * 0.72f, (Color){ 176, 168, 154, 255 });
-        Blob(0, top + head, bl / 2 + 0.12f, 0.3f, 0.3f, 0.34f, d->coat);
-        Part(0, top - 0.06f + head, bl / 2 + 0.38f, 0.16f, 0.14f, 0.26f, d->dark);
-        Part(-0.08f, top + 0.2f + head, bl / 2 + 0.08f, 0.06f, 0.14f, 0.05f, d->dark);
-        Part(0.08f, top + 0.2f + head, bl / 2 + 0.08f, 0.06f, 0.14f, 0.05f, d->dark);
-        Part(0, top - 0.12f, -bl / 2 - 0.22f, 0.1f, 0.1f, 0.45f, d->dark);
+        // The head low and forward on the hunt, nosing the ground at times, turning to look about when wary.
+        float low = a->state == ST_HUNT ? 20.0f : head * 58.0f, scan = a->state == ST_ALERT ? sinf(t * 1.3f) * 28.0f : 0.0f;
+        rlPushMatrix();
+        rlTranslatef(0, top - 0.05f - 0.06f * head, bl / 2 - 0.02f);
+        rlRotatef(scan, 0, 1, 0);
+        rlRotatef(low + nod, 1, 0, 0);
+        Blob(0, 0.05f, 0.14f, 0.3f, 0.3f, 0.34f, d->coat);
+        Part(0, -0.01f, 0.4f, 0.16f, 0.14f, 0.26f, d->dark);
+        for (int s = -1; s <= 1; s += 2) Part((float)s * 0.08f, 0.25f + 0.012f * twitch, 0.1f, 0.06f, 0.14f, 0.05f, d->dark);
+        rlPopMatrix();
+        // The tail: hanging at rest, level on the hunt, tucked in flight.
+        rlPushMatrix();
+        rlTranslatef(0, top - 0.1f, -bl / 2);
+        rlRotatef(dead ? 0.0f : sinf(t * 2.0f) * (a->state == ST_CALM ? 10.0f : 4.0f), 0, 1, 0);
+        rlRotatef(a->state == ST_HUNT ? 4.0f : a->state == ST_FLEE ? -50.0f : -28.0f, 1, 0, 0);
+        Part(0, -0.02f, -0.22f, 0.1f, 0.1f, 0.45f, d->dark);
+        rlPopMatrix();
         break;
     }
     case AN_SNAKE: {
@@ -1232,12 +1303,14 @@ static void DrawAnimal(const Animal *a)
         // A round grey-brown bird, chestnut bars on its flanks, a small head close to the body; it bursts up
         // on whirring wings when flushed.
         const Color rust = { 160, 84, 50, 255 }, beak = { 110, 100, 80, 255 };
-        Part(-0.04f, lh / 2, 0, 0.02f, lh, 0.02f, rust);
-        Part(0.04f, lh / 2, 0, 0.02f, lh, 0.02f, rust);
+        // Quick little steps, the head jerking forward with each.
+        float step = legged ? sinf(m->phase * 2.0f) * go : 0.0f, jerk = 0.02f * fabsf(step);
+        Part(-0.04f, lh / 2, 0.04f * step, 0.02f, lh, 0.02f, rust);
+        Part(0.04f, lh / 2, -0.04f * step, 0.02f, lh, 0.02f, rust);
         Blob(0, lh + bh / 2, 0, bw, bh, bl, d->coat);
         for (int s = -1; s <= 1; s += 2) Part(s * bw * 0.46f, lh + bh * 0.45f, -0.02f, 0.02f, 0.07f, 0.14f, rust);
-        Blob(0, top + 0.02f, bl / 2 - 0.02f, 0.12f, 0.12f, 0.13f, d->dark);
-        Part(0, top + 0.02f, bl / 2 + 0.06f, 0.025f, 0.02f, 0.05f, beak);
+        Blob(0, top + 0.02f, bl / 2 - 0.02f + jerk, 0.12f, 0.12f, 0.13f, d->dark);
+        Part(0, top + 0.02f, bl / 2 + 0.06f + jerk, 0.025f, 0.02f, 0.05f, beak);
         if (a->state == ST_FLEE) {
             float flap = sinf(t * 30.0f) * 40.0f;
             for (int s = -1; s <= 1; s += 2) {
@@ -1252,13 +1325,31 @@ static void DrawAnimal(const Animal *a)
     }
     case AN_GOOSE: {
         const Color beak = { 230, 130, 40, 255 };
-        Part(-0.07f, lh / 2, 0, 0.04f, lh, 0.04f, beak);
-        Part(0.07f, lh / 2, 0, 0.04f, lh, 0.04f, beak);
+        // A waddle on land: the legs stepping, the body rolling from side to side; the neck reaching down to
+        // graze or dabble, and bobbing with each step.
+        float step = legged ? sinf(m->phase) * go : 0.0f;
+        // On the water it floats, its legs under it, rocking a little (it used to stand on the surface).
+        bool afloat = !dead && a->pos.y < WATER_LEVEL + 0.1f && InWater(a->pos.x, a->pos.z);
+        if (afloat) {
+            step = 0.0f;
+            rlTranslatef(0, 0.02f * sinf(t * 2.0f) - lh * 0.85f, 0);
+        } else {
+            Part(-0.07f, lh / 2, 0.07f * step, 0.04f, lh, 0.04f, beak);
+            Part(0.07f, lh / 2, -0.07f * step, 0.04f, lh, 0.04f, beak);
+        }
+        rlPushMatrix();
+        rlTranslatef(0, lh, 0);
+        rlRotatef(7.0f * step, 0, 0, 1);
+        rlTranslatef(0, -lh, 0);
         Blob(0, lh + bh / 2, 0, bw, bh, bl, d->coat);
-        Part(0, top - 0.05f, -bl / 2 - 0.05f, 0.18f, 0.12f, 0.12f, d->dark);
-        Part(0, top + 0.2f, bl / 2 - 0.04f, 0.08f, 0.42f, 0.08f, d->dark);
-        Blob(0, top + 0.42f, bl / 2 + 0.01f, 0.11f, 0.11f, 0.15f, d->dark);
-        Part(0, top + 0.4f, bl / 2 + 0.12f, 0.05f, 0.04f, 0.1f, beak);
+        Part(0, top - 0.05f + 0.012f * flick, -bl / 2 - 0.05f, 0.18f, 0.12f, 0.12f, d->dark);
+        rlPushMatrix();
+        rlTranslatef(0, top - 0.02f, bl / 2 - 0.04f);
+        rlRotatef(head * 128.0f + (legged ? 9.0f * sinf(m->phase * 2.0f) * go : 0.0f), 1, 0, 0);
+        Part(0, 0.22f, 0, 0.08f, 0.42f, 0.08f, d->dark);
+        Blob(0, 0.44f, 0.05f, 0.11f, 0.11f, 0.15f, d->dark);
+        Part(0, 0.42f, 0.16f, 0.05f, 0.04f, 0.1f, beak);
+        rlPopMatrix();
         if (a->pos.y > 0.3f && a->state != ST_DEAD) {
             float flap = sinf(t * 14.0f) * 35.0f;
             for (int s = -1; s <= 1; s += 2) {
@@ -1272,6 +1363,7 @@ static void DrawAnimal(const Animal *a)
             Part(-bw / 2, lh + bh * 0.6f, -0.05f, 0.04f, 0.18f, 0.4f, d->dark);
             Part(bw / 2, lh + bh * 0.6f, -0.05f, 0.04f, 0.18f, 0.4f, d->dark);
         }
+        rlPopMatrix();
         break;
     }
     default:
@@ -1292,6 +1384,7 @@ static void DrawSnakeGrass(const Animal *a, int i)
 
 void DrawWildlife(void)
 {
+    float dt = DrawDt(&animClock), now = (float)GetTime();
     for (int i = 0; i < G.animalCount; i++) {
         const Animal *a = &G.animals[i];
         float d = XZDist(a->pos, G.cam.position);
@@ -1299,7 +1392,8 @@ void DrawWildlife(void)
         LightFor(a->pos);
         if (a->type == AN_SNAKE) DrawSnakeGrass(a, i);
         SetDrawFlash(FlashAt(a->pos));
-        DrawAnimal(a);
+        BeastStep(&anim[i], a->state == ST_DEAD ? 0.0f : a->speed, HeadDown(a, i, now), dt);
+        DrawAnimal(a, i, d < 70.0f);
         SetDrawFlash(0);
     }
     G.drawTorch = G.drawFog = 0;

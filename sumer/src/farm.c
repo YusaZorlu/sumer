@@ -691,22 +691,33 @@ static void DrawSapling(const Plot *p)
     }
 }
 
-static void DrawHen(const Wanderer *w, int i, float t)
+// The hens' strides as they are drawn (this machine's own).
+static BeastAnim henAnim[MAX_HENS];
+static double henClock;
+
+static void DrawHen(const Wanderer *w, const BeastAnim *m, int i, float t)
 {
     Color feather = (i % 2) ? (Color){ 170, 110, 60, 255 } : (Color){ 232, 224, 206, 255 };
     const Color yellow = { 220, 170, 50, 255 };
     float peck = (w->speed <= 0) ? fmaxf(0.0f, sinf(t * 5.0f + (float)i)) * 0.08f : 0.0f;
+    // Walking, the legs step and the head jerks forward with each step, as a hen's does; the tail bobs.
+    float step = sinf(m->phase * 1.6f) * m->go, jerk = 0.035f * fabsf(step);
 
     rlPushMatrix();
     rlTranslatef(w->pos.x, 0, w->pos.z);
     rlRotatef(w->heading * RAD2DEG, 0, 1, 0);
-    Part(-0.06f, 0.09f, 0, 0.03f, 0.18f, 0.03f, yellow);
-    Part(0.06f, 0.09f, 0, 0.03f, 0.18f, 0.03f, yellow);
+    Part(-0.06f, 0.09f, 0.06f * step, 0.03f, 0.18f, 0.03f, yellow);
+    Part(0.06f, 0.09f, -0.06f * step, 0.03f, 0.18f, 0.03f, yellow);
+    rlPushMatrix();
+    rlTranslatef(0, 0.18f, 0);
+    rlRotatef(5.0f * step, 0, 0, 1);
+    rlTranslatef(0, -0.18f, 0);
     DrawShadedBlob((Vector3){ 0, 0.3f, 0 }, (Vector3){ 0.15f, 0.14f, 0.2f }, feather);
-    Part(0, 0.42f, -0.18f, 0.12f, 0.18f, 0.08f, feather);
-    DrawShadedBlob((Vector3){ 0, 0.5f - peck, 0.17f + peck }, (Vector3){ 0.07f, 0.08f, 0.07f }, feather);
-    Part(0, 0.6f - peck, 0.17f + peck, 0.04f, 0.06f, 0.08f, (Color){ 200, 40, 40, 255 });
-    Part(0, 0.5f - peck, 0.25f + peck, 0.04f, 0.03f, 0.06f, yellow);
+    Part(0, 0.42f + 0.01f * sinf(t * 3.0f + (float)i), -0.18f, 0.12f, 0.18f, 0.08f, feather);
+    DrawShadedBlob((Vector3){ 0, 0.5f - peck, 0.17f + peck + jerk }, (Vector3){ 0.07f, 0.08f, 0.07f }, feather);
+    Part(0, 0.6f - peck, 0.17f + peck + jerk, 0.04f, 0.06f, 0.08f, (Color){ 200, 40, 40, 255 });
+    Part(0, 0.5f - peck, 0.25f + peck + jerk, 0.04f, 0.03f, 0.06f, yellow);
+    rlPopMatrix();
     rlPopMatrix();
 }
 
@@ -751,7 +762,11 @@ void DrawFarm(void)
         DrawShadedBox((Vector3){ 37.25f, 0.035f, 15.6f }, (Vector3){ 20.3f, 0.02f, 0.3f + 0.35f * k }, COL_WATER);
     }
     LightFor(G.coop);
-    for (int i = 0; i < G.henCount; i++) DrawHen(&G.hens[i], i, t);
+    float henDt = DrawDt(&henClock);
+    for (int i = 0; i < G.henCount; i++) {
+        BeastStep(&henAnim[i], G.hens[i].speed, 0.0f, henDt);
+        DrawHen(&G.hens[i], &henAnim[i], i, t);
+    }
     for (int i = 0; i < G.coopEggs && i < 6; i++)
         Part(17.3f + 0.16f * (float)i, 0.06f, 29.5f, 0.1f, 0.12f, 0.1f, COL_LINEN);
     if (G.coopWater > 0) Part(19.6f, 0.33f, 33.2f, 0.9f, 0.02f, 0.2f, COL_WATER);

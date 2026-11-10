@@ -145,6 +145,70 @@ void VPaint(Color c, Vector3 n)
     }
 }
 
+// ---- Beasts in motion: only how they are drawn, never where they are ----
+
+// The seconds since this was last asked with 'last' (0 within one frame, 0.1 at most), for animation that
+// whoever draws keeps for itself.
+float DrawDt(double *last)
+{
+    double now = GetTime();
+    float dt = (float)(now - *last);
+    *last = now;
+    return dt < 0.0f ? 0.0f : dt > 0.1f ? 0.1f : dt;
+}
+
+// A beast's stride goes on with its speed (so its feet do not skate or jump when the speed changes), its
+// legs ease into and out of motion, and its head eases down to 'head' (0 up, 1 at the grass).
+void BeastStep(BeastAnim *b, float speed, float head, float dt)
+{
+    bool moving = speed > 0.05f;
+    if (moving) b->phase += dt * (2.0f + 2.3f * speed);
+    if (b->phase > 2.0f * PI * 32.0f) b->phase -= 2.0f * PI * 32.0f;
+    b->go += ((moving ? 1.0f : 0.0f) - b->go) * fminf(1.0f, dt * 7.0f);
+    b->head += (head - b->head) * fminf(1.0f, dt * 3.2f);
+}
+
+// Where leg 'leg' is in the stride (bit 0: the right side, bit 1: the forelegs), in degrees: 'swing' fore and
+// aft from the hip, 'bend' the knee folding as the foot comes forward. Walking, opposite corners step together;
+// galloping, the forelegs reach one just after the other and the hind legs drive together behind them.
+void BeastLegPose(const BeastAnim *b, int leg, float amp, bool gallop, float *swing, float *bend)
+{
+    float ph = b->phase;
+    if (gallop) ph += ((leg & 2) ? 0.0f : 2.3f) + ((leg & 1) ? 0.45f : 0.0f);
+    else ph += (((leg & 1) != 0) == ((leg & 2) != 0)) ? 0.0f : PI;
+    *swing = amp * b->go * sinf(ph);
+    *bend = amp * b->go * (gallop ? 1.5f : 1.2f) * fmaxf(0.0f, cosf(ph));
+}
+
+// A leg hanging from its hip (in the body's frame, z ahead): the upper part swung by 'swing', the lower bent
+// back by 'bend' more. Far off ('fine' false) it is one piece.
+void DrawBeastLeg(Vector3 hip, float len, float r, float swing, float bend, bool fine, Color c)
+{
+    float upper = len * 0.5f, lower = len - upper;
+    rlPushMatrix();
+    rlTranslatef(hip.x, hip.y, hip.z);
+    rlRotatef(-swing, 1, 0, 0);
+    if (!fine) {
+        DrawShadedCylinder((Vector3){ 0, -len, 0 }, r * 0.85f, r * 0.85f, len, 1.25f, 5, c);
+    } else {
+        DrawShadedCylinder((Vector3){ 0, -upper, 0 }, r * 0.9f, r * 0.9f, upper + 0.02f, 1.3f, 5, c);
+        rlTranslatef(0, -upper, 0);
+        rlRotatef(bend, 1, 0, 0);
+        DrawShadedCylinder((Vector3){ 0, -lower, 0 }, r * 0.8f, r * 0.8f, lower, 1.1f, 5, c);
+    }
+    rlPopMatrix();
+}
+
+// Four legs, their hips 'len' above the ground at (+-x, +-z).
+void DrawBeastLegs(const BeastAnim *b, float x, float z, float len, float r, float amp, bool gallop, bool fine, Color c)
+{
+    for (int k = 0; k < 4; k++) {
+        float swing, bend;
+        BeastLegPose(b, k, amp, gallop, &swing, &bend);
+        DrawBeastLeg((Vector3){ (k & 1) ? x : -x, len, (k & 2) ? z : -z }, len, r, swing, bend, fine, c);
+    }
+}
+
 // The top cap is a fan of degenerate quads. The sides carry smooth normals, so a column looks round
 // in the shaders' light.
 void DrawShadedCylinder(Vector3 base, float rx, float rz, float h, float topScale, int sides, Color col)

@@ -548,6 +548,13 @@ static void DrawStoragePanel(void)
     Text("Click a basket to move it between what you carry and the storage jars. Number keys store a carried basket.", r.x + 24, r.y + 50, 17, C_DIM);
     Text("Carried", bx, y0 - 22, 16, C_TEXT);
     Text("Storage jars", sx, y0 - 22, 16, C_TEXT);
+    bool carrying = false;
+    for (int i = 0; i < G.bagSlots; i++) carrying |= G.bag[i].item != IT_NONE;
+    if (Button((Rectangle){ r.x + r.width - 204, r.y + 14, 180, 30 }, "[Q] Store all", carrying, KEY_Q)) {
+        int left, emptied = StoreAll(&left);
+        if (left) Say("The storage jars are full: %d baskets stay with you.", left);
+        else if (emptied) Say("Stored everything you carried.");
+    }
 
     for (int i = 0; i < BAG_MAX; i++) {
         Rectangle s = { bx + (float)(i % 3) * (sw + gap), y0 + (float)(i / 3) * (shh + gap), sw, shh };
@@ -1466,7 +1473,7 @@ static void DrawHelpPanel(void)
         { "1 / 2", "bow / melee weapon" }, { "3 / 4", "war mace / hands free" },
         { "Left mouse", "draw and release (bow), strike (melee)" },
         { "Right mouse, Q", "parry with the melee weapon" }, { "V", "strike" },
-        { "E", "use, talk, pick up, climb, search" }, { "F", "alternate action" },
+        { "E", "use, talk, pick up, climb, search" }, { "E (hold)", "keep grinding, baking, sowing, reaping, gathering" }, { "F", "alternate action" },
         { "R", "refill the quiver" }, { "B", "torch on/off (from evening)" }, { "Z", "arrow camera on/off" }, { "Tab", "baskets and equipment" },
         { "M", "map zoom" }, { "N", "music: off, low, medium, high" }, { "G", "graphics: auto, high, low, classic" }, { "T (hold)", "fast-forward time (alone)" }, { "T", "chat (in a shared game)" }, { "F5", "save" },
         { "Enter", "ready (battle royale, party)" }, { "F11", "fullscreen" }, { "Esc", "pause, save slots, game settings, your look" }, { "H", "this window" },
@@ -1853,6 +1860,17 @@ static void DrawMinimap(int ox, int oy, int size)
     DrawLineEx(pp, (Vector2){ pp.x + sinf(G.player.facing) * 8, pp.y + cosf(G.player.facing) * 8 }, 2, BLACK);
     DrawCircleV(pp, 3, RAYWHITE);
     EndScissorMode();
+    // Home out of the map's view (zoomed in, far from it): a lapis arrowhead on the edge points the way back.
+    Vector2 hm = { mx + G.home.x * s, mz + G.home.z * s }, mid = { (float)ox + (float)size / 2, (float)oy + (float)size / 2 };
+    if (!Royale() && !Party() && (fabsf(hm.x - mid.x) > (float)size / 2 || fabsf(hm.y - mid.y) > (float)size / 2)) {
+        Vector2 way = Vector2Subtract(hm, mid), n = Vector2Normalize(way), side = { -n.y, n.x };
+        Vector2 tip = Vector2Add(mid, Vector2Scale(way, ((float)size / 2 - 4) / fmaxf(fabsf(way.x), fabsf(way.y))));
+        Vector2 back = Vector2Subtract(tip, Vector2Scale(n, 11)), l = Vector2Add(back, Vector2Scale(side, 6)), rr = Vector2Subtract(back, Vector2Scale(side, 6));
+        DrawTriangle(tip, l, rr, COL_LAPIS);
+        DrawTriangle(tip, rr, l, COL_LAPIS);
+        DrawLineEx(tip, l, 1.5f, Fade(SHELL, 0.9f));
+        DrawLineEx(tip, rr, 1.5f, Fade(SHELL, 0.9f));
+    }
     // Framed in bitumen and shell, with a rosette at each corner.
     DrawRectangleLinesEx((Rectangle){ (float)ox - 4, (float)oy - 4, (float)size + 8, (float)size + 8 }, 4, BITUMEN);
     DrawRectangleLinesEx((Rectangle){ (float)ox - 1, (float)oy - 1, (float)size + 2, (float)size + 2 }, 1, Fade(SHELL, 0.7f));
