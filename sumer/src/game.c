@@ -610,6 +610,8 @@ static void HandleMenus(bool paused)
         ToggleReady();
     } else if (KeyPressed(KEY_H) && (G.panel == PANEL_NONE || G.panel == PANEL_PAUSE || G.panel == PANEL_HELP)) {
         SetPanel(G.panel == PANEL_HELP ? PANEL_NONE : PANEL_HELP);
+    } else if (TouchPressed(TB_CHAT) && Online() && G.panel == PANEL_NONE) {
+        ChatAsk();   // on a phone the browser's own box brings up the keyboard
     } else if (KeyPressed(KEY_T) && Online() && G.panel == PANEL_NONE && !G.sleeping) {
         SetPanel(PANEL_CHAT);
         while (GetCharPressed() > 0) {}   // the T that opened it is not typed

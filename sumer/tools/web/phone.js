@@ -60,7 +60,15 @@ const BASE = process.env.BASE || 'http://localhost:8123/';
   await cmd(page, 1, 40, 10);   // open ground, nothing in the way
   await sleep(1500);
   i0 = await info(page);
-  check(i0.touch === 1 && i0.buttons.every(b => b[0] > 0), `touch controls shown (${JSON.stringify(i0.buttons)})`);
+  check(i0.touch === 1 && i0.buttons.slice(0, 10).every(b => b[0] > 0), `touch controls shown (${JSON.stringify(i0.buttons)})`);
+  // Torch and Chat are there only when they have a use: by day and alone, neither; in the evening, the torch.
+  check(i0.buttons[10][2] === 0 && i0.buttons[11][2] === 0, 'by day and alone there is no Torch or Chat button');
+  await cmd(page, 9, 21);
+  await sleep(1500);
+  const night = await info(page);
+  check(night.buttons[10][2] > 0 && night.buttons[11][2] === 0, `in the evening the Torch button is there (${JSON.stringify(night.buttons[10])})`);
+  await cmd(page, 9, 10);
+  await sleep(1200);
 
   await touch('touchStart', [[120, 300, 1]]);
   await touch('touchMove', [[120, 350, 1]]);   // pulled back: walks backward, away from the wall north of (40, 10)

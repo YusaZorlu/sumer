@@ -2095,10 +2095,25 @@ static int ChatFits(const char *s, float w)
     return at;
 }
 
+// A phone's way to say something: the browser's box (and with it the keyboard), sent when confirmed.
+void ChatAsk(void)
+{
+    char line[CHAT_MAX + 1] = "";
+    if (AskText(L("Say to everyone"), "", line, (int)sizeof(line)) && line[0]) NetChat(line);
+}
+
 static void DrawChat(int sh)
 {
     bool typing = G.panel == PANEL_CHAT;
-    float size = FontSize(16), w = fminf(460.0f, UiWidth() * 0.45f), y = (float)sh - 54;
+    float size = FontSize(16), w = fminf(460.0f, UiWidth() * 0.45f), y = (float)sh - 54, x0 = 8, top = 260;
+    // On a touch screen the bottom left is the thumb's: what was said shows at the top, in the middle, under
+    // the buttons there, the last few lines only.
+    if (TouchOn() && !typing) {
+        w = fminf(420.0f, UiWidth() * 0.36f);
+        x0 = UiWidth() / 2 - w / 2 - 4;
+        y = 176;
+        top = 64;
+    }
     if (typing) {
         int c, n = (int)strlen(chatLine), len;
         while ((c = GetCharPressed()) > 0) {
@@ -2131,7 +2146,7 @@ static void DrawChat(int sh)
         y -= 4;
     }
     // Newest at the bottom, each on as many rows as it needs, the name in the player's colour.
-    for (int i = 0; i < chatCount && y > 260; i++) {
+    for (int i = 0; i < chatCount && y > top; i++) {
         double age = GetTime() - chat[i].at;
         if (!typing && age > CHAT_SHOW) break;
         float a = typing ? 1.0f : Clamp((float)(CHAT_SHOW - age), 0.0f, 1.0f);
@@ -2147,10 +2162,11 @@ static void DrawChat(int sh)
             while (*s == ' ') s++;
         }
         y -= 20.0f * (float)rows + 2;
-        DrawRectangle(8, (int)y - 2, (int)w + 8, 20 * rows + 2, Fade(BLACK, 0.4f * a));
-        DrawGameText(head, 14, y, size, Fade(ColorBrightness(chat[i].color, 0.4f), a));
+        if (y < top) break;
+        DrawRectangle((int)x0, (int)y - 2, (int)w + 8, 20 * rows + 2, Fade(BLACK, 0.4f * a));
+        DrawGameText(head, x0 + 6, y, size, Fade(ColorBrightness(chat[i].color, 0.4f), a));
         for (int k = 0; k < rows; k++)
-            DrawGameText(TextFormat("%.*s", len[k], row[k]), k ? 14 : 14 + hw, y + 20.0f * (float)k, size, Fade(RAYWHITE, a));
+            DrawGameText(TextFormat("%.*s", len[k], row[k]), x0 + 6 + (k ? 0 : hw), y + 20.0f * (float)k, size, Fade(RAYWHITE, a));
     }
 }
 

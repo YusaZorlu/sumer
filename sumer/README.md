@@ -323,6 +323,9 @@ see-through so the world shows behind them, cover the main keys:
 - **Attack** (strike; hold to draw the bow, let go to shoot), **Parry**, **Jump**, **Use** (E) and **Crouch** under
   the right thumb. Only Attack strikes: a tap anywhere else is looking, never a blow.
 - **< Weapon >** beside the map: the previous or next of hands free, bow, melee weapon and war mace.
+- **Torch** and **Chat**, two small buttons under the weapon buttons, there only when they have a use: Torch from the
+  evening on (its ring glows while the torch is in your hand; never in hide and seek), Chat in a shared game (it opens
+  the browser's box and the keyboard). What others say shows at the top of the screen, in the middle, clear of your thumbs.
 - **Bag**, **View** (first person or behind you) and **Menu** at the top; with a panel open the Menu button reads
   **Close** and puts it away.
 - **Your name** on the title screen: a tap on the field opens the browser's box, and with it the keyboard.
@@ -335,7 +338,7 @@ cannot open the pause menu); Menu pauses. A touch also puts the game in full scr
 finger that holds Attack aims. In Game settings, **Buttons: left hand** puts the thumb's buttons on the left and
 the stick on the right.
 
-The rest (torch, map, chat, music and graphics keys) needs a keyboard, or the buttons in the Esc menu and the bag.
+The rest (map, music and graphics keys) needs a keyboard, or the buttons in the Esc menu and the bag.
 The controls show on a phone or tablet, and on any other screen once a finger touches the game.
 
 ## Controls

@@ -1245,6 +1245,7 @@ static void DrawSheep(const Wanderer *w, const BeastAnim *m, int seed)
     Part(-0.15f, 0.12f + 0.012f * twitch, 0.1f, 0.12f, 0.05f, 0.08f, face);
     Part(0.15f, 0.12f - 0.012f * twitch, 0.1f, 0.12f, 0.05f, 0.08f, face);
     Part(0, 0.18f, 0.08f, 0.26f, 0.1f, 0.14f, wool);
+    DrawEyes(0.1f, 0.1f + chew, 0.22f, 0.018f, (Color){ 214, 180, 96, 255 });
     rlPopMatrix();
     DrawShadedBlob((Vector3){ 0.015f * twitch, 0.66f, -0.5f }, (Vector3){ 0.09f, 0.14f, 0.08f }, wool);   // the fat tail of the land's sheep
     rlPopMatrix();
@@ -1272,6 +1273,7 @@ static void DrawCow(const Wanderer *w, const BeastAnim *m, int i)
     DrawShadedBlob((Vector3){ 0, 0.0f, -0.08f }, (Vector3){ 0.2f, 0.26f, 0.3f }, coat);   // the neck
     DrawShadedBlob((Vector3){ 0, 0.05f, 0.2f }, (Vector3){ 0.21f, 0.23f, 0.3f }, coat);
     Part(0, -0.08f + chew, 0.48f, 0.32f, 0.22f, 0.12f, pink);
+    DrawEyes(0.18f, 0.12f, 0.3f, 0.032f, dark);
     // Long horns curving out and up, as on the cattle of the old reliefs.
     for (int s = -1; s <= 1; s += 2) {
         rlPushMatrix();
