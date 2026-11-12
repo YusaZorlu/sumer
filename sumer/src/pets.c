@@ -363,6 +363,7 @@ static void DrawCat(const Pet *p, const BeastAnim *m, float t)
     DrawShadedBlob((Vector3){ 0, hy, hz }, (Vector3){ 0.065f, 0.06f, 0.065f }, c);
     for (int s = -1; s <= 1; s += 2) DrawShadedBox((Vector3){ (float)s * 0.035f, hy + 0.06f, hz - 0.01f }, (Vector3){ 0.025f, 0.05f, 0.015f }, c);
     DrawShadedBox((Vector3){ 0, hy - 0.01f, hz + 0.06f }, (Vector3){ 0.02f, 0.015f, 0.01f }, pink);
+    DrawEyes(0.034f, hy + 0.014f, hz + 0.048f, 0.013f, (Color){ 150, 186, 84, 255 });
     float wave = sinf(t * 2.0f + (float)p->coat) * 0.25f;
     for (int k = 0; k < 3; k++) {
         float a = (float)k * 0.35f + 0.4f + sit * 0.3f;
@@ -396,6 +397,7 @@ static void DrawDog(const Pet *p, const BeastAnim *m, float t)
     DrawShadedBlob((Vector3){ 0, hy, hz }, (Vector3){ 0.08f * k, 0.08f * k, 0.09f * k }, c);
     DrawShadedBlob((Vector3){ 0, hy - 0.02f * k, hz + 0.1f * k }, (Vector3){ 0.045f * k, 0.045f * k, (slim ? 0.09f : 0.07f) * k }, c);
     DrawShadedBox((Vector3){ 0, hy, hz + (slim ? 0.19f : 0.17f) * k }, (Vector3){ 0.03f, 0.025f, 0.02f }, (Color){ 30, 26, 24, 255 });
+    DrawEyes(0.048f * k, hy + 0.028f * k, hz + 0.062f * k, 0.016f * k, (Color){ 40, 28, 20, 255 });
     for (int s = -1; s <= 1; s += 2) {
         if (slim) DrawShadedBlob((Vector3){ (float)s * 0.07f * k, hy - 0.04f * k, hz - 0.03f }, (Vector3){ 0.02f, 0.08f * k, 0.04f }, dark);
         else DrawShadedBox((Vector3){ (float)s * 0.05f * k, hy + 0.08f * k, hz - 0.02f }, (Vector3){ 0.035f, 0.07f * k, 0.02f }, dark);

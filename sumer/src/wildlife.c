@@ -1213,6 +1213,7 @@ static void DrawAnimal(const Animal *a, int i, bool fine)
         if (fine) {
             // A fine muzzle, ears, and ringed horns that sweep back and curve up at the tips.
             Blob(0, 0.44f, 0.38f, 0.1f, 0.11f, 0.16f, Mix(d->coat, d->dark, 0.5f));
+            DrawEyes(0.095f, 0.52f, 0.27f, 0.026f, (Color){ 24, 20, 18, 255 });
             for (int s = -1; s <= 1; s += 2) {
                 Part((float)s * (0.14f + 0.015f * twitch), 0.56f, 0.1f, 0.1f, 0.05f, 0.04f, d->coat);
                 rlPushMatrix();
@@ -1248,6 +1249,7 @@ static void DrawAnimal(const Animal *a, int i, bool fine)
         Blob(0, 0.42f, 0.4f, 0.25f, 0.28f, 0.58f, d->coat);
         Blob(0, 0.38f, 0.62f, 0.2f, 0.19f, 0.2f, Mix(d->coat, (Color){ 236, 226, 208, 255 }, 0.6f));
         Part(0, 0.36f, 0.72f, 0.14f, 0.1f, 0.04f, d->dark);
+        if (fine) DrawEyes(0.125f, 0.49f, 0.42f, 0.03f, (Color){ 24, 20, 18, 255 });
         Part(0, 0.5f, 0.03f, 0.06f, 0.18f, 0.32f, d->dark);
         for (int s = -1; s <= 1; s += 2) Part((float)s * 0.07f, 0.67f + 0.02f * twitch * (float)s, 0.25f, 0.05f, 0.22f, 0.05f, d->coat);
         rlPopMatrix();
@@ -1275,6 +1277,7 @@ static void DrawAnimal(const Animal *a, int i, bool fine)
         rlRotatef(6.0f * root, 0, 1, 0);
         Blob(0, 0, 0.2f, 0.42f, 0.42f, 0.46f, d->coat);
         Part(0, -0.15f * bh, 0.47f, 0.22f, 0.18f, 0.14f, (Color){ 120, 90, 80, 255 });
+        if (fine) DrawEyes(0.185f, 0.09f, 0.3f, 0.024f, (Color){ 14, 12, 12, 255 });
         Part(-0.09f, -0.18f * bh, 0.43f, 0.03f, 0.1f, 0.03f, COL_LINEN);
         Part(0.09f, -0.18f * bh, 0.43f, 0.03f, 0.1f, 0.03f, COL_LINEN);
         for (int s = -1; s <= 1; s += 2) Part((float)s * 0.13f, 0.24f + 0.012f * twitch, 0.1f, 0.08f, 0.12f, 0.05f, d->dark);
@@ -1298,6 +1301,7 @@ static void DrawAnimal(const Animal *a, int i, bool fine)
         rlRotatef(low + nod, 1, 0, 0);
         Blob(0, 0.05f, 0.14f, 0.3f, 0.3f, 0.34f, d->coat);
         Part(0, -0.01f, 0.4f, 0.16f, 0.14f, 0.26f, d->dark);
+        if (fine) DrawEyes(0.115f, 0.11f, 0.25f, 0.024f, (Color){ 196, 150, 50, 255 });
         for (int s = -1; s <= 1; s += 2) Part((float)s * 0.08f, 0.25f + 0.012f * twitch, 0.1f, 0.06f, 0.14f, 0.05f, d->dark);
         rlPopMatrix();
         // The tail: hanging at rest, level on the hunt, tucked in flight.
@@ -1347,6 +1351,7 @@ static void DrawAnimal(const Animal *a, int i, bool fine)
         for (int s = -1; s <= 1; s += 2) Part(s * bw * 0.46f, lh + bh * 0.45f, -0.02f, 0.02f, 0.07f, 0.14f, rust);
         Blob(0, top + 0.02f, bl / 2 - 0.02f + jerk, 0.12f, 0.12f, 0.13f, d->dark);
         Part(0, top + 0.02f, bl / 2 + 0.06f + jerk, 0.025f, 0.02f, 0.05f, beak);
+        if (fine) DrawEyes(0.056f, top + 0.035f, bl / 2 + 0.005f + jerk, 0.01f, (Color){ 24, 20, 18, 255 });
         if (a->state == ST_FLEE) {
             float flap = sinf(t * 30.0f) * 40.0f;
             for (int s = -1; s <= 1; s += 2) {
@@ -1385,6 +1390,7 @@ static void DrawAnimal(const Animal *a, int i, bool fine)
         Part(0, 0.22f, 0, 0.08f, 0.42f, 0.08f, d->dark);
         Blob(0, 0.44f, 0.05f, 0.11f, 0.11f, 0.15f, d->dark);
         Part(0, 0.42f, 0.16f, 0.05f, 0.04f, 0.1f, beak);
+        if (fine) DrawEyes(0.05f, 0.46f, 0.08f, 0.012f, (Color){ 24, 20, 18, 255 });
         rlPopMatrix();
         if (a->pos.y > 0.3f && a->state != ST_DEAD) {
             float flap = sinf(t * 14.0f) * 35.0f;

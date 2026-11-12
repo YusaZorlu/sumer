@@ -717,6 +717,7 @@ static void DrawHen(const Wanderer *w, const BeastAnim *m, int i, float t)
     DrawShadedBlob((Vector3){ 0, 0.5f - peck, 0.17f + peck + jerk }, (Vector3){ 0.07f, 0.08f, 0.07f }, feather);
     Part(0, 0.6f - peck, 0.17f + peck + jerk, 0.04f, 0.06f, 0.08f, (Color){ 200, 40, 40, 255 });
     Part(0, 0.5f - peck, 0.25f + peck + jerk, 0.04f, 0.03f, 0.06f, yellow);
+    DrawEyes(0.062f, 0.52f - peck, 0.2f + peck + jerk, 0.012f, (Color){ 24, 20, 18, 255 });
     rlPopMatrix();
     rlPopMatrix();
 }

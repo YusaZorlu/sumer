@@ -548,6 +548,7 @@ The world's draw code (`render.c` primitives, `DrawGround`, `DrawWater`, `DrawRo
   they are not drawn and do not walk. Never in a party or a battle royale, and hide and seek holds the clock at
   10:00 (`UpdateTime`), so it has no night at all; `TestNight` and `TestHide` check both. Doors and windows are
   `COL_DOORWAY` with alpha 248, which the world shader lights from inside after dark (about seven houses in ten).
+- **Animals' eyes**: `DrawEyes` (render.c), two small beads on each head near the camera; keep them plain.
 - **`assets/detail6.png`** (texture unit 2; units 0 and 1 are the only ones left of WebGL 2's 16): R animal hair, G
   pottery, B earth roofs, A metal. Alpha tags added with it: 250 on a figure is an animal's coat (`SetCoat(250)` round
   each animal's drawing, 253 for sheep: the fleece grain), 247 is fired pottery (`COL_POT`), 248 a door or window.
@@ -625,9 +626,11 @@ no sound files. Read the comment at the top of the file and the notation comment
 
 ## Ideas that were mentioned and not done
 
-- Firefox and Safari work (the owner played both). No gamepad input. Touch controls cover only the main keys
+- Firefox and Safari work (the owner played both). No gamepad input. Touch has Torch and Chat buttons now
+  (`TB_TORCH`, `TB_CHAT`: hidden unless usable; chat goes through `AskText`, the browser's prompt); the map zoom still
+  needs a key. Touch controls cover only the main keys
   (the owner asked for move, attack, parry, use, crouch, look, first/third person, then jump and previous/next
-  weapon; Bag and Menu were added so the panels and the pause menu can be reached): no chat, torch or map keys on touch.
+  weapon; Bag and Menu were added so the panels and the pause menu can be reached).
 - Graphics, later steps (the owner wants CC0-only art, a 25-50 MB download at most, and to weigh each effect's cost):
   buildings and props, then effects (wind on cloth and palms, light shafts, ambient occlusion, water reflections,
   sharper far shadows, grass and reeds). Animals are still made of boxes and blobs, though they move now. Free model and texture sites (poly.pizza,

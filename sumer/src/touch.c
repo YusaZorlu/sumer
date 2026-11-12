@@ -17,7 +17,7 @@ static Finger fingers[FINGERS];
 static int fingerCount;
 static bool down[TB_COUNT], pressed[TB_COUNT], seenTouch;
 static Vector2 stick, look;
-static const char *const labels[TB_COUNT] = { "Attack", "Parry", "Use", "Crouch", "View", "Bag", "Menu", "Jump", "<", ">" };
+static const char *const labels[TB_COUNT] = { "Attack", "Parry", "Use", "Crouch", "View", "Bag", "Menu", "Jump", "<", ">", "Torch", "Chat" };
 
 bool TouchOn(void)
 {
@@ -37,8 +37,13 @@ static bool Place(int b, Vector2 *c, float *r)
         { AT_THUMB, 105, 115, 52 }, { AT_THUMB, 240, 178, 36 }, { AT_THUMB, 145, 245, 34 }, { AT_THUMB, 46, 236, 34 },
         { AT_TOP, 0, 36, 24 }, { AT_TOP, -80, 36, 24 }, { AT_TOP, 80, 36, 24 },
         { AT_THUMB, 235, 62, 36 }, { AT_MAP, 280, 50, 26 }, { AT_MAP, 225, 50, 26 },
+        { AT_MAP, 280, 112, 24 }, { AT_MAP, 225, 112, 24 },
     };
     if (G.panel != PANEL_NONE && b != TB_MENU) return false;
+    // Two buttons that are there only when they have a use, under the weapon buttons: the torch from the
+    // evening on (never in hide and seek), the chat in a shared game.
+    if (b == TB_TORCH && (!TorchesLit() || PartyGame() == PG_HIDE)) return false;
+    if (b == TB_CHAT && !Online()) return false;
     const float *s = spot[b];
     // Left-handed, the thumb's buttons and the stick change sides.
     *c = s[0] == AT_THUMB ? (Vector2){ LeftHanded() ? s[1] : sw - s[1], sh - s[2] } : s[0] == AT_TOP ? (Vector2){ sw / 2 + s[1], s[2] } : (Vector2){ sw - s[1], s[2] };
@@ -220,7 +225,8 @@ void DrawTouch(void)
         float r;
         if (!Place(b, &c, &r)) continue;
         DrawCircleV(c, r, Fade(down[b] ? WHITE : BLACK, down[b] ? 0.28f : 0.16f));
-        DrawRing(c, r - 2, r, 0, 360, 48, Fade(WHITE, 0.4f));
+        bool lit = b == TB_TORCH && G.torchOn;   // the torch's ring glows while it is in your hand
+        DrawRing(c, r - 2, r, 0, 360, 48, lit ? Fade((Color){ 255, 190, 90, 255 }, 0.9f) : Fade(WHITE, 0.4f));
         const char *s = L(b == TB_MENU && G.panel != PANEL_NONE ? "Close" : labels[b]);
         int size = r < 30 ? 14 : 16;
         Vector2 w = (Vector2){ GameTextWidth(s, (float)size), (float)size };

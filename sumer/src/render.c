@@ -209,6 +209,12 @@ void DrawBeastLeg(Vector3 hip, float len, float r, float swing, float bend, bool
     rlPopMatrix();
 }
 
+// An animal's two eyes, at +-x on its head: small dark beads (or 'c'), a touch wider than high.
+void DrawEyes(float x, float y, float z, float r, Color c)
+{
+    for (int s = -1; s <= 1; s += 2) DrawShadedBlob((Vector3){ (float)s * x, y, z }, (Vector3){ r * 0.8f, r, r * 1.15f }, c);
+}
+
 // Four legs, their hips 'len' above the ground at (+-x, +-z).
 void DrawBeastLegs(const BeastAnim *b, float x, float z, float len, float r, float amp, bool gallop, bool fine, Color c)
 {

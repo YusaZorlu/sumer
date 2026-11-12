@@ -519,6 +519,7 @@ void DrawShadedCylinder(Vector3 base, float rx, float rz, float h, float topScal
 typedef struct { float phase, go, head; } BeastAnim;
 float DrawDt(double *last);
 void SetCoat(int alpha);
+void DrawEyes(float x, float y, float z, float r, Color c);
 void BeastStep(BeastAnim *b, float speed, float head, float dt);
 void BeastLegPose(const BeastAnim *b, int leg, float amp, bool gallop, float *swing, float *bend);
 void DrawBeastLeg(Vector3 hip, float len, float r, float swing, float bend, bool fine, Color c);
@@ -1050,7 +1051,7 @@ void LockMouse(bool lock);
 bool AskText(const char *title, const char *now, char *out, int size);
 
 // Touch controls (touch.c).
-enum { TB_ATTACK, TB_PARRY, TB_USE, TB_CROUCH, TB_VIEW, TB_BAG, TB_MENU, TB_JUMP, TB_PREV, TB_NEXT, TB_COUNT };
+enum { TB_ATTACK, TB_PARRY, TB_USE, TB_CROUCH, TB_VIEW, TB_BAG, TB_MENU, TB_JUMP, TB_PREV, TB_NEXT, TB_TORCH, TB_CHAT, TB_COUNT };
 bool TouchOn(void);
 void TouchFrame(void);
 bool TouchDown(int b);
@@ -1168,6 +1169,7 @@ void ApplyReply(int kind, const int *args, int n, bool ok, const int *res, int n
 void FindTarget(bool play);
 void Interact(bool alt);
 bool RepeatsWork(void);
+void ChatAsk(void);
 void HoldUse(bool down, float dt);
 void Barter(int trader, int offer);
 bool TraderWilling(int i);

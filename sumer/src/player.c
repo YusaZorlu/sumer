@@ -72,7 +72,7 @@ bool TorchBurning(void)
 static void UpdateTorch(float dt, bool input)
 {
     const Player *p = &G.player;
-    if (input && KeyPressed(KEY_B)) {
+    if (input && (KeyPressed(KEY_B) || TouchPressed(TB_TORCH))) {
         G.torchOn = !G.torchOn;
         Say(G.torchOn ? "You take up your torch (B). It burns from the evening on." : "You put your torch away (B).");
     }
