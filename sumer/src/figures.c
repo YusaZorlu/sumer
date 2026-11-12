@@ -983,7 +983,8 @@ static void Body(Vector3 at, float stride, Look look, bool crouch, bool bow, flo
 static int LodFor(Vector3 p)
 {
     float d = Vector3Distance(p, G.cam.position);
-    return d < 26.0f ? LOD_FINE : d < 80.0f ? LOD_MID : LOD_FAR;
+    // Full detail (5000 vertices a person: eyes, ears, fingers of cloth) only where it can be seen.
+    return d < 16.0f ? LOD_FINE : d < 45.0f ? LOD_MID : LOD_FAR;
 }
 
 // The grips set for this person become points on their body (where the body is drawn from now).
