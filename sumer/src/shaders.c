@@ -81,7 +81,7 @@ const char *SH_WORLD_FS =
     "uniform int torchSlots; uniform int gridN; uniform float gridCell; uniform float torchRadius;\n"
     "uniform int dynCount; uniform vec4 dynLights[8];\n"
     "uniform mat4 lightVP; uniform sampler2D shadowMap; uniform sampler2D heightMap; uniform sampler2D torchGrid; uniform sampler2D torchData;\n"
-    "uniform sampler2D detailMap; uniform sampler2D detailMap2; uniform sampler2D detailMap3; uniform sampler2D detailMap4; uniform sampler2D detailMap5; uniform sampler2D foliageMap;\n"
+    "uniform sampler2D detailMap; uniform sampler2D detailMap2; uniform sampler2D detailMap3; uniform sampler2D detailMap4; uniform sampler2D detailMap5; uniform sampler2D detailMap6; uniform sampler2D foliageMap;\n"
     // A photo's light and dark, about -1..1: on the faces turned most toward each axis, blended (no UVs needed)
     "float det(vec3 p,vec3 n,float s,int c){ vec3 w=pow(abs(n),vec3(4.0)); w/=w.x+w.y+w.z;\n"
     "  return (texture(detailMap,p.zy*s)[c]*w.x+texture(detailMap,p.xz*s)[c]*w.y+texture(detailMap,p.xy*s)[c]*w.z)*3.2-1.6; }\n"
@@ -178,7 +178,7 @@ const char *SH_WORLD_FS =
     "      vec3 plast=base*(1.0+(mix(d5.r,d5.a,white)-0.5)*0.55*mix(0.4,1.0,near)+0.06*(d5.g-0.5));\n"
     "      base=mix(brick,plast,plaster*mix(0.7,1.0,white));\n"
     "      n=normalize(n+vec3(0.0,-by*6.0,0.0)*(1.0-plaster)*near);\n"
-    "    } else { base*=0.86+0.2*fbm(wpos*0.9)+0.25*det(wpos,fn,0.31,0)*0.25*near; }\n"
+    "    } else { base*=0.84+0.2*fbm(wpos*0.9)+(texture(detailMap6,wpos.xz*0.3).b-0.5)*0.5*mix(0.4,1.0,near); }\n"
     "  } else if(vmat!=4 && vmat!=7 && vcol.g>vcol.r*1.05 && vcol.g>vcol.b){\n" // leaves: blotches and a sheen
     "    base*=0.75+0.45*fbm(wpos*2.2); rough=0.6;\n"
     "  } else if(vmat!=4 && vmat!=7 && vcol.r>vcol.g && vcol.g>vcol.b && lum<0.45 && sat>0.12){\n" // wood: grain along the length
@@ -191,8 +191,16 @@ const char *SH_WORLD_FS =
     "      vec3 w=pow(abs(ln),vec3(4.0)); w/=w.x+w.y+w.z; float s=tag==1?3.0:tag==2?2.0:3.0; int c=tag-1;\n"
     "      float d=texture(detailMap2,vbody.zy*s)[c]*w.x+texture(detailMap2,vbody.xz*s)[c]*w.y+texture(detailMap2,vbody.xy*s)[c]*w.z;\n"
     "      base*=1.0+(d-0.5)*(tag==2?1.1:0.8)*mix(0.4,1.0,near); rough=tag==3?0.55:0.92;\n"
-    "    } else if(tag==4){ base*=0.9+0.2*noise(wpos*30.0)*near; rough=0.28; spec=0.35;\n"
+    "    } else if(tag==4||tag==5){ vec3 ln=cross(dFdx(vbody),dFdy(vbody)); ln=dot(ln,ln)>1e-12?normalize(ln):vec3(0.0,0.0,1.0);\n"
+    // metal: worn and pitted, with its sheen; an animal's coat (alpha 250): short hair lying along the body
+    "      vec3 w=pow(abs(ln),vec3(4.0)); w/=w.x+w.y+w.z; int c=tag==4?3:0; float s=tag==4?2.5:3.5;\n"
+    "      float d=texture(detailMap6,vbody.zy*s)[c]*w.x+texture(detailMap6,vbody.xz*s)[c]*w.y+texture(detailMap6,vbody.xy*s)[c]*w.z;\n"
+    "      if(tag==4){ base*=1.0+(d-0.5)*0.5*mix(0.4,1.0,near); rough=0.28+0.2*(0.5-d); spec=0.35; }\n"
+    "      else { base*=1.0+(d-0.5)*1.3*mix(0.4,1.0,near); rough=0.85; }\n"
     "    } else { base*=0.92+0.12*noise(wpos*40.0)*near; rough=0.7; }\n"
+    "  } else if(abs(vcol.a*255.0-247.0)<0.6){\n"   // fired pottery: the lines the wheel left, running round the jar
+    "    float u=abs(fn.x)>abs(fn.z)?wpos.z:wpos.x; float d=texture(detailMap6,vec2(u*0.9,wpos.y*2.4)).g;\n"
+    "    base*=0.92+(d-0.5)*0.55*mix(0.4,1.0,near)+0.1*fbm(wpos*2.0); rough=0.6; spec=0.06;\n"
     "  } else if(sat<0.12){ base*=0.9+0.12*fbm(wpos*1.6)+det(wpos,n,0.35,3)*0.2*mix(0.4,1.0,near);\n"   // stone, rock
     "  } else { base*=0.88+0.22*fbm(wpos*1.6); }\n"
     "  float above=wpos.y-groundAt(wpos.xz);\n"
@@ -222,7 +230,7 @@ const char *SH_WORLD_FS =
     "  float fog=1.0-exp(-dist*fogDensity*(0.55+0.75*exp(-max(wpos.y,0.0)*0.05)));\n"   // thicker down by the ground
     "  vec3 haze=skyFlat(-V); float hl=dot(haze,vec3(0.3,0.59,0.11));\n"
     "  col=mix(col,mix(haze,vec3(0.78,0.66,0.52)*hl*1.15,0.22)*1.05,fog);\n"
-    "  finalColor=vec4(toScreen(col),(vmat==4||vmat==1||vcol.a>0.97)?1.0:vcol.a);\n"
+    "  finalColor=vec4(toScreen(col),(vmat==4||vmat==1||vcol.a>0.96)?1.0:vcol.a);\n"
     "}\n";
 
 // The sun's view, for the shadow: depth packed into the color, which every WebGL 2 device can render

@@ -394,6 +394,15 @@ def walls():
     Image.merge('RGBA', [detail(fetch(a)) for a in WALLS]).save(os.path.join(ROOT, 'assets', 'detail5.png'), optimize=True)
 
 
+def more():
+    # assets/detail6.png: four more surfaces, light and dark only like the rest: R short animal hair (ambientCG
+    # Fabric084, its height), G the turning lines of wheel-thrown pottery (ambientCG Clay007), B a trowelled earth
+    # floor, for the flat mud roofs (Poly Haven clay_floor_001), A worn, pitted metal (ambientCG Metal008). All CC0.
+    chans = [detail(fetch_cg('Fabric084', 'Displacement')), detail(fetch_cg('Clay007', 'Color')), detail(fetch('clay_floor_001')),
+             detail(fetch_cg('Metal008', 'Color'))]
+    Image.merge('RGBA', chans).save(os.path.join(ROOT, 'assets', 'detail6.png'), optimize=True)
+
+
 def ground():
     # assets/detail4.png: the open land's surfaces, light and dark only like the others: R cracked mud,
     # G sparse grass, B sand and mud by the water, A dry mud (all Poly Haven, CC0).
@@ -402,10 +411,10 @@ def ground():
 
 def main():
     os.makedirs(CACHE, exist_ok=True)
-    one = {'board': board, 'clay': clay, 'fonts': fonts, 'skies': skies, 'foliage': foliage, 'ground': ground, 'walls': walls}
+    one = {'board': board, 'clay': clay, 'fonts': fonts, 'skies': skies, 'foliage': foliage, 'ground': ground, 'walls': walls, 'more': more}
     if len(sys.argv) == 2 and sys.argv[1] in one:
         one[sys.argv[1]]()
-        print('wrote', {'fonts': 'assets/fonts', 'skies': 'assets/sky_*.jpg', 'ground': 'assets/detail4.png', 'walls': 'assets/detail5.png'}.get(sys.argv[1], 'assets/%s.png' % sys.argv[1]))
+        print('wrote', {'fonts': 'assets/fonts', 'skies': 'assets/sky_*.jpg', 'ground': 'assets/detail4.png', 'walls': 'assets/detail5.png', 'more': 'assets/detail6.png'}.get(sys.argv[1], 'assets/%s.png' % sys.argv[1]))
         return 0
     chans = [detail(fetch(a)) for a in SOURCES]
     Image.merge('RGBA', chans).save(os.path.join(ROOT, 'assets', 'detail.png'), optimize=True)
