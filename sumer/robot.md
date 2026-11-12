@@ -548,6 +548,11 @@ The world's draw code (`render.c` primitives, `DrawGround`, `DrawWater`, `DrawRo
   they are not drawn and do not walk. Never in a party or a battle royale, and hide and seek holds the clock at
   10:00 (`UpdateTime`), so it has no night at all; `TestNight` and `TestHide` check both. Doors and windows are
   `COL_DOORWAY` with alpha 248, which the world shader lights from inside after dark (about seven houses in ten).
+- **Where the frame's time goes** (measured November 2026): the game's logic is about 0.07 ms a frame; the cost is
+  drawing. `GFX_STATS=1` prints, every 120 frames, how many vertices each kind of moving thing took (`TALLY` in
+  `CatchMoving`). People were 84k of 123k vertices in the city because full detail (5000 a person) reached 26 m; it
+  now reaches 16 m, the middle level 45 m (`LodFor`), and animals' knees and extras 40-45 m: 88k in the same view.
+  The graphics card's own cost could not be measured in the cloud (software GL), so shader cost is untouched.
 - **Animals' eyes**: `DrawEyes` (render.c), two small beads on each head near the camera; keep them plain.
 - **`assets/detail6.png`** (texture unit 2; units 0 and 1 are the only ones left of WebGL 2's 16): R animal hair, G
   pottery, B earth roofs, A metal. Alpha tags added with it: 250 on a figure is an animal's coat (`SetCoat(250)` round

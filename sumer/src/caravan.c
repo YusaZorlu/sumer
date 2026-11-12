@@ -242,7 +242,7 @@ static void DrawDonkey(Vector3 p, float facing, Color cloth, bool moving, float 
     rlPushMatrix();
     rlTranslatef(p.x, p.y + bob, p.z);
     rlRotatef(facing * RAD2DEG, 0, 1, 0);
-    DrawBeastLegs(&m, 0.15f, 0.4f, 0.62f, 0.06f, 20.0f, false, true, coat);
+    DrawBeastLegs(&m, 0.15f, 0.4f, 0.62f, 0.06f, 20.0f, false, XZDist(p, G.cam.position) < 40.0f, coat);
     DrawShadedBlob((Vector3){ 0, 0.82f, 0 }, (Vector3){ 0.25f, 0.29f, 0.62f }, coat);
     rlPushMatrix();
     rlTranslatef(0, 0.88f, 0.52f);

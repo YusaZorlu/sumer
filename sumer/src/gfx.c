@@ -938,29 +938,34 @@ static void DrawFlames(void)
     EndBlendMode();
 }
 
+// GFX_STATS=1: how many vertices each kind of moving thing took this frame.
+#define TALLY(name, call) do { int was = dyn.n; call; if (stats && tallyFrame) printf("gfx:   %-10s %6d verts\n", name, dyn.n - was); } while (0)
+
 static void CatchMoving(void)
 {
+    static int frame;
+    bool tallyFrame = stats && ++frame % 120 == 5;
     flameCount = 0;
     Catch(&dyn);
     SetMaterial(MAT_FIGURE);
-    DrawVillage();
-    DrawWorkers();
-    DrawCaravans();
-    DrawRaiders();
-    DrawWildlife();
-    DrawPeers();
-    DrawPlayer();
+    TALLY("village", DrawVillage());
+    TALLY("workers", DrawWorkers());
+    TALLY("caravans", DrawCaravans());
+    TALLY("raiders", DrawRaiders());
+    TALLY("wildlife", DrawWildlife());
+    TALLY("peers", DrawPeers());
+    TALLY("player", DrawPlayer());
     DrawRoyale();
-    DrawBoards();
-    DrawPets();
+    TALLY("boards", DrawBoards());
+    TALLY("pets", DrawPets());
     if (ExtraFigures) ExtraFigures();
     SetMaterial(MAT_THING);
     DrawArrows();
     DrawNetArrows();
-    DrawFields();
-    DrawResourcesOf(false, true);
-    DrawTorches();
-    DrawLife();
+    TALLY("fields", DrawFields());
+    TALLY("resources", DrawResourcesOf(false, true));
+    TALLY("torches", DrawTorches());
+    TALLY("life", DrawLife());
     Release();
 
     int n = dyn.n - dyn.n % 4;

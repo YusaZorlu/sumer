@@ -1234,7 +1234,7 @@ static void DrawSheep(const Wanderer *w, const BeastAnim *m, int seed)
     rlPushMatrix();
     rlTranslatef(w->pos.x, w->pos.y + 0.012f * fabsf(sinf(m->phase)) * m->go, w->pos.z);
     rlRotatef(w->heading * RAD2DEG, 0, 1, 0);
-    DrawBeastLegs(m, 0.16f, 0.32f, 0.5f, 0.045f, 20.0f, false, true, face);
+    DrawBeastLegs(m, 0.16f, 0.32f, 0.5f, 0.045f, 20.0f, false, XZDist(w->pos, G.cam.position) < 40.0f, face);
     DrawShadedBlob((Vector3){ 0, 0.72f, 0 }, (Vector3){ 0.34f, 0.3f, 0.52f }, wool);
     DrawShadedBlob((Vector3){ 0, 0.82f, 0.05f }, (Vector3){ 0.28f, 0.26f, 0.42f }, Mix(wool, COL_LINEN, 0.5f));
     // The head, down in the grass or up and chewing; a stub of a tail that wags.
@@ -1262,7 +1262,7 @@ static void DrawCow(const Wanderer *w, const BeastAnim *m, int i)
     rlPushMatrix();
     rlTranslatef(w->pos.x, 0.015f * fabsf(sinf(m->phase)) * m->go, w->pos.z);
     rlRotatef(w->heading * RAD2DEG, 0, 1, 0);
-    DrawBeastLegs(m, 0.26f, 0.68f, 0.9f, 0.09f, 17.0f, false, true, coat);
+    DrawBeastLegs(m, 0.26f, 0.68f, 0.9f, 0.09f, 17.0f, false, XZDist(w->pos, G.cam.position) < 40.0f, coat);
     DrawShadedBlob((Vector3){ 0, 1.17f, 0 }, (Vector3){ 0.42f, 0.44f, 1.0f }, coat);
     DrawShadedBlob((Vector3){ 0, 1.22f, -0.5f }, (Vector3){ 0.44f, 0.44f, 0.48f }, coat);   // the hips
     DrawShadedBlob((Vector3){ 0, 1.2f, 0.52f }, (Vector3){ 0.4f, 0.46f, 0.44f }, coat);     // the shoulders
