@@ -478,6 +478,10 @@ Poly Haven's `cracked_red_ground`, `sparse_grass`, `coast_sand_01` and `brown_mu
 `clay_plaster`, `patterned_clay_plaster`, `reed_roof_04` and `white_stucco` (**CC0**) in `assets/detail5.png`
 (`make_detail.py walls`).
 
+Four more surfaces are in `assets/detail6.png` (`make_detail.py more`), all **CC0**: the short hair of the animals'
+coats (ambientCG `Fabric084`), the turning lines on wheel-thrown pottery (ambientCG `Clay007`), the trowelled earth of
+the flat roofs (Poly Haven `clay_floor_001`) and worn, pitted metal for bronze (ambientCG `Metal008`).
+
 The sky is three Poly Haven HDRIs (**CC0**): `kloofendal_48d_partly_cloudy_puresky` (the day),
 `kloppenheim_06_puresky` (the sunset) and `overcast_soil_puresky` (rain), their upper halves with the sun
 painted out, in `assets/sky_day.jpg`, `sky_dusk.jpg` and `sky_grey.jpg` (`make_detail.py skies`, needs numpy).

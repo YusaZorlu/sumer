@@ -548,6 +548,9 @@ The world's draw code (`render.c` primitives, `DrawGround`, `DrawWater`, `DrawRo
   they are not drawn and do not walk. Never in a party or a battle royale, and hide and seek holds the clock at
   10:00 (`UpdateTime`), so it has no night at all; `TestNight` and `TestHide` check both. Doors and windows are
   `COL_DOORWAY` with alpha 248, which the world shader lights from inside after dark (about seven houses in ten).
+- **`assets/detail6.png`** (texture unit 2; units 0 and 1 are the only ones left of WebGL 2's 16): R animal hair, G
+  pottery, B earth roofs, A metal. Alpha tags added with it: 250 on a figure is an animal's coat (`SetCoat(250)` round
+  each animal's drawing, 253 for sheep: the fleece grain), 247 is fired pottery (`COL_POT`), 248 a door or window.
 - **Hand torches** in the shader: 8 at most (4 on Low); `UpdateLights` lists yours first and the shader upload takes
   yours, then the nearest. The guards' torches used to fill the list first, so yours lit nothing.
 - **Seasons on the land** (`SeasonLand` in gfx.c, `season` in the world shader): thin grass goes to straw in the dry

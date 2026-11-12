@@ -1429,7 +1429,9 @@ void DrawWildlife(void)
         if (a->type == AN_SNAKE) DrawSnakeGrass(a, i);
         SetDrawFlash(FlashAt(a->pos));
         BeastStep(&anim[i], a->state == ST_DEAD ? 0.0f : a->speed, HeadDown(a, i, now), dt);
+        SetCoat(250);
         DrawAnimal(a, i, d < 70.0f);
+        SetCoat(255);
         SetDrawFlash(0);
     }
     G.drawTorch = G.drawFog = 0;

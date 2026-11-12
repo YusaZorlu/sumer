@@ -1312,17 +1312,23 @@ void DrawVillage(void)
     float herdDt = DrawDt(&herdClock), herdT = (float)GetTime();
     for (int i = 0; i < MAX_COWS; i++) {
         BeastStep(&cowAnim[i], G.cows[i].speed, Grazes(&G.cows[i], i, herdT), herdDt);
+        SetCoat(250);
         DrawCow(&G.cows[i], &cowAnim[i], i);
+        SetCoat(255);
     }
     for (int i = 0; i < MAX_SHEEP; i++) {
         BeastStep(&sheepAnim[i], G.sheep[i].speed, Grazes(&G.sheep[i], i + 5, herdT), herdDt);
+        SetCoat(253);
         DrawSheep(&G.sheep[i], &sheepAnim[i], i + 5);
+        SetCoat(255);
     }
     for (int i = 0; i < MAX_FLOCK; i++) {
         if (XZDist(G.flock[i].pos, G.cam.position) > 200.0f || !InView(G.flock[i].pos, 1.5f)) continue;
         LightFor(G.flock[i].pos);
         BeastStep(&flockAnim[i], G.flock[i].speed, Grazes(&G.flock[i], i + 11, herdT), herdDt);
+        SetCoat(253);
         DrawSheep(&G.flock[i], &flockAnim[i], i + 11);
+        SetCoat(255);
     }
 
     for (int i = 0; i < TR_COUNT; i++) {

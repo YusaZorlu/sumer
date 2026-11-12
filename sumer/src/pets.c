@@ -419,7 +419,9 @@ void DrawPets(void)
         LightFor(p->pos);
         BeastStep(&petAnim[i], p->speed, 0.0f, dt);
         petAnim[i].phase = p->step * (p->kind == PET_DOG ? 6.0f : 9.0f);   // in step with the ground they cover
+        SetCoat(250);
         if (p->kind == PET_DOG) DrawDog(p, &petAnim[i], t + (float)i);
         else DrawCat(p, &petAnim[i], t + (float)i);
+        SetCoat(255);
     }
 }

@@ -108,7 +108,7 @@
 #define COL_ROCK        CLITERAL(Color){ 126, 118, 106, 255 }
 #define COL_ORE         CLITERAL(Color){  64, 140, 118, 255 }
 #define COL_BRONZE      CLITERAL(Color){ 190, 130,  60, 255 }
-#define COL_POT         CLITERAL(Color){ 178, 104,  64, 255 }
+#define COL_POT         CLITERAL(Color){ 178, 104,  64, 247 }   // alpha 247: fired pottery (the shaders)
 #define COL_BRICK       CLITERAL(Color){ 160, 112,  76, 255 }
 #define COL_SOIL        CLITERAL(Color){  98,  74,  50, 252 }
 #define COL_WHEAT_GREEN CLITERAL(Color){ 110, 150,  60, 255 }
@@ -518,6 +518,7 @@ void DrawShadedCylinder(Vector3 base, float rx, float rz, float h, float topScal
 // stride's phase, how much it is in motion (0 standing to 1, eased) and how far its head is down (0 to 1).
 typedef struct { float phase, go, head; } BeastAnim;
 float DrawDt(double *last);
+void SetCoat(int alpha);
 void BeastStep(BeastAnim *b, float speed, float head, float dt);
 void BeastLegPose(const BeastAnim *b, int leg, float amp, bool gallop, float *swing, float *bend);
 void DrawBeastLeg(Vector3 hip, float len, float r, float swing, float bend, bool fine, Color c);

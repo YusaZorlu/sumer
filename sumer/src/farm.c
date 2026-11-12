@@ -765,7 +765,9 @@ void DrawFarm(void)
     float henDt = DrawDt(&henClock);
     for (int i = 0; i < G.henCount; i++) {
         BeastStep(&henAnim[i], G.hens[i].speed, 0.0f, henDt);
+        SetCoat(250);
         DrawHen(&G.hens[i], &henAnim[i], i, t);
+        SetCoat(255);
     }
     for (int i = 0; i < G.coopEggs && i < 6; i++)
         Part(17.3f + 0.16f * (float)i, 0.06f, 29.5f, 0.1f, 0.12f, 0.1f, COL_LINEN);

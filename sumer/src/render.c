@@ -77,8 +77,18 @@ float DrawFlash(void)
     return flash;
 }
 
+// While an animal is drawn its plain colors carry the alpha that tells the shaders what its coat is: 250 short
+// hair (the new fur grain), 253 fleece. 255 between animals.
+static unsigned char coatTag = 255;
+
+void SetCoat(int alpha)
+{
+    coatTag = (unsigned char)alpha;
+}
+
 static void SetColor(Color c)
 {
+    if (c.a == 255) c.a = coatTag;
     VColor(flash > 0 ? Mix(c, (Color){ 255, 244, 232, c.a }, flash * 0.75f) : c);
 }
 

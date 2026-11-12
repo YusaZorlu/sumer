@@ -331,7 +331,9 @@ void DrawCaravans(void)
         for (int k = 1; k <= 2; k++) {
             Vector3 d = Member(c, k, &f);
             LightFor(d);
+            SetCoat(250);
             DrawDonkey(d, f, c->cloth, moving, c->s, i * 2 + k);
+            SetCoat(255);
         }
 
         for (int k = 0; k < CARAVAN_GUARDS; k++) {
